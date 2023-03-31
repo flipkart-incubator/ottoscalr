@@ -2,9 +2,17 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
-domain: ottoscalr.k8s.io
 layout:
 - go.kubebuilder.io/v4-alpha
 projectName: ottoscalr
 repo: github.com/flipkart-incubator/ottoscalr
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  group: ottoscaler.io
+  kind: PolicyRecommendation
+  path: github.com/flipkart-incubator/ottoscalr/api/v1alpha1
+  version: v1alpha1
 version: "3"
