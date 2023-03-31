@@ -23,13 +23,35 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+type Policy struct {
+	ID        string `json:"id"`
+	RiskIndex string `json:"riskIndex"`
+}
+
 // PolicyRecommendationSpec defines the desired state of PolicyRecommendation
 type PolicyRecommendationSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of PolicyRecommendation. Edit policyrecommendation_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+
+	WorkloadSpec           WorkloadSpec     `json:"workload"`
+	TargetHPAConfiguration HPAConfiguration `json:"targetHPAConfig"`
+	Policy                 Policy           `json:"policy"`
+	GeneratedAt            metav1.Time      `json:"generatedAt"`
+	QueuedForExecution     bool             `json:"queuedForExecution"`
+	QueuedForExecutionAt   metav1.Time      `json:"queuedForExecutionAt"`
+}
+
+type WorkloadSpec struct {
+	metav1.TypeMeta `json:","`
+	Name            string `json:"name"`
+}
+
+type HPAConfiguration struct {
+	Min               int `json:"min"`
+	Max               int `json:"max"`
+	TargetMetricValue int `json:"targetMetricValue"`
 }
 
 // PolicyRecommendationStatus defines the observed state of PolicyRecommendation
