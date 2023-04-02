@@ -1,0 +1,12 @@
+apiVersion: ottoscaler.io/v1alpha1
+kind: PolicyRecommendation
+metadata:
+  labels:
+    app.kubernetes.io/name: policyrecommendation
+    app.kubernetes.io/instance: policyrecommendation-sample
+    app.kubernetes.io/part-of: ottoscalr
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: ottoscalr
+  name: policyrecommendation-sample
+spec:
+  # TODO(user): Add fields here

@@ -1,0 +1,27 @@
+# permissions for end users to view policyrecommendations.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: policyrecommendation-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: ottoscalr
+    app.kubernetes.io/part-of: ottoscalr
+    app.kubernetes.io/managed-by: kustomize
+  name: policyrecommendation-viewer-role
+rules:
+- apiGroups:
+  - ottoscaler.io
+  resources:
+  - policyrecommendations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ottoscaler.io
+  resources:
+  - policyrecommendations/status
+  verbs:
+  - get
