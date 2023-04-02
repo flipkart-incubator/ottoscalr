@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"os"
+	"ottoscalr/internal/controller"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -32,7 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	"github.com/flipkart-incubator/ottoscalr/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -96,6 +96,23 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)
 	}
+
+	if err = (&controller.PolicyRecommendationRegistrar{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendationRegistration")
+		os.Exit(1)
+	}
+
+	if err = (&controller.BreachMonitorTrigger{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "BreachMonitorTrigger")
+		os.Exit(1)
+	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
