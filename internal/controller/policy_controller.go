@@ -49,7 +49,7 @@ func (r *PolicyWatcher) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	_ = log.FromContext(ctx)
 
 	// TODO(bharathguvvala): Add policy watcher trigger logic
-	// If any change to policy configuration or policy creation happens
+	// If any change to policy configuration or policy creation/deletion happens
 	// then requeue all the policyrecommendations which are affected by the change for execution
 
 	return ctrl.Result{}, nil
