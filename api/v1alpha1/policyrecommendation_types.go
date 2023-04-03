@@ -40,7 +40,7 @@ type PolicyRecommendationSpec struct {
 	Policy                 Policy           `json:"policy"`
 	GeneratedAt            metav1.Time      `json:"generatedAt"`
 	QueuedForExecution     bool             `json:"queuedForExecution"`
-	QueuedForExecutionAt   metav1.Time      `json:"queuedForExecutionAt"`
+	QueuedForExecutionAt   metav1.Time      `json:"queuedForExecutionAt,omitempty"`
 }
 
 type WorkloadSpec struct {
@@ -58,6 +58,7 @@ type HPAConfiguration struct {
 type PolicyRecommendationStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
