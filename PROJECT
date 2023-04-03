@@ -18,6 +18,7 @@ resources:
 - api:
     crdVersion: v1
     namespaced: true
+  controller: true
   group: ottoscaler.io
   kind: Policy
   path: github.com/flipkart-incubator/ottoscalr/api/v1alpha1
