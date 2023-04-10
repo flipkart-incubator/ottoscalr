@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"time"
 )
 
 // PolicyRecommendationRegistrar reconciles a Deployment or ArgoRollout
@@ -29,20 +30,20 @@ type PolicyRecommendationRegistrar struct {
 }
 
 func (r *PolicyRecommendationRegistrar) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-	log = log.WithValues("request", request)
+	logger := log.FromContext(ctx)
+	logger = logger.WithValues("request", request)
 
 	// Check if Rollout exists
 	rollout := argov1alpha1.Rollout{}
 	err := r.Client.Get(ctx, request.NamespacedName, &rollout)
 	if err == nil {
 		// Rollout exists, create policy recommendation
-		return r.createPolicyRecommendation(ctx, &rollout, log)
+		return r.createPolicyRecommendation(ctx, &rollout, logger)
 	}
 
 	if !errors.IsNotFound(err) {
 		// Error occurred
-		log.Error(err, "Failed to get Rollout. Requeue the request")
+		logger.Error(err, "Failed to get Rollout. Requeue the request")
 		return reconcile.Result{}, err
 	}
 
@@ -51,15 +52,15 @@ func (r *PolicyRecommendationRegistrar) Reconcile(ctx context.Context, request c
 	err = r.Client.Get(ctx, request.NamespacedName, &deployment)
 	if err == nil {
 		// Deployment exists, create policy recommendation
-		return r.createPolicyRecommendation(ctx, &deployment, log)
+		return r.createPolicyRecommendation(ctx, &deployment, logger)
 	}
 
 	if !errors.IsNotFound(err) {
-		log.Error(err, "Failed to get Deployment. Requeue the request")
+		logger.Error(err, "Failed to get Deployment. Requeue the request")
 		return reconcile.Result{}, err
 	}
 
-	log.Info("Rollout or Deployment not found. It could have been deleted.")
+	logger.Info("Rollout or Deployment not found. It could have been deleted.")
 	return reconcile.Result{}, nil
 }
 
@@ -78,7 +79,7 @@ func (r *PolicyRecommendationRegistrar) createPolicyRecommendation(ctx context.C
 	}
 
 	log.Info("Creating a new PolicyRecommendation object")
-
+	log.Info(instance.GetObjectKind().GroupVersionKind().String())
 	newPolicyRecommendation := &ottoscaleriov1alpha1.PolicyRecommendation{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.GetName(),
@@ -88,8 +89,11 @@ func (r *PolicyRecommendationRegistrar) createPolicyRecommendation(ctx context.C
 			},
 		},
 		Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
-			//TODO Set the fields in the policy spec as needed
-
+			WorkloadSpec: ottoscaleriov1alpha1.WorkloadSpec{Name: instance.GetName()},
+			//TODO Set the policy in the spec to safest policy
+			Policy:             ottoscaleriov1alpha1.Policy{},
+			QueuedForExecution: true,
+			GeneratedAt:        metav1.NewTime(time.Now()),
 		},
 	}
 
@@ -119,6 +123,7 @@ func (r *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manager) error
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
+		Named("PolicyRecommendationRegistrar").
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
