@@ -23,11 +23,6 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-type Policy struct {
-	ID        string `json:"id"`
-	RiskIndex string `json:"riskIndex"`
-}
-
 // PolicyRecommendationSpec defines the desired state of PolicyRecommendation
 type PolicyRecommendationSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -37,10 +32,10 @@ type PolicyRecommendationSpec struct {
 
 	WorkloadSpec           WorkloadSpec     `json:"workload"`
 	TargetHPAConfiguration HPAConfiguration `json:"targetHPAConfig"`
-	Policy                 Policy           `json:"policy"`
+	Policy                 string           `json:"policy"`
 	GeneratedAt            metav1.Time      `json:"generatedAt"`
 	QueuedForExecution     bool             `json:"queuedForExecution"`
-	QueuedForExecutionAt   metav1.Time      `json:"queuedForExecutionAt"`
+	QueuedForExecutionAt   metav1.Time      `json:"queuedForExecutionAt,omitempty"`
 }
 
 type WorkloadSpec struct {
@@ -58,6 +53,7 @@ type HPAConfiguration struct {
 type PolicyRecommendationStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true

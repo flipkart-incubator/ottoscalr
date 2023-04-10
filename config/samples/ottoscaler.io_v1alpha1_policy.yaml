@@ -1,0 +1,12 @@
+apiVersion: ottoscaler.io/v1alpha1
+kind: Policy
+metadata:
+  labels:
+    app.kubernetes.io/name: policy
+    app.kubernetes.io/instance: policy-sample
+    app.kubernetes.io/part-of: ottoscalr
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: ottoscalr
+  name: policy-sample
+spec:
+  # TODO(user): Add fields here
