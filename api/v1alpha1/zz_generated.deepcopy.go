@@ -164,6 +164,7 @@ func (in *PolicyRecommendationSpec) DeepCopyInto(out *PolicyRecommendationSpec) 
 	*out = *in
 	out.WorkloadSpec = in.WorkloadSpec
 	out.TargetHPAConfiguration = in.TargetHPAConfiguration
+	in.Policy.DeepCopyInto(&out.Policy)
 	in.GeneratedAt.DeepCopyInto(&out.GeneratedAt)
 	in.QueuedForExecutionAt.DeepCopyInto(&out.QueuedForExecutionAt)
 }

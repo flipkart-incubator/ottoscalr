@@ -1,147 +1,146 @@
 package controller
 
 import (
-	"context"
-	"fmt"
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	"github.com/stretchr/testify/assert"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"golang.org/x/net/context"
 	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"testing"
+	"time"
 )
 
-func TestPolicyRecommendationRegistrar_Rollout(t *testing.T) {
+// +kubebuilder:docs-gen:collapse=Imports
 
-	// Create a new scheme and register the types with it
-	scheme := runtime.NewScheme()
-	err := clientgoscheme.AddToScheme(scheme)
-	assert.NoError(t, err)
-	err = rolloutv1alpha1.AddToScheme(scheme)
-	assert.NoError(t, err)
-	err = ottoscaleriov1alpha1.AddToScheme(scheme)
-	assert.NoError(t, err)
+var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
-	rollout := &rolloutv1alpha1.Rollout{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Rollout",
-			APIVersion: "argoproj.io/v1alpha1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-rollout",
-			Namespace: "my-namespace",
-		},
-	}
+	// Define utility constants for object names and testing timeouts/durations and intervals.
+	const (
+		RolloutName         = "test-rollout"
+		RolloutNamespace    = "default"
+		DeploymentName      = "test-deployment"
+		DeploymentNamespace = "default"
 
-	// Create a fake controller runtime client with the instance and policy
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithRuntimeObjects(rollout).
-		Build()
+		timeout  = time.Second * 10
+		duration = time.Second * 10
+		interval = time.Millisecond * 250
+	)
 
-	// Create the controller and inject the fake client
-	controller := &PolicyRecommendationRegistrar{
-		Client: fakeClient,
-	}
+	Context("When creating a new Rollout", func() {
+		It("Should Create a new PolicyRecommendation", func() {
+			By("By creating a new Rollout")
+			ctx := context.Background()
+			rollout := &rolloutv1alpha1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      RolloutName,
+					Namespace: RolloutNamespace,
+				},
 
-	// Create the reconcile request
-	request := ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      "my-rollout",
-			Namespace: "my-namespace",
-		},
-	}
+				Spec: rolloutv1alpha1.RolloutSpec{
+					Template: v1.PodTemplateSpec{
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rollout)).Should(Succeed())
+			createdRollout := &rolloutv1alpha1.Rollout{}
+			createdPolicy := &ottoscaleriov1alpha1.PolicyRecommendation{}
 
-	// Call the Reconcile method and verify that a new PolicyRecommendation was created
-	result, err := controller.Reconcile(context.Background(), request)
-	assert.NoError(t, err)
-	assert.True(t, result.Requeue == false)
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: RolloutName, Namespace: RolloutNamespace},
+					createdRollout)
+				if err != nil {
+					return false
+				}
 
-	foundPolicy := &ottoscaleriov1alpha1.PolicyRecommendation{}
-	err = fakeClient.Get(context.Background(), types.NamespacedName{Name: "my-rollout", Namespace: "my-namespace"}, foundPolicy)
-	assert.NoError(t, err)
-	assert.Equal(t, rollout.GetName(), foundPolicy.OwnerReferences[0].Name)
-	assert.Equal(t, rollout.Kind, foundPolicy.OwnerReferences[0].Kind)
-	assert.Equal(t, rollout.APIVersion, foundPolicy.OwnerReferences[0].APIVersion)
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: RolloutName, Namespace: RolloutNamespace},
+					createdPolicy)
+				if err != nil {
+					return false
+				}
+				return true
+			}, timeout, interval).Should(BeTrue())
 
-	// Call the Reconcile method again and verify that a new PolicyRecommendation is not created
-	result, err = controller.Reconcile(context.Background(), request)
-	assert.NoError(t, err)
-	assert.True(t, result.Requeue == false)
-	policies := &ottoscaleriov1alpha1.PolicyRecommendationList{}
-	err = fakeClient.List(context.Background(), policies)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(policies.Items))
-	fmt.Println(policies.Items[0].OwnerReferences)
+			Expect(createdRollout.Name).Should(Equal(RolloutName))
 
-}
+			Expect(createdPolicy.Name).Should(Equal(RolloutName))
+			Expect(createdPolicy.Namespace).Should(Equal(RolloutNamespace))
+			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(RolloutName))
+			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Rollout"))
+			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("argoproj.io/v1alpha1"))
+		})
+	})
 
-func TestPolicyRecommendationRegistrar_Deployment(t *testing.T) {
+	Context("When creating a new Deployment", func() {
+		It("Should Create a new PolicyRecommendation", func() {
+			By("By creating a new Deployment")
+			ctx := context.Background()
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      DeploymentName,
+					Namespace: DeploymentNamespace,
+				},
 
-	// Create a new scheme and register the types with it
-	scheme := runtime.NewScheme()
-	err := clientgoscheme.AddToScheme(scheme)
-	assert.NoError(t, err)
-	err = rolloutv1alpha1.AddToScheme(scheme)
-	assert.NoError(t, err)
-	err = ottoscaleriov1alpha1.AddToScheme(scheme)
-	assert.NoError(t, err)
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, deployment)).Should(Succeed())
+			createdDeployment := &appsv1.Deployment{}
+			createdPolicy := &ottoscaleriov1alpha1.PolicyRecommendation{}
 
-	deployment := &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Deployment",
-			APIVersion: "apps/v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-deployment",
-			Namespace: "my-namespace",
-		},
-	}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
+					createdDeployment)
+				if err != nil {
+					return false
+				}
 
-	// Create a fake controller runtime client with the instance and policy
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithRuntimeObjects(deployment).
-		Build()
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
+					createdPolicy)
+				if err != nil {
+					return false
+				}
+				return true
+			}, timeout, interval).Should(BeTrue())
 
-	// Create the controller and inject the fake client
-	controller := &PolicyRecommendationRegistrar{
-		Client: fakeClient,
-	}
+			Expect(createdDeployment.Name).Should(Equal(DeploymentName))
 
-	// Create the reconcile request
-	request := ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      "my-deployment",
-			Namespace: "my-namespace",
-		},
-	}
+			Expect(createdPolicy.Name).Should(Equal(DeploymentName))
+			Expect(createdPolicy.Namespace).Should(Equal(DeploymentNamespace))
+			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(DeploymentName))
+			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Deployment"))
+			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
+		})
+	})
 
-	// Call the Reconcile method and verify that a new PolicyRecommendation was created
-	result, err := controller.Reconcile(context.Background(), request)
-	assert.NoError(t, err)
-	assert.True(t, result.Requeue == false)
-
-	foundPolicy := &ottoscaleriov1alpha1.PolicyRecommendation{}
-	err = fakeClient.Get(context.Background(), types.NamespacedName{Name: "my-deployment", Namespace: "my-namespace"}, foundPolicy)
-	assert.NoError(t, err)
-	assert.Equal(t, deployment.GetName(), foundPolicy.OwnerReferences[0].Name)
-	assert.Equal(t, deployment.Kind, foundPolicy.OwnerReferences[0].Kind)
-	assert.Equal(t, deployment.APIVersion, foundPolicy.OwnerReferences[0].APIVersion)
-
-	// Call the Reconcile method again and verify that a new PolicyRecommendation is not created
-	result, err = controller.Reconcile(context.Background(), request)
-	assert.NoError(t, err)
-	assert.True(t, result.Requeue == false)
-	policies := &ottoscaleriov1alpha1.PolicyRecommendationList{}
-	err = fakeClient.List(context.Background(), policies)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(policies.Items))
-	fmt.Println(policies.Items[0].OwnerReferences)
-
-}
+})

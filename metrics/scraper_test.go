@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/flipkart-incubator/ottoscalr/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
-	"ottoscalr/mocks"
 	"testing"
 	"time"
 )
