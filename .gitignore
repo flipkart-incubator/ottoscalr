@@ -24,4 +24,5 @@ Dockerfile.cross
 *.swp
 *.swo
 *~
+*.iml
 vendor/
