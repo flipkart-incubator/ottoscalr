@@ -115,7 +115,6 @@ spec:
                 - name
                 type: object
             required:
-            - generatedAt
             - policy
             - queuedForExecution
             - targetHPAConfig
