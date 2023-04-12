@@ -44,7 +44,7 @@ func (r *PolicyRecommendationRegistrar) Reconcile(ctx context.Context, request c
 	if !errors.IsNotFound(err) {
 		// Error occurred
 		logger.Error(err, "Failed to get Rollout. Requeue the request")
-		return reconcile.Result{}, err
+		return ctrl.Result{RequeueAfter: 500 * time.Millisecond}, err
 	}
 
 	// Check if Deployment exists
@@ -57,11 +57,11 @@ func (r *PolicyRecommendationRegistrar) Reconcile(ctx context.Context, request c
 
 	if !errors.IsNotFound(err) {
 		logger.Error(err, "Failed to get Deployment. Requeue the request")
-		return reconcile.Result{}, err
+		return ctrl.Result{RequeueAfter: 500 * time.Millisecond}, err
 	}
 
 	logger.Info("Rollout or Deployment not found. It could have been deleted.")
-	return reconcile.Result{}, nil
+	return ctrl.Result{}, nil
 }
 
 func (r *PolicyRecommendationRegistrar) createPolicyRecommendation(ctx context.Context,
@@ -91,9 +91,9 @@ func (r *PolicyRecommendationRegistrar) createPolicyRecommendation(ctx context.C
 		Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
 			WorkloadSpec: ottoscaleriov1alpha1.WorkloadSpec{Name: instance.GetName()},
 			//TODO Set the policy in the spec to safest policy
-			Policy:             ottoscaleriov1alpha1.Policy{},
-			QueuedForExecution: true,
-			GeneratedAt:        metav1.NewTime(time.Now()),
+			Policy:               ottoscaleriov1alpha1.Policy{},
+			QueuedForExecution:   true,
+			QueuedForExecutionAt: metav1.NewTime(time.Now()),
 		},
 	}
 
@@ -114,6 +114,15 @@ func (r *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manager) error
 	createPredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return false
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
 		},
 	}
 

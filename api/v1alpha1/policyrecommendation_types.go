@@ -33,7 +33,7 @@ type PolicyRecommendationSpec struct {
 	WorkloadSpec           WorkloadSpec     `json:"workload"`
 	TargetHPAConfiguration HPAConfiguration `json:"targetHPAConfig"`
 	Policy                 Policy           `json:"policy"`
-	GeneratedAt            metav1.Time      `json:"generatedAt"`
+	GeneratedAt            metav1.Time      `json:"generatedAt,omitempty"`
 	QueuedForExecution     bool             `json:"queuedForExecution"`
 	QueuedForExecutionAt   metav1.Time      `json:"queuedForExecutionAt,omitempty"`
 }
