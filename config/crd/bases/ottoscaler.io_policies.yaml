@@ -35,10 +35,19 @@ spec:
           spec:
             description: PolicySpec defines the desired state of Policy
             properties:
-              foo:
-                description: Foo is an example field of Policy. Edit policy_types.go
-                  to remove/update
+              id:
                 type: string
+              min:
+                type: integer
+              riskIndex:
+                type: string
+              targetUtilization:
+                type: integer
+            required:
+            - id
+            - min
+            - riskIndex
+            - targetUtilization
             type: object
           status:
             description: PolicyStatus defines the observed state of Policy
