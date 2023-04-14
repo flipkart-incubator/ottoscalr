@@ -75,8 +75,11 @@ spec:
                     type: string
                   name:
                     type: string
+                  namespace:
+                    type: string
                 required:
                 - name
+                - namespace
                 type: object
             required:
             - generatedAt

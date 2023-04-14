@@ -8,6 +8,32 @@ rules:
 - apiGroups:
   - ottoscaler.io
   resources:
+  - policies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ottoscaler.io
+  resources:
+  - policies/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - ottoscaler.io
+  resources:
+  - policies/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ottoscaler.io
+  resources:
   - policyrecommendations
   verbs:
   - create

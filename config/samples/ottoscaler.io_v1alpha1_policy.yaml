@@ -7,6 +7,11 @@ metadata:
     app.kubernetes.io/part-of: ottoscalr
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: ottoscalr
-  name: policy-sample
+  name: no-op
 spec:
-  # TODO(user): Add fields here
+  id: no-op
+  riskIndex: 0
+  minReplicaPercentageCut: 0
+  targetUtilization: 20
+
+

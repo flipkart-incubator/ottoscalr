@@ -18,9 +18,8 @@ package main
 
 import (
 	"flag"
+	controller2 "github.com/flipkart-incubator/ottoscalr/pkg/controller"
 	"os"
-
-	"github.com/flipkart-incubator/ottoscalr/internal/controller"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -90,7 +89,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.PolicyRecommendationReconciler{
+	if err = (&controller2.PolicyRecommendationReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
@@ -98,7 +97,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.PolicyRecommendationRegistrar{
+	if err = (&controller2.PolicyRecommendationRegistrar{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
@@ -106,7 +105,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.BreachMonitorTrigger{
+	if err = (&controller2.BreachMonitorTrigger{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
@@ -114,7 +113,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.PolicyWatcher{
+	if err = (&controller2.PolicyWatcher{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {

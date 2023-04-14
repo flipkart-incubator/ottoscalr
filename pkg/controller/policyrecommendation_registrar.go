@@ -10,14 +10,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 // PolicyRecommendationRegistrar reconciles a Deployment or ArgoRollout
@@ -93,28 +88,8 @@ func (r *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manager) error {
-	createPredicate := predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			return true
-		},
-	}
-
-	enqueueFunc := func(a client.Object) []reconcile.Request {
-		return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: a.GetName(), Namespace: a.GetNamespace()}}}
-	}
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&argov1alpha1.Rollout{}).
 		For(&appsv1.Deployment{}).
-		Watches(
-			&source.Kind{Type: &argov1alpha1.Rollout{}},
-			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
-			builder.WithPredicates(createPredicate),
-		).
-		Watches(
-			&source.Kind{Type: &appsv1.Deployment{}},
-			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
-			builder.WithPredicates(createPredicate),
-		).
 		Complete(r)
 }
