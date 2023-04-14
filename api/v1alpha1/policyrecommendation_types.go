@@ -60,6 +60,20 @@ type PolicyRecommendation struct {
 	Status PolicyRecommendationStatus `json:"status,omitempty"`
 }
 
+type PolicyRecommendationConditionType string
+
+// These are valid conditions of a deployment.
+const (
+	// PolicyRecommendation is initialized post the creation of a workload
+	Initialized PolicyRecommendationConditionType = "Initialized"
+	// A recommendation task is queued for execution
+	RecoTaskQueued PolicyRecommendationConditionType = "RecoTaskQueued"
+	// A recommendation is generated for the workload
+	RecommendationGenerated PolicyRecommendationConditionType = "RecommendationGenerated"
+	// AutoscalingPolicySynced means there's corresponding ScaledObject or HPA reflects the desired state specified in the PolicyRecommendation
+	AutoscalingPolicySynced PolicyRecommendationConditionType = "AutoscalingPolicySynced"
+)
+
 //+kubebuilder:object:root=true
 
 // PolicyRecommendationList contains a list of PolicyRecommendation

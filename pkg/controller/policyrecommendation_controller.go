@@ -21,7 +21,6 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,7 +31,7 @@ import (
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 )
 
-const manager = "RecoWorkflowController"
+const recowfctrl = "RecoWorkflowController"
 
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
 type PolicyRecommendationReconciler struct {
@@ -65,23 +64,37 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		Namespace: policyreco.Spec.WorkloadMeta.Namespace,
 	})
 
-	force := true
-
 	if err := r.Patch(ctx, &v1alpha1.PolicyRecommendation{
+		TypeMeta:   policyreco.TypeMeta,
+		ObjectMeta: policyreco.ObjectMeta,
 		Spec: v1alpha1.PolicyRecommendationSpec{
 			TargetHPAConfiguration:  *targetreco,
 			Policy:                  policy.Name,
 			CurrentHPAConfiguration: *currentreco,
 		},
-	}, client.Apply, &client.PatchOptions{
-		Force:        &force,
-		FieldManager: manager,
-	}); !(errors.IsGone(err) || !errors.IsNotFound(err)) {
-		return ctrl.Result{}, err
+	}, client.Apply, client.ForceOwnership, client.FieldOwner(recowfctrl)); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	// TODO: Add status and events
+	statusPatch := &v1alpha1.PolicyRecommendation{
+		TypeMeta:   policyreco.TypeMeta,
+		ObjectMeta: policyreco.ObjectMeta,
+		Status:     v1alpha1.PolicyRecommendationStatus{},
+	}
+	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions()); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 	return ctrl.Result{}, nil
+}
+
+func getSubresourcePatchOptions() *client.SubResourcePatchOptions {
+	patchOpts := client.PatchOptions{}
+	client.ForceOwnership.ApplyToPatch(&patchOpts)
+	client.FieldOwner(recowfctrl).ApplyToPatch(&patchOpts)
+	return &client.SubResourcePatchOptions{
+		PatchOptions: patchOpts,
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -121,6 +134,6 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		For(&v1alpha1.PolicyRecommendation{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
 		WithEventFilter(predicate).
-		Named(manager).
+		Named(recowfctrl).
 		Complete(r)
 }
