@@ -17,38 +17,93 @@ limitations under the License.
 package metrics
 
 import (
-	"golang.org/x/net/context"
+	"fmt"
+	"github.com/prometheus/client_golang/api"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"net/http"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	//+kubebuilder:scaffold:imports
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
-
-var (
-	ctx    context.Context
-	cancel context.CancelFunc
-)
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Metrics Suite")
 }
 
+var (
+	registry       *prometheus.Registry
+	metricsServer  *http.Server
+	metricsAddress string
+
+	cpuUsageMetric *prometheus.GaugeVec
+
+	kubePodOwnerMetric *prometheus.GaugeVec
+
+	scraper *PrometheusScraper
+)
+
 var _ = BeforeSuite(func() {
-	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
-	ctx, cancel = context.WithCancel(context.TODO())
+	registry = prometheus.NewRegistry()
+	registerMetrics()
+
+	client, err := api.NewClient(api.Config{
+		Address: "http://localhost:9090",
+	})
+
+	Expect(err).NotTo(HaveOccurred())
+
+	utilizationMetric := "node_namespace_pod_container_container_cpu_usage_seconds_total_sum_irate"
+	podOwnerMetric := "namespace_workload_pod_kube_pod_owner_relabel"
+	scraper = &PrometheusScraper{api: v1.NewAPI(client),
+		metricRegistry: &MetricRegistry{utilizationMetric: utilizationMetric, podOwnerMetric: podOwnerMetric}}
+
 	go func() {
+		metricsAddress = "localhost:9091"
+		metricsServer = startMetricsServer(registry, metricsAddress)
 		defer GinkgoRecover()
 	}()
 })
 
 var _ = AfterSuite(func() {
-	cancel()
+	_ = metricsServer.Close()
 })
+
+func startMetricsServer(registry *prometheus.Registry, addr string) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+
+	server := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			panic(fmt.Sprintf("Failed to start metrics server: %s", err))
+		}
+	}()
+
+	return server
+}
+
+func registerMetrics() {
+	cpuUsageMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "node_namespace_pod_container_container_cpu_usage_seconds_total_sum_irate",
+		Help: "Test metric for container CPU usage",
+	}, []string{"namespace", "pod", "node", "container"})
+
+	kubePodOwnerMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "namespace_workload_pod_kube_pod_owner_relabel",
+		Help: "Test metric for Kubernetes pod owner",
+	}, []string{"namespace", "pod", "workload", "workload_type"})
+
+	registry.MustRegister(cpuUsageMetric)
+	registry.MustRegister(kubePodOwnerMetric)
+}

@@ -1,7 +1,6 @@
 global:
-  scrape_interval: 0s100ms # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  scrape_interval: 0s100ms
 scrape_configs:
-  - job_name: pushgateway
-    honor_labels: false
+  - job_name: "testScraper"
     static_configs:
-      - targets: ['localhost:9091']
+      - targets: [ "localhost:9091" ]

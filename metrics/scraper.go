@@ -19,7 +19,13 @@ type Scraper interface {
 
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
 type PrometheusScraper struct {
-	api v1.API
+	api            v1.API
+	metricRegistry *MetricRegistry
+}
+
+type MetricRegistry struct {
+	utilizationMetric string
+	podOwnerMetric    string
 }
 
 // NewPrometheusScraper returns a new PrometheusScraper instance.
@@ -33,8 +39,11 @@ func NewPrometheusScraper(apiURL string) (*PrometheusScraper, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating Prometheus client: %v", err)
 	}
-
-	return &PrometheusScraper{api: v1.NewAPI(client)}, nil
+	utilizationMetric := "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate"
+	podOwnerMetric := "namespace_workload_pod:kube_pod_owner:relabel"
+	return &PrometheusScraper{api: v1.NewAPI(client),
+			metricRegistry: &MetricRegistry{utilizationMetric: utilizationMetric, podOwnerMetric: podOwnerMetric}},
+		nil
 }
 
 // GetAverageCPUUtilizationByWorkload returns the average CPU utilization for the given workload type and name in the
@@ -47,10 +56,15 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	query := fmt.Sprintf("sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate"+
+	query := fmt.Sprintf("sum(%s"+
 		"{namespace=\"%s\"} * on (namespace,pod) group_left(workload, workload_type)"+
-		"namespace_workload_pod:kube_pod_owner:relabel{namespace=\"%s\", workload=\"%s\","+
-		" workload_type=\"deployment\"}) by(namespace, workload, workload_type)", namespace, namespace, workload)
+		"%s{namespace=\"%s\", workload=\"%s\","+
+		" workload_type=\"deployment\"}) by(namespace, workload, workload_type)",
+		ps.metricRegistry.utilizationMetric,
+		namespace,
+		ps.metricRegistry.podOwnerMetric,
+		namespace,
+		workload)
 
 	queryRange := v1.Range{Start: start, End: end, Step: time.Minute}
 	result, _, err := ps.api.QueryRange(ctx, query, queryRange)
@@ -114,6 +128,8 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		return nil, fmt.Errorf("unexpected result type: %v", result.Type())
 	}
 	vector := *result.(*model.Vector)
+
+	fmt.Println(query)
 	if len(vector) == 0 {
 		return nil, nil
 	}
