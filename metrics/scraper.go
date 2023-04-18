@@ -54,21 +54,18 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 
 	queryRange := v1.Range{Start: start, End: end, Step: time.Minute}
 	result, _, err := ps.api.QueryRange(ctx, query, queryRange)
-	fmt.Println(query)
-	fmt.Println(result)
-	fmt.Println(err)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)
 	}
 	if result.Type() != model.ValMatrix {
 		return nil, fmt.Errorf("unexpected result type: %v", result.Type())
 	}
+
 	matrix := result.(model.Matrix)
 	if len(matrix) != 1 {
 		return nil, fmt.Errorf("unexpected no of time series: %v", len(matrix))
 	}
-
-	fmt.Println(matrix)
 
 	var dataPoints []float64
 	for _, sample := range matrix[0].Values {
@@ -80,7 +77,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	return dataPoints, nil
 }
 
-// GetCPUUtilizationBreachDataPoints returns the datapoints where avg CPU utilization for a workload goes above the
+// GetCPUUtilizationBreachDataPoints returns the data points where avg CPU utilization for a workload goes above the
 // redLineUtilization while no of ready pods for the workload were < maxReplicas defined in the HPA.
 func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	workloadType,

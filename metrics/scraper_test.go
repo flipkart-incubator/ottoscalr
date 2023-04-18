@@ -13,13 +13,9 @@ import (
 var _ = Describe("PrometheusScraper", func() {
 
 	BeforeEach(func() {
-		err := deleteMetrics()
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterEach(func() {
-		err := deleteMetrics()
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	Context("when querying average CPU utilization by workload", func() {
@@ -46,7 +42,7 @@ var _ = Describe("PrometheusScraper", func() {
 					"node":      "test-node-1",
 					"container": "test-container-1"})
 			Expect(err).NotTo(HaveOccurred())
-			time.Sleep(1 * time.Second)
+			time.Sleep(10 * time.Second)
 
 			dataPoints, err := scraper.GetAverageCPUUtilizationByWorkload("test-ns",
 				"test-workload", t1.Add(-5*time.Minute), time.Now())
@@ -77,27 +73,6 @@ func pushTimeSeriesData(metricName, metricValue string, customLabels map[string]
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to push time series data, status code: %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func deleteMetrics() error {
-	gatewayURL := fmt.Sprintf("http://localhost:9091/metrics/job/test-job")
-
-	req, err := http.NewRequest("DELETE", gatewayURL, nil)
-	if err != nil {
-		return err
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("failed to delete metrics for job test-job, status code: %d", resp.StatusCode)
 	}
 	return nil
 }
