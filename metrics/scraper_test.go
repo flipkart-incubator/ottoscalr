@@ -1,91 +1,103 @@
 package metrics
 
 import (
-	"errors"
 	"fmt"
-	"github.com/flipkart-incubator/ottoscalr/mocks"
-	"github.com/golang/mock/gomock"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/assert"
-	"testing"
+	"net/http"
+	"strings"
 	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestGetAverageCPUUtilizationByWorkload(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+var _ = Describe("PrometheusScraper", func() {
 
-	// Create a mock API client
-	mockAPI := mocks.NewMockAPI(ctrl)
+	BeforeEach(func() {
+		err := deleteMetrics()
+		Expect(err).NotTo(HaveOccurred())
+	})
 
-	// Create a PrometheusScraper with the mock API client
-	ps := &PrometheusScraper{
-		api: mockAPI,
+	AfterEach(func() {
+		err := deleteMetrics()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	Context("when querying average CPU utilization by workload", func() {
+		It("should return correct data points if the query is valid", func() {
+			scraper, err := NewPrometheusScraper("http://localhost:9090")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Register your metrics with the testRegistry, or use dummy data
+			t1 := time.Now()
+			//t2 := t1.Add(15 * time.Second)
+			//t3 := t1.Add(30 * time.Second)
+
+			err = pushTimeSeriesData("namespace_workload_pod:kube_pod_owner:relabel", "1",
+				map[string]string{"namespace": "test-ns",
+					"pod":           "test-pod-1",
+					"workload":      "test-workload",
+					"workload_type": "deployment"})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = pushTimeSeriesData("node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate",
+				"13.2",
+				map[string]string{"namespace": "test-ns",
+					"pod":       "test-pod-1",
+					"node":      "test-node-1",
+					"container": "test-container-1"})
+			Expect(err).NotTo(HaveOccurred())
+			time.Sleep(1 * time.Second)
+
+			dataPoints, err := scraper.GetAverageCPUUtilizationByWorkload("test-ns",
+				"test-workload", t1.Add(-5*time.Minute), time.Now())
+			Expect(err).NotTo(HaveOccurred())
+
+			// Check the data points
+			Expect(dataPoints).ToNot(BeEmpty())
+			// Add more assertions to check the content of dataPoints
+		})
+	})
+
+})
+
+func pushTimeSeriesData(metricName, metricValue string, customLabels map[string]string) error {
+	data := fmt.Sprintf("%s %s\n", metricName, metricValue)
+	gatewayURL := fmt.Sprintf("http://localhost:9091/metrics/job/test-job")
+
+	// Append custom labels to the URL
+	for labelName, labelValue := range customLabels {
+		gatewayURL += fmt.Sprintf("/%s/%s", labelName, labelValue)
 	}
 
-	// Set up the test case
-	namespace := "test-namespace"
-	workloadType := "test-type"
-	workloadName := "test-name"
-	start := time.Now()
-
-	// Create a mock query result
-	mockResult := &model.Vector{
-		&model.Sample{
-			Metric: model.Metric{
-				"workload":     "test-workload",
-				"workloadType": "test-type",
-			},
-			Value:     123.45,
-			Timestamp: model.TimeFromUnix((time.Now().Add(1 * time.Hour)).Unix()),
-		},
+	resp, err := http.Post(gatewayURL, "text/plain; version=0.0.4", strings.NewReader(data))
+	if err != nil {
+		return err
 	}
-	query := fmt.Sprintf("sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate) "+
-		"by (workload, workload_type) * on(namespace, pod) "+
-		"group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel namespace=\"%s\", "+
-		"workload=\"%s\", workload_type=\"%s\"", namespace, workloadName, workloadType)
+	defer resp.Body.Close()
 
-	// Set up the mock API to return the mock query result
-	mockAPI.EXPECT().Query(gomock.Any(), query, gomock.Any()).Return(mockResult, nil, nil)
-
-	// Call the GetAverageCPUUtilizationByWorkload method
-	dataPoints, err := ps.GetAverageCPUUtilizationByWorkload(namespace, workloadType, workloadName, start)
-
-	// Check that the result is as expected
-	assert.NoError(t, err)
-	assert.Equal(t, []float64{123.45}, dataPoints)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to push time series data, status code: %d", resp.StatusCode)
+	}
+	return nil
 }
 
-func TestGetAverageCPUUtilizationByWorkload_Negative(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+func deleteMetrics() error {
+	gatewayURL := fmt.Sprintf("http://localhost:9091/metrics/job/test-job")
 
-	// Create a mock API client
-	mockAPI := mocks.NewMockAPI(ctrl)
-
-	// Create a PrometheusScraper with the mock API client
-	ps := &PrometheusScraper{
-		api: mockAPI,
+	req, err := http.NewRequest("DELETE", gatewayURL, nil)
+	if err != nil {
+		return err
 	}
 
-	// Set up the test case
-	namespace := "test-namespace"
-	workloadType := "test-type"
-	workloadName := "test-name"
-	start := time.Now()
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
 
-	query := fmt.Sprintf("sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate) "+
-		"by (workload, workload_type) * on(namespace, pod) "+
-		"group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel namespace=\"%s\", "+
-		"workload=\"%s\", workload_type=\"%s\"", namespace, workloadName, workloadType)
-
-	// Set up the mock API to return the mock query result
-	mockAPI.EXPECT().Query(gomock.Any(), query, gomock.Any()).Return(nil, nil, errors.New("test error"))
-
-	// Call the GetAverageCPUUtilizationByWorkload method
-	dataPoints, err := ps.GetAverageCPUUtilizationByWorkload(namespace, workloadType, workloadName, start)
-
-	// Check that the error is as expected
-	assert.Error(t, err)
-	assert.Nil(t, dataPoints)
+	if resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("failed to delete metrics for job test-job, status code: %d", resp.StatusCode)
+	}
+	return nil
 }
