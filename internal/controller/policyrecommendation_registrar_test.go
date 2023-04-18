@@ -25,7 +25,6 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		DeploymentNamespace = "default"
 
 		timeout  = time.Second * 10
-		duration = time.Second * 10
 		interval = time.Millisecond * 250
 	)
 

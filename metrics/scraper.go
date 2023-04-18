@@ -12,9 +12,19 @@ import (
 
 // Scraper is an interface for scraping metrics data.
 type Scraper interface {
-	GetAverageCPUUtilizationByWorkload(namespace, workloadType, workload string, start time.Time) ([]float64, error)
+	GetAverageCPUUtilizationByWorkload(namespace,
+		workloadType,
+		workload string,
+		start time.Time,
+		end time.Time,
+		step time.Duration) ([]float64, error)
 
-	GetCPUUtilizationBreachDataPoints(namespace, workloadType, workload string, start time.Time) ([]float64, error)
+	GetCPUUtilizationBreachDataPoints(namespace,
+		workloadType,
+		workload string,
+		start time.Time,
+		end time.Time,
+		step time.Duration) ([]float64, error)
 }
 
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
@@ -51,7 +61,8 @@ func NewPrometheusScraper(apiURL string) (*PrometheusScraper, error) {
 func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string,
 	workload string,
 	start time.Time,
-	end time.Time) ([]float64, error) {
+	end time.Time,
+	step time.Duration) ([]float64, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -66,7 +77,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 		namespace,
 		workload)
 
-	queryRange := v1.Range{Start: start, End: end, Step: time.Minute}
+	queryRange := v1.Range{Start: start, End: end, Step: step}
 	result, _, err := ps.api.QueryRange(ctx, query, queryRange)
 
 	if err != nil {
@@ -97,7 +108,9 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	workloadType,
 	workload string,
 	redLineUtilization float64,
-	start time.Time) ([]float64, error) {
+	start time.Time,
+	end time.Time,
+	step time.Duration) ([]float64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -120,7 +133,9 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		workload, workloadType, redLineUtilization, namespace, workloadType, workload, namespace, namespace,
 		workloadType, workload)
 
-	result, _, err := ps.api.Query(ctx, query, start)
+	queryRange := v1.Range{Start: start, End: end, Step: step}
+
+	result, _, err := ps.api.QueryRange(ctx, query, queryRange)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)
 	}
