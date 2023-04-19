@@ -138,7 +138,7 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		" by (namespace, workload, workload_type)/ on (namespace, workload, workload_type) "+
 		"group_left sum(%s{"+
 		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type)"+
-		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"%s\"}) "+
+		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"deployment\"}) "+
 		"by (namespace, workload, workload_type) > %.2f) and on(namespace, workload) "+
 		"label_replace(sum(%s{namespace=\"%s\"} * on(replicaset)"+
 		" group_left(namespace, owner_kind, owner_name) %s{namespace=\"%s\", owner_kind=\"%s\", owner_name=\"%s\"}) by"+
@@ -158,7 +158,6 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		ps.metricRegistry.podOwnerMetric,
 		namespace,
 		workload,
-		workloadType,
 		redLineUtilization,
 		ps.metricRegistry.readyReplicasMetric,
 		namespace,
