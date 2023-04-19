@@ -46,6 +46,12 @@ var (
 
 	kubePodOwnerMetric *prometheus.GaugeVec
 
+	resourceLimitMetric   *prometheus.GaugeVec
+	readyReplicasMetric   *prometheus.GaugeVec
+	replicaSetOwnerMetric *prometheus.GaugeVec
+	hpaMaxReplicasMetric  *prometheus.GaugeVec
+	hpaOwnerInfoMetric    *prometheus.GaugeVec
+
 	scraper *PrometheusScraper
 )
 
@@ -61,8 +67,22 @@ var _ = BeforeSuite(func() {
 
 	utilizationMetric := "node_namespace_pod_container_container_cpu_usage_seconds_total_sum_irate"
 	podOwnerMetric := "namespace_workload_pod_kube_pod_owner_relabel"
+	resourceLimitMetric := "cluster_namespace_pod_cpu_active_kube_pod_container_resource_limits"
+	readyReplicasMetric := "kube_replicaset_status_ready_replicas"
+	replicaSetOwnerMetric := "kube_replicaset_owner"
+	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
+	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
+
 	scraper = &PrometheusScraper{api: v1.NewAPI(client),
-		metricRegistry: &MetricRegistry{utilizationMetric: utilizationMetric, podOwnerMetric: podOwnerMetric}}
+		metricRegistry: &MetricRegistry{
+			utilizationMetric:     utilizationMetric,
+			podOwnerMetric:        podOwnerMetric,
+			resourceLimitMetric:   resourceLimitMetric,
+			readyReplicasMetric:   readyReplicasMetric,
+			replicaSetOwnerMetric: replicaSetOwnerMetric,
+			hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
+			hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
+		}}
 
 	go func() {
 		metricsAddress = "localhost:9091"
@@ -104,6 +124,36 @@ func registerMetrics() {
 		Help: "Test metric for Kubernetes pod owner",
 	}, []string{"namespace", "pod", "workload", "workload_type"})
 
+	resourceLimitMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cluster_namespace_pod_cpu_active_kube_pod_container_resource_limits",
+		Help: "Test metric for container resource limits",
+	}, []string{"namespace", "pod", "node", "container"})
+
+	readyReplicasMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_replicaset_status_ready_replicas",
+		Help: "Test metric for ready replicas in a replicaSet",
+	}, []string{"namespace", "replicaset"})
+
+	replicaSetOwnerMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_replicaset_owner",
+		Help: "Test metric for replicaset owner",
+	}, []string{"namespace", "owner_kind", "owner_name", "replicaset"})
+
+	hpaMaxReplicasMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_horizontalpodautoscaler_spec_max_replicas",
+		Help: "Test metric for hpa max replicas",
+	}, []string{"namespace", "horizontalpodautoscaler"})
+
+	hpaOwnerInfoMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_horizontalpodautoscaler_info",
+		Help: "Test metric for hpa owner",
+	}, []string{"namespace", "horizontalpodautoscaler", "scaletargetref_kind", "scaletargetref_name"})
+
 	registry.MustRegister(cpuUsageMetric)
 	registry.MustRegister(kubePodOwnerMetric)
+	registry.MustRegister(resourceLimitMetric)
+	registry.MustRegister(readyReplicasMetric)
+	registry.MustRegister(replicaSetOwnerMetric)
+	registry.MustRegister(hpaMaxReplicasMetric)
+	registry.MustRegister(hpaOwnerInfoMetric)
 }
