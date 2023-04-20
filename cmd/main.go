@@ -20,8 +20,9 @@ import (
 	"flag"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/internal/controller"
-	"github.com/flipkart-incubator/ottoscalr/metrics"
-	"github.com/flipkart-incubator/ottoscalr/trigger"
+	"github.com/flipkart-incubator/ottoscalr/internal/metrics"
+	"github.com/flipkart-incubator/ottoscalr/internal/policy"
+	trigger2 "github.com/flipkart-incubator/ottoscalr/internal/trigger"
 	"github.com/spf13/viper"
 	"os"
 	"os/signal"
@@ -145,17 +146,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	breachMonitorManager := trigger.NewBreachMonitorManager(scraper,
+	breachMonitorManager := trigger2.NewBreachMonitorManager(scraper,
 		time.Duration(config.BreachMonitor.PollingIntervalSec)*time.Second,
-		trigger.NewK8sTriggerHandler(mgr.GetClient(), logger).QueueForExecution,
+		trigger2.NewK8sTriggerHandler(mgr.GetClient(), logger).QueueForExecution,
 		config.BreachMonitor.StepSec,
 		config.BreachMonitor.CpuRedLine,
 		logger)
 
+	policyStore := policy.NewPolicyStore(mgr.GetClient())
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
 		mgr.GetScheme(),
 		breachMonitorManager,
-		config.PolicyRecommendationRegistrar.RequeueDelayMs).SetupWithManager(mgr); err != nil {
+		config.PolicyRecommendationRegistrar.RequeueDelayMs,
+		policyStore).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",
 			"controller", "PolicyRecommendationRegistration")
 		os.Exit(1)

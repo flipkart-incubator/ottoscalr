@@ -4,7 +4,8 @@ import (
 	"context"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	"github.com/flipkart-incubator/ottoscalr/trigger"
+	"github.com/flipkart-incubator/ottoscalr/internal/policy"
+	"github.com/flipkart-incubator/ottoscalr/internal/trigger"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -30,17 +31,20 @@ type PolicyRecommendationRegistrar struct {
 	Scheme               *runtime.Scheme
 	BreachMonitorManager trigger.MonitorManager
 	RequeueDelayDuration time.Duration
+	PolicyStore          policy.Store
 }
 
 func NewPolicyRecommendationRegistrar(client client.Client,
 	scheme *runtime.Scheme,
 	breachMonitorManager trigger.MonitorManager,
-	requeueDelayMs int) *PolicyRecommendationRegistrar {
+	requeueDelayMs int,
+	policyStore policy.Store) *PolicyRecommendationRegistrar {
 	return &PolicyRecommendationRegistrar{
 		Client:               client,
 		Scheme:               scheme,
 		BreachMonitorManager: breachMonitorManager,
 		RequeueDelayDuration: time.Duration(requeueDelayMs) * time.Millisecond,
+		PolicyStore:          policyStore,
 	}
 }
 
@@ -92,13 +96,19 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 	logger logr.Logger) (*ottoscaleriov1alpha1.PolicyRecommendation, error) {
 
 	// Check if a PolicyRecommendation object already exists
-	policy := &ottoscaleriov1alpha1.PolicyRecommendation{}
-	err := controller.Client.Get(ctx, types.NamespacedName{Name: instance.GetName(), Namespace: instance.GetNamespace()}, policy)
+	policyRecommendation := &ottoscaleriov1alpha1.PolicyRecommendation{}
+	err := controller.Client.Get(ctx, types.NamespacedName{Name: instance.GetName(), Namespace: instance.GetNamespace()}, policyRecommendation)
 	if err == nil {
 		logger.Info("PolicyRecommendation object already exists")
 		return nil, nil
 	} else if !errors.IsNotFound(err) {
 		logger.Error(err, "Error reading the object - requeue the request")
+		return nil, err
+	}
+
+	safestPolicy, err := controller.PolicyStore.GetSafestPolicy()
+	if err != nil {
+		logger.Error(err, "Error getting the safest policy - requeue the request")
 		return nil, err
 	}
 
@@ -116,8 +126,7 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 		Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
 			WorkloadSpec: ottoscaleriov1alpha1.WorkloadSpec{Name: instance.GetName(),
 				TypeMeta: metav1.TypeMeta{Kind: gvk.Kind, APIVersion: gvk.GroupVersion().String()}},
-			//TODO Set the policy in the spec to the safest policy
-			Policy:               ottoscaleriov1alpha1.Policy{},
+			Policy:               *safestPolicy,
 			QueuedForExecution:   true,
 			QueuedForExecutionAt: metav1.NewTime(time.Now()),
 		},
