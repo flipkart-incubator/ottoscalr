@@ -9,12 +9,17 @@ import (
 	"time"
 )
 
+type MonitorManager interface {
+	RegisterBreachMonitor(workloadType string, workload types.NamespacedName) *BreachMonitor
+	DeregisterBreachMonitor(workload types.NamespacedName)
+	Shutdown()
+}
 type BreachMonitorManager struct {
 	metricScraper metrics.Scraper
 	metricStep    time.Duration
 	cpuRedLine    float32
 	checkInterval time.Duration
-	handlerFunc   func(workloadName string)
+	handlerFunc   func(workloadName types.NamespacedName)
 	monitors      map[string]*BreachMonitor
 	monitorMutex  sync.Mutex
 	logger        logr.Logger
@@ -22,7 +27,7 @@ type BreachMonitorManager struct {
 
 func NewBreachMonitorManager(metricScraper metrics.Scraper,
 	checkInterval time.Duration,
-	handlerFunc func(workloadName string),
+	handlerFunc func(workloadName types.NamespacedName),
 	stepSec int,
 	cpuRedLine float32,
 	logger logr.Logger) *BreachMonitorManager {
@@ -38,22 +43,19 @@ func NewBreachMonitorManager(metricScraper metrics.Scraper,
 	}
 }
 
-func (mf *BreachMonitorManager) RegisterBreachMonitor(namespace, workloadType, workloadName string) *BreachMonitor {
+func (mf *BreachMonitorManager) RegisterBreachMonitor(workloadType string,
+	workload types.NamespacedName) *BreachMonitor {
 
-	workloadFullName := types.NamespacedName{
-		Name:      workloadName,
-		Namespace: namespace,
-	}.String()
 	mf.monitorMutex.Lock()
 	defer mf.monitorMutex.Unlock()
 
-	if monitor, ok := mf.monitors[workloadFullName]; ok {
+	if monitor, ok := mf.monitors[workload.String()]; ok {
 		return monitor
 	}
 
-	monitor := NewBreachMonitor(namespace,
+	monitor := NewBreachMonitor(workload.Namespace,
+		workload,
 		workloadType,
-		workloadName,
 		mf.metricScraper,
 		mf.cpuRedLine,
 		mf.metricStep,
@@ -61,22 +63,18 @@ func (mf *BreachMonitorManager) RegisterBreachMonitor(namespace, workloadType, w
 		mf.handlerFunc,
 		mf.logger)
 
-	mf.monitors[workloadFullName] = monitor
+	mf.monitors[workload.String()] = monitor
 	monitor.Start()
 	return monitor
 }
 
-func (mf *BreachMonitorManager) DeregisterBreachMonitor(namespace, workloadName string) {
-	workloadFullName := types.NamespacedName{
-		Name:      workloadName,
-		Namespace: namespace,
-	}.String()
+func (mf *BreachMonitorManager) DeregisterBreachMonitor(workload types.NamespacedName) {
 
 	mf.monitorMutex.Lock()
 	defer mf.monitorMutex.Unlock()
-	if monitor, ok := mf.monitors[workloadFullName]; ok {
+	if monitor, ok := mf.monitors[workload.String()]; ok {
 		monitor.Stop()
-		delete(mf.monitors, workloadFullName)
+		delete(mf.monitors, workload.String())
 	}
 }
 
@@ -92,13 +90,13 @@ func (mf *BreachMonitorManager) Shutdown() {
 
 type BreachMonitor struct {
 	namespace     string
+	workload      types.NamespacedName
 	workloadType  string
-	workloadName  string
 	metricScraper metrics.Scraper
 	checkInterval time.Duration
 	cpuRedLine    float32
 	metricStep    time.Duration
-	handlerFunc   func(workloadName string)
+	handlerFunc   func(workload types.NamespacedName)
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
@@ -106,20 +104,20 @@ type BreachMonitor struct {
 }
 
 func NewBreachMonitor(namespace string,
+	workload types.NamespacedName,
 	workloadType string,
-	workloadName string,
 	metricScraper metrics.Scraper,
 	cpuRedLine float32,
 	metricStep time.Duration,
 	checkInterval time.Duration,
-	handlerFunc func(workloadName string),
+	handlerFunc func(workload types.NamespacedName),
 	logger logr.Logger) *BreachMonitor {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &BreachMonitor{
 		namespace:     namespace,
+		workload:      workload,
 		workloadType:  workloadType,
-		workloadName:  workloadName,
 		metricScraper: metricScraper,
 		cpuRedLine:    cpuRedLine,
 		metricStep:    metricStep,
@@ -147,7 +145,7 @@ func (m *BreachMonitor) Start() {
 				start := end.Add(-m.checkInterval)
 				dataPoints, err := m.metricScraper.GetCPUUtilizationBreachDataPoints(m.namespace,
 					m.workloadType,
-					m.workloadName,
+					m.workload.Name,
 					m.cpuRedLine,
 					start,
 					end,
@@ -156,10 +154,10 @@ func (m *BreachMonitor) Start() {
 					m.logger.Error(err, "Error while executing GetCPUUtilizationBreachDataPoints.Continuing.",
 						"namespace", m.namespace,
 						"workloadType", m.workloadType,
-						"workloadName", m.workloadName)
+						"workloadName", m.workload.Name)
 				}
 				if len(dataPoints) > 0 {
-					m.handlerFunc(m.workloadName)
+					m.handlerFunc(m.workload)
 				}
 			}
 		}

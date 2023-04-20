@@ -18,16 +18,14 @@ package controller
 
 import (
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	"github.com/flipkart-incubator/ottoscalr/metrics"
 	"github.com/flipkart-incubator/ottoscalr/trigger"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
+	"k8s.io/apimachinery/pkg/types"
 	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"testing"
-	"time"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -49,6 +47,8 @@ var (
 	testEnv   *envtest.Environment
 	ctx       context.Context
 	cancel    context.CancelFunc
+
+	registered = false
 )
 
 func TestAPIs(t *testing.T) {
@@ -92,17 +92,10 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	scraper, err := metrics.NewPrometheusScraper("", 30*time.Second)
-	Expect(err).NotTo(HaveOccurred())
-
-	triggerHandler := trigger.NewK8sTriggerHandler(k8sClient, logger)
-	breachMonitorManager := trigger.NewBreachMonitorManager(scraper, 5*time.Minute,
-		triggerHandler.QueueForExecution, 30, 0.85, logger)
-
 	err = (&PolicyRecommendationRegistrar{
 		Client:               k8sManager.GetClient(),
 		Scheme:               k8sManager.GetScheme(),
-		BreachMonitorManager: breachMonitorManager,
+		BreachMonitorManager: &FakeMonitorManager{},
 	}).SetupWithManager(k8sManager)
 
 	Expect(err).ToNot(HaveOccurred())
@@ -120,3 +113,14 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
+
+type FakeMonitorManager struct{}
+
+func (f *FakeMonitorManager) RegisterBreachMonitor(workloadType string,
+	workload types.NamespacedName) *trigger.BreachMonitor {
+	registered = true
+	return nil
+}
+
+func (f *FakeMonitorManager) DeregisterBreachMonitor(workload types.NamespacedName) {}
+func (f *FakeMonitorManager) Shutdown()                                             {}

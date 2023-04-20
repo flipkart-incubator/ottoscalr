@@ -28,13 +28,13 @@ import (
 type PolicyRecommendationRegistrar struct {
 	Client               client.Client
 	Scheme               *runtime.Scheme
-	BreachMonitorManager *trigger.BreachMonitorManager
+	BreachMonitorManager trigger.MonitorManager
 	RequeueDelayDuration time.Duration
 }
 
 func NewPolicyRecommendationRegistrar(client client.Client,
 	scheme *runtime.Scheme,
-	breachMonitorManager *trigger.BreachMonitorManager,
+	breachMonitorManager trigger.MonitorManager,
 	requeueDelayMs int) *PolicyRecommendationRegistrar {
 	return &PolicyRecommendationRegistrar{
 		Client:               client,
@@ -142,9 +142,11 @@ func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Con
 	_, err := controller.createPolicyRecommendation(ctx, object, logger)
 
 	if err == nil {
-		controller.BreachMonitorManager.RegisterBreachMonitor(object.GetNamespace(),
-			object.GetObjectKind().GroupVersionKind().Kind,
-			object.GetName())
+		controller.BreachMonitorManager.RegisterBreachMonitor(object.GetObjectKind().GroupVersionKind().Kind,
+			types.NamespacedName{
+				Name:      object.GetName(),
+				Namespace: object.GetNamespace(),
+			})
 	}
 	return err
 }
