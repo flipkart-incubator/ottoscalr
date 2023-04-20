@@ -28,8 +28,13 @@ import (
 
 // PolicyWatcher reconciles a Policy object
 type PolicyWatcher struct {
-	client.Client
+	Client client.Client
 	Scheme *runtime.Scheme
+}
+
+func NewPolicyWatcher(client client.Client, scheme *runtime.Scheme) *PolicyWatcher {
+	return &PolicyWatcher{Client: client,
+		Scheme: scheme}
 }
 
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policies,verbs=get;list;watch;create;update;patch;delete

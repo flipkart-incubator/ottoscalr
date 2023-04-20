@@ -21,7 +21,7 @@ type Scraper interface {
 	GetCPUUtilizationBreachDataPoints(namespace,
 		workloadType,
 		workload string,
-		redLineUtilization float64,
+		redLineUtilization float32,
 		start time.Time,
 		end time.Time,
 		step time.Duration) ([]float64, error)
@@ -31,6 +31,7 @@ type Scraper interface {
 type PrometheusScraper struct {
 	api            v1.API
 	metricRegistry *MetricNameRegistry
+	queryTimeout   time.Duration
 }
 
 type MetricNameRegistry struct {
@@ -64,7 +65,7 @@ func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
 
 // NewPrometheusScraper returns a new PrometheusScraper instance.
 
-func NewPrometheusScraper(apiURL string) (*PrometheusScraper, error) {
+func NewPrometheusScraper(apiURL string, timeout time.Duration) (*PrometheusScraper, error) {
 
 	client, err := api.NewClient(api.Config{
 		Address: apiURL,
@@ -75,7 +76,8 @@ func NewPrometheusScraper(apiURL string) (*PrometheusScraper, error) {
 	}
 
 	return &PrometheusScraper{api: v1.NewAPI(client),
-			metricRegistry: NewKubePrometheusMetricNameRegistry()},
+			metricRegistry: NewKubePrometheusMetricNameRegistry(),
+			queryTimeout:   timeout},
 		nil
 }
 
@@ -87,7 +89,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	end time.Time,
 	step time.Duration) ([]float64, error) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
 	query := fmt.Sprintf("sum(%s"+
@@ -130,11 +132,11 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	workloadType,
 	workload string,
-	redLineUtilization float64,
+	redLineUtilization float32,
 	start time.Time,
 	end time.Time,
 	step time.Duration) ([]float64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
 	query := fmt.Sprintf("(sum(%s{"+

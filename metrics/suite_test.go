@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -82,7 +83,8 @@ var _ = BeforeSuite(func() {
 			replicaSetOwnerMetric: replicaSetOwnerMetric,
 			hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
 			hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
-		}}
+		},
+		queryTimeout: 30 * time.Second}
 
 	go func() {
 		metricsAddress = "localhost:9091"

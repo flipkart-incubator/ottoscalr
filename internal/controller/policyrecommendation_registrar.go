@@ -28,7 +28,20 @@ import (
 type PolicyRecommendationRegistrar struct {
 	Client               client.Client
 	Scheme               *runtime.Scheme
-	BreachMonitorFactory *trigger.BreachMonitorManager
+	BreachMonitorManager *trigger.BreachMonitorManager
+	RequeueDelayDuration time.Duration
+}
+
+func NewPolicyRecommendationRegistrar(client client.Client,
+	scheme *runtime.Scheme,
+	breachMonitorManager *trigger.BreachMonitorManager,
+	requeueDelayMs int) *PolicyRecommendationRegistrar {
+	return &PolicyRecommendationRegistrar{
+		Client:               client,
+		Scheme:               scheme,
+		BreachMonitorManager: breachMonitorManager,
+		RequeueDelayDuration: time.Duration(requeueDelayMs) * time.Millisecond,
+	}
 }
 
 // +kubebuilder:rbac:groups=argoproj.io,resources=rollouts,verbs=get;list;watch
@@ -53,7 +66,7 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	if !errors.IsNotFound(err) {
 		// Error occurred
 		logger.Error(err, "Failed to get Rollout. Requeue the request")
-		return ctrl.Result{RequeueAfter: 500 * time.Millisecond}, err
+		return ctrl.Result{RequeueAfter: controller.RequeueDelayDuration}, err
 	}
 
 	// Rollout doesn't exist. Check if Deployment exists
@@ -66,7 +79,7 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 
 	if !errors.IsNotFound(err) {
 		logger.Error(err, "Failed to get Deployment. Requeue the request")
-		return ctrl.Result{RequeueAfter: 500 * time.Millisecond}, err
+		return ctrl.Result{RequeueAfter: controller.RequeueDelayDuration}, err
 	}
 
 	logger.Info("Rollout or Deployment not found. It could have been deleted.")
@@ -126,10 +139,10 @@ func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Con
 	object client.Object,
 	logger logr.Logger) error {
 
-	recommendation, err := controller.createPolicyRecommendation(ctx, object, logger)
+	_, err := controller.createPolicyRecommendation(ctx, object, logger)
 
-	if err == nil && recommendation != nil {
-		controller.BreachMonitorFactory.RegisterBreachMonitor(object.GetNamespace(),
+	if err == nil {
+		controller.BreachMonitorManager.RegisterBreachMonitor(object.GetNamespace(),
 			object.GetObjectKind().GroupVersionKind().Kind,
 			object.GetName())
 	}
