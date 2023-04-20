@@ -118,13 +118,15 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			createdPolicy := &ottoscaleriov1alpha1.PolicyRecommendation{}
 
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
+				err := k8sClient.Get(ctx,
+					types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
 					createdDeployment)
 				if err != nil {
 					return false
 				}
 
-				err = k8sClient.Get(ctx, types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
+				err = k8sClient.Get(ctx,
+					types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
 					createdPolicy)
 				if err != nil {
 					return false

@@ -18,7 +18,10 @@ package main
 
 import (
 	"flag"
+	"github.com/flipkart-incubator/ottoscalr/metrics"
+	"github.com/flipkart-incubator/ottoscalr/trigger"
 	"os"
+	"time"
 
 	"github.com/flipkart-incubator/ottoscalr/internal/controller"
 
@@ -63,8 +66,8 @@ func main() {
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
-
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	logger := zap.New(zap.UseFlagOptions(&opts))
+	ctrl.SetLogger(logger)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -97,6 +100,15 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)
 	}
+
+	scraper, err := metrics.NewPrometheusScraper("")
+	if err != nil {
+		setupLog.Error(err, "unable to start prometheus scraper")
+		os.Exit(1)
+	}
+
+	triggerHandler := trigger.NewK8sTriggerHandler(mgr.GetClient(), logger)
+	trigger.NewBreachMonitorManager(scraper, 5*time.Minute, triggerHandler.QueueForExecution, logger)
 
 	if err = (&controller.PolicyRecommendationRegistrar{
 		Client: mgr.GetClient(),

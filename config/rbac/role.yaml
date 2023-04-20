@@ -6,6 +6,22 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - argoproj.io
+  resources:
+  - rollouts
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - ottoscaler.io
   resources:
   - policies
@@ -57,3 +73,14 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - your-group.io
+  resources:
+  - policyrecommendations
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch

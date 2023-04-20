@@ -74,7 +74,7 @@ var _ = BeforeSuite(func() {
 	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
 
 	scraper = &PrometheusScraper{api: v1.NewAPI(client),
-		metricRegistry: &MetricRegistry{
+		metricRegistry: &MetricNameRegistry{
 			utilizationMetric:     utilizationMetric,
 			podOwnerMetric:        podOwnerMetric,
 			resourceLimitMetric:   resourceLimitMetric,

@@ -30,10 +30,10 @@ type Scraper interface {
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
 type PrometheusScraper struct {
 	api            v1.API
-	metricRegistry *MetricRegistry
+	metricRegistry *MetricNameRegistry
 }
 
-type MetricRegistry struct {
+type MetricNameRegistry struct {
 	utilizationMetric     string
 	podOwnerMetric        string
 	resourceLimitMetric   string
@@ -41,6 +41,25 @@ type MetricRegistry struct {
 	replicaSetOwnerMetric string
 	hpaMaxReplicasMetric  string
 	hpaOwnerInfoMetric    string
+}
+
+func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
+	cpuUtilizationMetric := "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate"
+	podOwnerMetric := "namespace_workload_pod:kube_pod_owner:relabel"
+	resourceLimitMetric := "cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits"
+	readyReplicasMetric := "kube_replicaset_status_ready_replicas"
+	replicaSetOwnerMetric := "kube_replicaset_owner"
+	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
+	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
+
+	return &MetricNameRegistry{utilizationMetric: cpuUtilizationMetric,
+		podOwnerMetric:        podOwnerMetric,
+		resourceLimitMetric:   resourceLimitMetric,
+		readyReplicasMetric:   readyReplicasMetric,
+		replicaSetOwnerMetric: replicaSetOwnerMetric,
+		hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
+		hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
+	}
 }
 
 // NewPrometheusScraper returns a new PrometheusScraper instance.
@@ -54,23 +73,9 @@ func NewPrometheusScraper(apiURL string) (*PrometheusScraper, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating Prometheus client: %v", err)
 	}
-	cpuUtilizationMetric := "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate"
-	podOwnerMetric := "namespace_workload_pod:kube_pod_owner:relabel"
-	resourceLimitMetric := "cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits"
-	readyReplicasMetric := "kube_replicaset_status_ready_replicas"
-	replicaSetOwnerMetric := "kube_replicaset_owner"
-	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
-	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
 
 	return &PrometheusScraper{api: v1.NewAPI(client),
-			metricRegistry: &MetricRegistry{utilizationMetric: cpuUtilizationMetric,
-				podOwnerMetric:        podOwnerMetric,
-				resourceLimitMetric:   resourceLimitMetric,
-				readyReplicasMetric:   readyReplicasMetric,
-				replicaSetOwnerMetric: replicaSetOwnerMetric,
-				hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
-				hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
-			}},
+			metricRegistry: NewKubePrometheusMetricNameRegistry()},
 		nil
 }
 

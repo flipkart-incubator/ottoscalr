@@ -4,6 +4,7 @@ import (
 	"context"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/trigger"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -25,20 +26,28 @@ import (
 // PolicyRecommendationRegistrar reconciles a Deployment or ArgoRollout
 // object to ensure a PolicyRecommendation exists.
 type PolicyRecommendationRegistrar struct {
-	Client client.Client
-	Scheme *runtime.Scheme
+	Client               client.Client
+	Scheme               *runtime.Scheme
+	BreachMonitorFactory *trigger.BreachMonitorManager
 }
 
-func (r *PolicyRecommendationRegistrar) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+// +kubebuilder:rbac:groups=argoproj.io,resources=rollouts,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
+// +kubebuilder:rbac:groups=your-group.io,resources=policyrecommendations,verbs=create;get;list;watch;update;delete
+//+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
+
+func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
+	request ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger = logger.WithValues("request", request)
 
 	// Check if Rollout exists
 	rollout := argov1alpha1.Rollout{}
-	err := r.Client.Get(ctx, request.NamespacedName, &rollout)
+	err := controller.Client.Get(ctx, request.NamespacedName, &rollout)
 	if err == nil {
 		// Rollout exists, create policy recommendation
-		return r.createPolicyRecommendation(ctx, &rollout, logger)
+		return ctrl.Result{}, controller.handleReconcile(ctx, &rollout, logger)
 	}
 
 	if !errors.IsNotFound(err) {
@@ -47,12 +56,12 @@ func (r *PolicyRecommendationRegistrar) Reconcile(ctx context.Context, request c
 		return ctrl.Result{RequeueAfter: 500 * time.Millisecond}, err
 	}
 
-	// Check if Deployment exists
+	// Rollout doesn't exist. Check if Deployment exists
 	deployment := appsv1.Deployment{}
-	err = r.Client.Get(ctx, request.NamespacedName, &deployment)
+	err = controller.Client.Get(ctx, request.NamespacedName, &deployment)
 	if err == nil {
 		// Deployment exists, create policy recommendation
-		return r.createPolicyRecommendation(ctx, &deployment, logger)
+		return ctrl.Result{}, controller.handleReconcile(ctx, &deployment, logger)
 	}
 
 	if !errors.IsNotFound(err) {
@@ -64,53 +73,71 @@ func (r *PolicyRecommendationRegistrar) Reconcile(ctx context.Context, request c
 	return ctrl.Result{}, nil
 }
 
-func (r *PolicyRecommendationRegistrar) createPolicyRecommendation(ctx context.Context,
+func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
+	ctx context.Context,
 	instance client.Object,
-	log logr.Logger) (ctrl.Result, error) {
+	logger logr.Logger) (*ottoscaleriov1alpha1.PolicyRecommendation, error) {
+
 	// Check if a PolicyRecommendation object already exists
 	policy := &ottoscaleriov1alpha1.PolicyRecommendation{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: instance.GetName(), Namespace: instance.GetNamespace()}, policy)
+	err := controller.Client.Get(ctx, types.NamespacedName{Name: instance.GetName(), Namespace: instance.GetNamespace()}, policy)
 	if err == nil {
-		log.Info("PolicyRecommendation object already exists")
-		return ctrl.Result{}, nil
+		logger.Info("PolicyRecommendation object already exists")
+		return nil, nil
 	} else if !errors.IsNotFound(err) {
-		log.Error(err, "Error reading the object - requeue the request")
-		return ctrl.Result{}, err
+		logger.Error(err, "Error reading the object - requeue the request")
+		return nil, err
 	}
 
-	log.Info("Creating a new PolicyRecommendation object")
-	log.Info(instance.GetObjectKind().GroupVersionKind().String())
+	gvk := instance.GetObjectKind().GroupVersionKind()
+	logger.Info("Creating a new PolicyRecommendation object", "GroupVersionKind", gvk)
+
 	newPolicyRecommendation := &ottoscaleriov1alpha1.PolicyRecommendation{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.GetName(),
 			Namespace: instance.GetNamespace(),
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(instance, instance.GetObjectKind().GroupVersionKind()),
+				*metav1.NewControllerRef(instance, gvk),
 			},
 		},
 		Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
-			WorkloadSpec: ottoscaleriov1alpha1.WorkloadSpec{Name: instance.GetName()},
-			//TODO Set the policy in the spec to safest policy
+			WorkloadSpec: ottoscaleriov1alpha1.WorkloadSpec{Name: instance.GetName(),
+				TypeMeta: metav1.TypeMeta{Kind: gvk.Kind, APIVersion: gvk.GroupVersion().String()}},
+			//TODO Set the policy in the spec to the safest policy
 			Policy:               ottoscaleriov1alpha1.Policy{},
 			QueuedForExecution:   true,
 			QueuedForExecutionAt: metav1.NewTime(time.Now()),
 		},
 	}
 
-	err = r.Client.Create(ctx, newPolicyRecommendation)
+	err = controller.Client.Create(ctx, newPolicyRecommendation)
 	if err != nil {
 		// Error creating the object - requeue the request.
-		log.Error(err, "Error creating the object - requeue the request")
-		return ctrl.Result{}, err
+		logger.Error(err, "Error creating the object - requeue the request")
+		return nil, err
 	}
 
-	log.Info("PolicyRecommendation created successfully")
-	// PolicyRecommendation created successfully - return and don't requeue
-	return ctrl.Result{}, nil
+	logger.Info("PolicyRecommendation created successfully")
+	// PolicyRecommendation created successfully
+	return newPolicyRecommendation, nil
+}
+
+func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Context,
+	object client.Object,
+	logger logr.Logger) error {
+
+	recommendation, err := controller.createPolicyRecommendation(ctx, object, logger)
+
+	if err == nil && recommendation != nil {
+		controller.BreachMonitorFactory.RegisterBreachMonitor(object.GetNamespace(),
+			object.GetObjectKind().GroupVersionKind().Kind,
+			object.GetName())
+	}
+	return err
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manager) error {
+func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manager) error {
 	createPredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return true
@@ -143,5 +170,5 @@ func (r *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manager) error
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(createPredicate),
 		).
-		Complete(r)
+		Complete(controller)
 }
