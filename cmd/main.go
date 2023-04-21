@@ -19,10 +19,10 @@ package main
 import (
 	"flag"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	"github.com/flipkart-incubator/ottoscalr/internal/controller"
-	"github.com/flipkart-incubator/ottoscalr/internal/metrics"
-	"github.com/flipkart-incubator/ottoscalr/internal/policy"
-	trigger2 "github.com/flipkart-incubator/ottoscalr/internal/trigger"
+	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
+	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
+	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
+	trigger2 "github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	"github.com/spf13/viper"
 	"os"
 	"os/signal"
@@ -72,6 +72,10 @@ type Config struct {
 		CpuRedLine         float32 `yaml:"cpuRedLine"`
 		StepSec            int     `yaml:"stepSec"`
 	} `yaml:"breachMonitor"`
+
+	PeriodicTrigger struct {
+		PollingIntervalMin int `yaml:"pollingIntervalMin"`
+	} `yaml:"periodicTrigger"`
 
 	PolicyRecommendationController struct {
 		MaxConcurrentReconciles int `yaml:"maxConcurrentReconciles"`
@@ -146,7 +150,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	breachMonitorManager := trigger2.NewBreachMonitorManager(scraper,
+	monitorManager := trigger2.NewPolicyRecommendationMonitorManager(scraper,
+		time.Duration(config.PeriodicTrigger.PollingIntervalMin)*time.Minute,
 		time.Duration(config.BreachMonitor.PollingIntervalSec)*time.Second,
 		trigger2.NewK8sTriggerHandler(mgr.GetClient(), logger).QueueForExecution,
 		config.BreachMonitor.StepSec,
@@ -156,7 +161,7 @@ func main() {
 	policyStore := policy.NewPolicyStore(mgr.GetClient())
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
 		mgr.GetScheme(),
-		breachMonitorManager,
+		monitorManager,
 		config.PolicyRecommendationRegistrar.RequeueDelayMs,
 		policyStore).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",
@@ -190,7 +195,7 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigs
-		breachMonitorManager.Shutdown()
+		monitorManager.Shutdown()
 		os.Exit(0)
 	}()
 }

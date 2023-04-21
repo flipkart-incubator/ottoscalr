@@ -10,6 +10,8 @@ breachMonitor:
   pollingIntervalSec: 300
   cpuRedLine: 0.85
   stepSec: 30
+periodicTrigger:
+  pollingIntervalMin: 360
 policyRecommendationController:
   maxConcurrentReconciles: 1
 policyRecommendationRegistrar:

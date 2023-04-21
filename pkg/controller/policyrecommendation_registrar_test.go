@@ -84,7 +84,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("argoproj.io/v1alpha1"))
 
 			By("Testing that monitor has been registered")
-			Expect(registered).Should(BeTrue())
+			Eventually(Expect(registered).Should(BeTrue()))
 		})
 	})
 
@@ -152,7 +152,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
 
 			By("Testing that monitor has been registered")
-			Expect(registered).Should(BeTrue())
+			Eventually(Expect(registered).Should(BeTrue()))
 		})
 	})
 
