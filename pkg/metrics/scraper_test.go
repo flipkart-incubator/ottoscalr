@@ -11,6 +11,8 @@ var _ = Describe("PrometheusScraper", func() {
 
 	Context("when querying GetAverageCPUUtilizationByWorkload", func() {
 		It("should return correct data points", func() {
+
+			By("creating a metric before queryRange window")
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-node-1", "test-container-1").Set(4)
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-node-2", "test-container-1").Set(3)
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-node-2", "test-container-1").Set(5)
@@ -24,8 +26,9 @@ var _ = Describe("PrometheusScraper", func() {
 			//wait for the metric to be scraped - scraping interval is 1s
 			time.Sleep(2 * time.Second)
 
-			//above data points should be outside the query range.
 			start := time.Now()
+
+			By("creating first metric inside queryRange window")
 
 			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-workload-1", "deployment").Set(1)
@@ -40,6 +43,8 @@ var _ = Describe("PrometheusScraper", func() {
 			//wait for the metric to be scraped - scraping interval is 1s
 			time.Sleep(2 * time.Second)
 
+			By("creating second metric inside queryRange window")
+
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-node-1", "test-container-1").Set(5)
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-node-2", "test-container-1").Set(4)
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-node-2", "test-container-1").Set(12)
@@ -50,6 +55,8 @@ var _ = Describe("PrometheusScraper", func() {
 
 			// data points after this should be outside the query range
 			end := time.Now()
+
+			By("creating metric after queryRange window")
 
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-node-1", "test-container-1").Set(23)
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-node-2", "test-container-1").Set(12)

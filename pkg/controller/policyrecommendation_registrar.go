@@ -36,8 +36,8 @@ type PolicyRecommendationRegistrar struct {
 
 func NewPolicyRecommendationRegistrar(client client.Client,
 	scheme *runtime.Scheme,
-	monitorManager trigger.MonitorManager,
 	requeueDelayMs int,
+	monitorManager trigger.MonitorManager,
 	policyStore policy.Store) *PolicyRecommendationRegistrar {
 	return &PolicyRecommendationRegistrar{
 		Client:               client,
@@ -54,6 +54,7 @@ func NewPolicyRecommendationRegistrar(client client.Client,
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
 
+// TODO neerajb Handle the deletion of workloads. We should reregister the monitors.
 func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	request ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)

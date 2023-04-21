@@ -46,7 +46,7 @@ var (
 	ctx       context.Context
 	cancel    context.CancelFunc
 
-	registered = false
+	queuedAllRecos = false
 )
 
 func TestAPIs(t *testing.T) {
@@ -89,7 +89,15 @@ var _ = BeforeSuite(func() {
 		MonitorManager: &FakeMonitorManager{},
 		PolicyStore:    &FakePolicyStore{},
 	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
 
+	err = (&PolicyWatcher{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+		requeueAllFunc: func() {
+			queuedAllRecos = true
+		},
+	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {
@@ -110,7 +118,7 @@ type FakeMonitorManager struct{}
 
 func (f *FakeMonitorManager) RegisterMonitor(workloadType string,
 	workload types.NamespacedName) *trigger.Monitor {
-	registered = true
+	queuedAllRecos = true
 	return nil
 }
 

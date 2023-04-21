@@ -22,7 +22,7 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
-	trigger2 "github.com/flipkart-incubator/ottoscalr/pkg/trigger"
+	trigger "github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	"github.com/spf13/viper"
 	"os"
 	"os/signal"
@@ -150,10 +150,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	monitorManager := trigger2.NewPolicyRecommendationMonitorManager(scraper,
+	triggerHandler := trigger.NewK8sTriggerHandler(mgr.GetClient(), logger)
+	triggerHandler.Start()
+
+	monitorManager := trigger.NewPolicyRecommendationMonitorManager(scraper,
 		time.Duration(config.PeriodicTrigger.PollingIntervalMin)*time.Minute,
 		time.Duration(config.BreachMonitor.PollingIntervalSec)*time.Second,
-		trigger2.NewK8sTriggerHandler(mgr.GetClient(), logger).QueueForExecution,
+		triggerHandler.QueueForExecution,
 		config.BreachMonitor.StepSec,
 		config.BreachMonitor.CpuRedLine,
 		logger)
@@ -161,15 +164,17 @@ func main() {
 	policyStore := policy.NewPolicyStore(mgr.GetClient())
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
 		mgr.GetScheme(),
-		monitorManager,
 		config.PolicyRecommendationRegistrar.RequeueDelayMs,
+		monitorManager,
 		policyStore).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",
 			"controller", "PolicyRecommendationRegistration")
 		os.Exit(1)
 	}
 
-	if err = controller.NewPolicyWatcher(mgr.GetClient(), mgr.GetScheme()).SetupWithManager(mgr); err != nil {
+	if err = controller.NewPolicyWatcher(mgr.GetClient(),
+		mgr.GetScheme(),
+		triggerHandler.QueueAllForExecution).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Policy")
 		os.Exit(1)
 	}
