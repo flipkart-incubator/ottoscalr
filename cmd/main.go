@@ -22,7 +22,7 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
-	trigger "github.com/flipkart-incubator/ottoscalr/pkg/trigger"
+	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	"github.com/spf13/viper"
 	"os"
 	"os/signal"
