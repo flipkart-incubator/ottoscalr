@@ -89,9 +89,9 @@ func (r *PolicyRecommendationRegistrar) createPolicyRecommendation(ctx context.C
 			},
 		},
 		Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
-			WorkloadSpec: ottoscaleriov1alpha1.WorkloadSpec{Name: instance.GetName()},
+			WorkloadMeta: ottoscaleriov1alpha1.WorkloadMeta{Name: instance.GetName(), Namespace: instance.GetNamespace()},
 			//TODO Set the policy in the spec to safest policy
-			Policy:               ottoscaleriov1alpha1.Policy{},
+			Policy:               "",
 			QueuedForExecution:   true,
 			QueuedForExecutionAt: metav1.NewTime(time.Now()),
 		},
