@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -32,7 +33,7 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-func TestAPIs(t *testing.T) {
+func TestMetrics(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Metrics Suite")
 }
@@ -74,7 +75,7 @@ var _ = BeforeSuite(func() {
 	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
 
 	scraper = &PrometheusScraper{api: v1.NewAPI(client),
-		metricRegistry: &MetricRegistry{
+		metricRegistry: &MetricNameRegistry{
 			utilizationMetric:     utilizationMetric,
 			podOwnerMetric:        podOwnerMetric,
 			resourceLimitMetric:   resourceLimitMetric,
@@ -82,7 +83,8 @@ var _ = BeforeSuite(func() {
 			replicaSetOwnerMetric: replicaSetOwnerMetric,
 			hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
 			hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
-		}}
+		},
+		queryTimeout: 30 * time.Second}
 
 	go func() {
 		metricsAddress = "localhost:9091"

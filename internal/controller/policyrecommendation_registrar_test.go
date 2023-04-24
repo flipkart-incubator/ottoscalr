@@ -28,6 +28,10 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		interval = time.Millisecond * 250
 	)
 
+	BeforeEach(func() {
+		registered = false
+	})
+
 	Context("When creating a new Rollout", func() {
 		It("Should Create a new PolicyRecommendation", func() {
 			By("By creating a new Rollout")
@@ -77,6 +81,9 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(RolloutName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Rollout"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("argoproj.io/v1alpha1"))
+
+			By("Testing that monitor has been registered")
+			Expect(registered).Should(BeTrue())
 		})
 	})
 
@@ -118,13 +125,15 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			createdPolicy := &ottoscaleriov1alpha1.PolicyRecommendation{}
 
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
+				err := k8sClient.Get(ctx,
+					types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
 					createdDeployment)
 				if err != nil {
 					return false
 				}
 
-				err = k8sClient.Get(ctx, types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
+				err = k8sClient.Get(ctx,
+					types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
 					createdPolicy)
 				if err != nil {
 					return false
@@ -139,6 +148,9 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Deployment"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
+
+			By("Testing that monitor has been registered")
+			Expect(registered).Should(BeTrue())
 		})
 	})
 

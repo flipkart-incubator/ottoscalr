@@ -18,9 +18,15 @@ package main
 
 import (
 	"flag"
-	"os"
-
+	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/internal/controller"
+	"github.com/flipkart-incubator/ottoscalr/metrics"
+	"github.com/flipkart-incubator/ottoscalr/trigger"
+	"github.com/spf13/viper"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -44,35 +50,70 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
+	utilruntime.Must(argov1alpha1.AddToScheme(scheme))
 	utilruntime.Must(ottoscaleriov1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
+type Config struct {
+	Port                   int    `yaml:"port"`
+	MetricBindAddress      string `yaml:"metricBindAddress"`
+	HealthProbeBindAddress string `yaml:"healthProbBindAddress"`
+	EnableLeaderElection   bool   `yaml:"enableLeaderElection"`
+	LeaderElectionID       string `yaml:"leaderElectionID"`
+	MetricsScraper         struct {
+		PrometheusUrl   string `yaml:"prometheusUrl"`
+		QueryTimeoutSec int    `yaml:"queryTimeoutSec"`
+	} `yaml:"metricsScraper"`
+
+	BreachMonitor struct {
+		PollingIntervalSec int     `yaml:"pollingIntervalSec"`
+		CpuRedLine         float32 `yaml:"cpuRedLine"`
+		StepSec            int     `yaml:"stepSec"`
+	} `yaml:"breachMonitor"`
+
+	PolicyRecommendationController struct {
+		MaxConcurrentReconciles int `yaml:"maxConcurrentReconciles"`
+	} `yaml:"policyRecommendationController"`
+
+	PolicyRecommendationRegistrar struct {
+		RequeueDelayMs int `yaml:"requeueDelayMs"`
+	} `yaml:"policyRecommendationRegistrar"`
+}
+
 func main() {
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
+
 	opts := zap.Options{
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+	logger := zap.New(zap.UseFlagOptions(&opts))
+	ctrl.SetLogger(logger)
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	config := Config{}
+	viper.SetConfigFile("./local-config.yaml")
+
+	err := viper.ReadInConfig()
+	if err != nil {
+		setupLog.Error(err, "Unable to read config file")
+		os.Exit(1)
+	}
+
+	err = viper.Unmarshal(&config)
+	if err != nil {
+		setupLog.Error(err, "Unable to unmarshall config file")
+		os.Exit(1)
+	}
+	logger.Info("Loaded config", "config", config)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "85d48caf.",
+		MetricsBindAddress:     config.MetricBindAddress,
+		Port:                   config.Port,
+		HealthProbeBindAddress: config.HealthProbeBindAddress,
+		LeaderElection:         config.EnableLeaderElection,
+		LeaderElectionID:       config.LeaderElectionID,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -90,26 +131,37 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.PolicyRecommendationReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err = controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
+		mgr.GetScheme(),
+		config.PolicyRecommendationController.MaxConcurrentReconciles).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)
 	}
 
-	if err = (&controller.PolicyRecommendationRegistrar{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendationRegistration")
+	scraper, err := metrics.NewPrometheusScraper(config.MetricsScraper.PrometheusUrl,
+		time.Duration(config.MetricsScraper.QueryTimeoutSec)*time.Second)
+	if err != nil {
+		setupLog.Error(err, "unable to start prometheus scraper")
 		os.Exit(1)
 	}
 
-	if err = (&controller.PolicyWatcher{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	breachMonitorManager := trigger.NewBreachMonitorManager(scraper,
+		time.Duration(config.BreachMonitor.PollingIntervalSec)*time.Second,
+		trigger.NewK8sTriggerHandler(mgr.GetClient(), logger).QueueForExecution,
+		config.BreachMonitor.StepSec,
+		config.BreachMonitor.CpuRedLine,
+		logger)
+
+	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
+		mgr.GetScheme(),
+		breachMonitorManager,
+		config.PolicyRecommendationRegistrar.RequeueDelayMs).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller",
+			"controller", "PolicyRecommendationRegistration")
+		os.Exit(1)
+	}
+
+	if err = controller.NewPolicyWatcher(mgr.GetClient(), mgr.GetScheme()).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Policy")
 		os.Exit(1)
 	}
@@ -129,4 +181,13 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+
+	// Create a channel to listen for OS signals
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		breachMonitorManager.Shutdown()
+		os.Exit(0)
+	}()
 }
