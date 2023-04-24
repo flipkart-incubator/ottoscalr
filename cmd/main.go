@@ -90,8 +90,9 @@ func main() {
 	}
 
 	if err = (&controller2.PolicyRecommendationReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor(controller2.POLICY_RECO_WORKFLOW_CTRL_NAME),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)

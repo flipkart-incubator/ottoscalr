@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -31,12 +32,17 @@ import (
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 )
 
-const recowfctrl = "RecoWorkflowController"
+const (
+	POLICY_RECO_WORKFLOW_CTRL_NAME = "RecoWorkflowController"
+	EVENT_TYPE_NORMAL              = "Normal"
+	EVENT_TYPE_WARNING             = "Warning"
+)
 
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
 type PolicyRecommendationReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations,verbs=get;list;watch;create;update;patch;delete
@@ -72,11 +78,10 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 			Policy:                  policy.Name,
 			CurrentHPAConfiguration: *currentreco,
 		},
-	}, client.Apply, client.ForceOwnership, client.FieldOwner(recowfctrl)); err != nil {
+	}, client.Apply, client.ForceOwnership, client.FieldOwner(POLICY_RECO_WORKFLOW_CTRL_NAME)); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// TODO: Add status and events
 	statusPatch := &v1alpha1.PolicyRecommendation{
 		TypeMeta:   policyreco.TypeMeta,
 		ObjectMeta: policyreco.ObjectMeta,
@@ -85,13 +90,15 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions()); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecommendtionGenerated", "The HPA recommendation has been generated successfully.")
 	return ctrl.Result{}, nil
 }
 
 func getSubresourcePatchOptions() *client.SubResourcePatchOptions {
 	patchOpts := client.PatchOptions{}
 	client.ForceOwnership.ApplyToPatch(&patchOpts)
-	client.FieldOwner(recowfctrl).ApplyToPatch(&patchOpts)
+	client.FieldOwner(POLICY_RECO_WORKFLOW_CTRL_NAME).ApplyToPatch(&patchOpts)
 	return &client.SubResourcePatchOptions{
 		PatchOptions: patchOpts,
 	}
@@ -134,6 +141,6 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		For(&v1alpha1.PolicyRecommendation{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
 		WithEventFilter(predicate).
-		Named(recowfctrl).
+		Named(POLICY_RECO_WORKFLOW_CTRL_NAME).
 		Complete(r)
 }
