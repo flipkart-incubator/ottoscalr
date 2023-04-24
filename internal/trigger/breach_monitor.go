@@ -2,7 +2,7 @@ package trigger
 
 import (
 	"context"
-	"github.com/flipkart-incubator/ottoscalr/metrics"
+	"github.com/flipkart-incubator/ottoscalr/internal/metrics"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
 	"sync"
