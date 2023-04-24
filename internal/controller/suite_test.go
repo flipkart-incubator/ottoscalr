@@ -18,19 +18,18 @@ package controller
 
 import (
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	"github.com/flipkart-incubator/ottoscalr/trigger"
+	"github.com/flipkart-incubator/ottoscalr/internal/testutil"
+	"github.com/flipkart-incubator/ottoscalr/internal/trigger"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
 	"k8s.io/apimachinery/pkg/types"
-	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"testing"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -44,7 +43,6 @@ import (
 var (
 	cfg       *rest.Config
 	k8sClient client.Client
-	testEnv   *envtest.Environment
 	ctx       context.Context
 	cancel    context.CancelFunc
 
@@ -63,16 +61,9 @@ var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.TODO())
 
 	By("bootstrapping test environment")
-	testEnv = &envtest.Environment{
-		CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases"),
-			filepath.Join("..", "..", "testconfig")},
-		ErrorIfCRDPathMissing: true,
-	}
-
 	var err error
 	// cfg is defined in this file globally.
-	cfg, err = testEnv.Start()
-	Expect(err).NotTo(HaveOccurred())
+	cfg, ctx, cancel = testutil.SetupEnvironment()
 	Expect(cfg).NotTo(BeNil())
 
 	err = rolloutv1alpha1.AddToScheme(scheme.Scheme)
@@ -96,6 +87,7 @@ var _ = BeforeSuite(func() {
 		Client:               k8sManager.GetClient(),
 		Scheme:               k8sManager.GetScheme(),
 		BreachMonitorManager: &FakeMonitorManager{},
+		PolicyStore:          &FakePolicyStore{},
 	}).SetupWithManager(k8sManager)
 
 	Expect(err).ToNot(HaveOccurred())
@@ -110,7 +102,7 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	cancel()
 	By("tearing down the test environment")
-	err := testEnv.Stop()
+	err := testutil.TeardownEnvironment()
 	Expect(err).NotTo(HaveOccurred())
 })
 
@@ -124,3 +116,15 @@ func (f *FakeMonitorManager) RegisterBreachMonitor(workloadType string,
 
 func (f *FakeMonitorManager) DeregisterBreachMonitor(workload types.NamespacedName) {}
 func (f *FakeMonitorManager) Shutdown()                                             {}
+
+type FakePolicyStore struct{}
+
+func (ps *FakePolicyStore) GetSafestPolicy() (*ottoscaleriov1alpha1.Policy, error) {
+	return &ottoscaleriov1alpha1.Policy{Spec: ottoscaleriov1alpha1.PolicySpec{ID: "safestPolicy"}}, nil
+
+}
+
+func (ps *FakePolicyStore) GetNextPolicy(currentPolicy *ottoscaleriov1alpha1.Policy) (*ottoscaleriov1alpha1.Policy,
+	error) {
+	return &ottoscaleriov1alpha1.Policy{Spec: ottoscaleriov1alpha1.PolicySpec{ID: "nextSafestPolicy"}}, nil
+}
