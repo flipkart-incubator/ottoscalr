@@ -61,6 +61,8 @@ spec:
                     properties:
                       id:
                         type: string
+                      isDefault:
+                        type: boolean
                       min:
                         type: integer
                       riskIndex:

@@ -3,7 +3,7 @@ package trigger
 import (
 	"context"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	"github.com/flipkart-incubator/ottoscalr/internal/testutil"
+	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
