@@ -21,7 +21,7 @@ type Scraper interface {
 	GetCPUUtilizationBreachDataPoints(namespace,
 		workloadType,
 		workload string,
-		redLineUtilization float64,
+		redLineUtilization float32,
 		start time.Time,
 		end time.Time,
 		step time.Duration) ([]float64, error)
@@ -30,10 +30,11 @@ type Scraper interface {
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
 type PrometheusScraper struct {
 	api            v1.API
-	metricRegistry *MetricRegistry
+	metricRegistry *MetricNameRegistry
+	queryTimeout   time.Duration
 }
 
-type MetricRegistry struct {
+type MetricNameRegistry struct {
 	utilizationMetric     string
 	podOwnerMetric        string
 	resourceLimitMetric   string
@@ -43,17 +44,7 @@ type MetricRegistry struct {
 	hpaOwnerInfoMetric    string
 }
 
-// NewPrometheusScraper returns a new PrometheusScraper instance.
-
-func NewPrometheusScraper(apiURL string) (*PrometheusScraper, error) {
-
-	client, err := api.NewClient(api.Config{
-		Address: apiURL,
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("error creating Prometheus client: %v", err)
-	}
+func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
 	cpuUtilizationMetric := "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate"
 	podOwnerMetric := "namespace_workload_pod:kube_pod_owner:relabel"
 	resourceLimitMetric := "cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits"
@@ -62,15 +53,31 @@ func NewPrometheusScraper(apiURL string) (*PrometheusScraper, error) {
 	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
 	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
 
+	return &MetricNameRegistry{utilizationMetric: cpuUtilizationMetric,
+		podOwnerMetric:        podOwnerMetric,
+		resourceLimitMetric:   resourceLimitMetric,
+		readyReplicasMetric:   readyReplicasMetric,
+		replicaSetOwnerMetric: replicaSetOwnerMetric,
+		hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
+		hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
+	}
+}
+
+// NewPrometheusScraper returns a new PrometheusScraper instance.
+
+func NewPrometheusScraper(apiURL string, timeout time.Duration) (*PrometheusScraper, error) {
+
+	client, err := api.NewClient(api.Config{
+		Address: apiURL,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("error creating Prometheus client: %v", err)
+	}
+
 	return &PrometheusScraper{api: v1.NewAPI(client),
-			metricRegistry: &MetricRegistry{utilizationMetric: cpuUtilizationMetric,
-				podOwnerMetric:        podOwnerMetric,
-				resourceLimitMetric:   resourceLimitMetric,
-				readyReplicasMetric:   readyReplicasMetric,
-				replicaSetOwnerMetric: replicaSetOwnerMetric,
-				hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
-				hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
-			}},
+			metricRegistry: NewKubePrometheusMetricNameRegistry(),
+			queryTimeout:   timeout},
 		nil
 }
 
@@ -82,7 +89,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	end time.Time,
 	step time.Duration) ([]float64, error) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
 	query := fmt.Sprintf("sum(%s"+
@@ -125,11 +132,11 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	workloadType,
 	workload string,
-	redLineUtilization float64,
+	redLineUtilization float32,
 	start time.Time,
 	end time.Time,
 	step time.Duration) ([]float64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
 	query := fmt.Sprintf("(sum(%s{"+

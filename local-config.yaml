@@ -1,0 +1,16 @@
+port: 9443
+metricBindAddress: ":8080"
+healthProbBindAddress: ":8081"
+enableLeaderElection: false
+leaderElectionID: "85d48caf.fcp.ottoscalr.io"
+metricsScraper:
+  prometheusUrl: "http://localhost:9090"
+  queryTimeoutSec: 30
+breachMonitor:
+  pollingIntervalSec: 300
+  cpuRedLine: 0.85
+  stepSec: 30
+policyRecommendationController:
+  maxConcurrentReconciles: 1
+policyRecommendationRegistrar:
+  requeueDelayMs: 500

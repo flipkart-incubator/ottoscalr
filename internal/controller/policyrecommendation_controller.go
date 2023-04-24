@@ -30,8 +30,19 @@ import (
 
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
 type PolicyRecommendationReconciler struct {
-	client.Client
-	Scheme *runtime.Scheme
+	Client                  client.Client
+	Scheme                  *runtime.Scheme
+	MaxConcurrentReconciles int
+}
+
+func NewPolicyRecommendationReconciler(client client.Client,
+	scheme *runtime.Scheme,
+	maxConcurrentReconciles int) *PolicyRecommendationReconciler {
+	return &PolicyRecommendationReconciler{
+		Client:                  client,
+		Scheme:                  scheme,
+		MaxConcurrentReconciles: maxConcurrentReconciles,
+	}
 }
 
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations,verbs=get;list;watch;create;update;patch;delete
@@ -60,6 +71,6 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ottoscaleriov1alpha1.PolicyRecommendation{}).
 		// # of concurrent executions can be increased by tweaking this parameter.
-		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }
