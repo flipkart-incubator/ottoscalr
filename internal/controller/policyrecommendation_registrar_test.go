@@ -78,6 +78,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
 			Expect(createdPolicy.Name).Should(Equal(RolloutName))
 			Expect(createdPolicy.Namespace).Should(Equal(RolloutNamespace))
+			Expect(createdPolicy.Spec.Policy.Spec.ID).Should(Equal("safestPolicy"))
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(RolloutName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Rollout"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("argoproj.io/v1alpha1"))
@@ -145,6 +146,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
 			Expect(createdPolicy.Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.Namespace).Should(Equal(DeploymentNamespace))
+			Expect(createdPolicy.Spec.Policy.Spec.ID).Should(Equal("safestPolicy"))
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Deployment"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
