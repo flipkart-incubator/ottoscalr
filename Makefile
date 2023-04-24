@@ -55,7 +55,10 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
+test: prometheus manifests generate fmt vet envtest ## Run tests with Prometheus.
+	@echo "Starting Prometheus for testing..."
+	@$(PROMETHEUS) --config.file=testconfig/prometheus.yml & \
+	trap 'killall prometheus; rm -rf data' EXIT; \
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
 
 ##@ Build
@@ -155,3 +158,18 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+PROMETHEUS_VERSION ?= 2.43.0
+PROMETHEUS_DIR ?= $(LOCALBIN)/prometheus/$(PROMETHEUS_VERSION)-$(shell uname -s| tr '[:upper:]' '[:lower:]')-$(shell uname -m)
+PROMETHEUS ?= $(PROMETHEUS_DIR)/prometheus
+PROMETHEUS_URL = https://github.com/prometheus/prometheus/releases/download/v$(PROMETHEUS_VERSION)/prometheus-$(PROMETHEUS_VERSION).$(shell uname -s)-$(shell uname -m).tar.gz
+
+.PHONY: prometheus
+prometheus: $(PROMETHEUS) ## Download Prometheus locally if necessary.
+$(PROMETHEUS): $(LOCALBIN)
+	@if [ ! -s $(PROMETHEUS) ]; then \
+		mkdir -p $(PROMETHEUS_DIR) && \
+		curl -L -o prometheus.tar.gz $(PROMETHEUS_URL) && \
+		tar -zxvf prometheus.tar.gz -C $(PROMETHEUS_DIR) --strip-components=1 prometheus-$(PROMETHEUS_VERSION).$(shell uname -s| tr '[:upper:]' '[:lower:]')-$(shell uname -m)/prometheus && \
+		rm prometheus.tar.gz; \
+	fi
