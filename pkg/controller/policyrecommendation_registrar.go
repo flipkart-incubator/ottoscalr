@@ -4,8 +4,8 @@ import (
 	"context"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	"github.com/flipkart-incubator/ottoscalr/internal/policy"
-	"github.com/flipkart-incubator/ottoscalr/internal/trigger"
+	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
+	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -29,20 +29,20 @@ import (
 type PolicyRecommendationRegistrar struct {
 	Client               client.Client
 	Scheme               *runtime.Scheme
-	BreachMonitorManager trigger.MonitorManager
+	MonitorManager       trigger.MonitorManager
 	RequeueDelayDuration time.Duration
 	PolicyStore          policy.Store
 }
 
 func NewPolicyRecommendationRegistrar(client client.Client,
 	scheme *runtime.Scheme,
-	breachMonitorManager trigger.MonitorManager,
 	requeueDelayMs int,
+	monitorManager trigger.MonitorManager,
 	policyStore policy.Store) *PolicyRecommendationRegistrar {
 	return &PolicyRecommendationRegistrar{
 		Client:               client,
 		Scheme:               scheme,
-		BreachMonitorManager: breachMonitorManager,
+		MonitorManager:       monitorManager,
 		RequeueDelayDuration: time.Duration(requeueDelayMs) * time.Millisecond,
 		PolicyStore:          policyStore,
 	}
@@ -54,6 +54,7 @@ func NewPolicyRecommendationRegistrar(client client.Client,
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
 
+// TODO neerajb Handle the deletion of workloads. We should reregister the monitors.
 func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	request ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -151,7 +152,7 @@ func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Con
 	_, err := controller.createPolicyRecommendation(ctx, object, logger)
 
 	if err == nil {
-		controller.BreachMonitorManager.RegisterBreachMonitor(object.GetObjectKind().GroupVersionKind().Kind,
+		controller.MonitorManager.RegisterMonitor(object.GetObjectKind().GroupVersionKind().Kind,
 			types.NamespacedName{
 				Name:      object.GetName(),
 				Namespace: object.GetNamespace(),

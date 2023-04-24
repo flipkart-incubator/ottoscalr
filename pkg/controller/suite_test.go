@@ -18,8 +18,8 @@ package controller
 
 import (
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	"github.com/flipkart-incubator/ottoscalr/internal/testutil"
-	"github.com/flipkart-incubator/ottoscalr/internal/trigger"
+	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
+	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
@@ -46,7 +46,7 @@ var (
 	ctx       context.Context
 	cancel    context.CancelFunc
 
-	registered = false
+	queuedAllRecos = false
 )
 
 func TestAPIs(t *testing.T) {
@@ -84,12 +84,20 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&PolicyRecommendationRegistrar{
-		Client:               k8sManager.GetClient(),
-		Scheme:               k8sManager.GetScheme(),
-		BreachMonitorManager: &FakeMonitorManager{},
-		PolicyStore:          &FakePolicyStore{},
+		Client:         k8sManager.GetClient(),
+		Scheme:         k8sManager.GetScheme(),
+		MonitorManager: &FakeMonitorManager{},
+		PolicyStore:    &FakePolicyStore{},
 	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
 
+	err = (&PolicyWatcher{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+		requeueAllFunc: func() {
+			queuedAllRecos = true
+		},
+	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {
@@ -108,14 +116,14 @@ var _ = AfterSuite(func() {
 
 type FakeMonitorManager struct{}
 
-func (f *FakeMonitorManager) RegisterBreachMonitor(workloadType string,
-	workload types.NamespacedName) *trigger.BreachMonitor {
-	registered = true
+func (f *FakeMonitorManager) RegisterMonitor(workloadType string,
+	workload types.NamespacedName) *trigger.Monitor {
+	queuedAllRecos = true
 	return nil
 }
 
-func (f *FakeMonitorManager) DeregisterBreachMonitor(workload types.NamespacedName) {}
-func (f *FakeMonitorManager) Shutdown()                                             {}
+func (f *FakeMonitorManager) DeregisterMonitor(workload types.NamespacedName) {}
+func (f *FakeMonitorManager) Shutdown()                                       {}
 
 type FakePolicyStore struct{}
 

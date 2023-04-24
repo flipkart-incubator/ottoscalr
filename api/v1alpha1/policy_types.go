@@ -32,6 +32,7 @@ type PolicySpec struct {
 	RiskIndex         string `json:"riskIndex"`
 	Min               int    `json:"min"`
 	TargetUtilization int    `json:"targetUtilization"`
+	IsDefault         bool   `json:"isDefault,omitempty"`
 }
 
 // PolicyStatus defines the observed state of Policy

@@ -3,14 +3,15 @@ package controller
 import (
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 // +kubebuilder:docs-gen:collapse=Imports
@@ -29,7 +30,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 	)
 
 	BeforeEach(func() {
-		registered = false
+		queuedAllRecos = false
 	})
 
 	Context("When creating a new Rollout", func() {
@@ -83,8 +84,8 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Rollout"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("argoproj.io/v1alpha1"))
 
-			By("Testing that monitor has been registered")
-			Expect(registered).Should(BeTrue())
+			By("Testing that monitor has been queuedAllRecos")
+			Eventually(Expect(queuedAllRecos).Should(BeTrue()))
 		})
 	})
 
@@ -151,8 +152,8 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Deployment"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
 
-			By("Testing that monitor has been registered")
-			Expect(registered).Should(BeTrue())
+			By("Testing that monitor has been queuedAllRecos")
+			Eventually(Expect(queuedAllRecos).Should(BeTrue()))
 		})
 	})
 
