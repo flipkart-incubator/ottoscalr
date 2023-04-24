@@ -12,8 +12,7 @@ import (
 
 // Scraper is an interface for scraping metrics data.
 type Scraper interface {
-	GetAverageCPUUtilizationByWorkload(ctx context.Context,
-		namespace,
+	GetAverageCPUUtilizationByWorkload(namespace,
 		workloadType,
 		workload string, start time.Time) ([]float64, error)
 }
@@ -48,15 +47,19 @@ func NewPrometheusScraper(apiURL string) (*PrometheusScraper, error) {
 
 // GetAverageCPUUtilizationByWorkload returns the average CPU utilization for the given workload type and name in the
 // specified namespace, starting from the given time.
-func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(ctx context.Context,
-	namespace string,
+func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string,
 	workloadType string,
 	workloadName string,
 	start time.Time) ([]float64, error) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	query := fmt.Sprintf("sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate) "+
 		"by (workload, workload_type) * on(namespace, pod) "+
 		"group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel namespace=\"%s\", "+
 		"workload=\"%s\", workload_type=\"%s\"", namespace, workloadName, workloadType)
+
 	result, _, err := ps.api.Query(ctx, query, start)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)

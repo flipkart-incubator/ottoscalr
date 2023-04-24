@@ -1,13 +1,12 @@
 package metrics
 
 import (
-	"context"
 	"errors"
 	"fmt"
+	"github.com/flipkart-incubator/ottoscalr/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
-	"ottoscalr/mocks"
 	"testing"
 	"time"
 )
@@ -25,7 +24,6 @@ func TestGetAverageCPUUtilizationByWorkload(t *testing.T) {
 	}
 
 	// Set up the test case
-	ctx := context.Background()
 	namespace := "test-namespace"
 	workloadType := "test-type"
 	workloadName := "test-name"
@@ -51,7 +49,7 @@ func TestGetAverageCPUUtilizationByWorkload(t *testing.T) {
 	mockAPI.EXPECT().Query(gomock.Any(), query, gomock.Any()).Return(mockResult, nil, nil)
 
 	// Call the GetAverageCPUUtilizationByWorkload method
-	dataPoints, err := ps.GetAverageCPUUtilizationByWorkload(ctx, namespace, workloadType, workloadName, start)
+	dataPoints, err := ps.GetAverageCPUUtilizationByWorkload(namespace, workloadType, workloadName, start)
 
 	// Check that the result is as expected
 	assert.NoError(t, err)
@@ -71,7 +69,6 @@ func TestGetAverageCPUUtilizationByWorkload_Negative(t *testing.T) {
 	}
 
 	// Set up the test case
-	ctx := context.Background()
 	namespace := "test-namespace"
 	workloadType := "test-type"
 	workloadName := "test-name"
@@ -86,7 +83,7 @@ func TestGetAverageCPUUtilizationByWorkload_Negative(t *testing.T) {
 	mockAPI.EXPECT().Query(gomock.Any(), query, gomock.Any()).Return(nil, nil, errors.New("test error"))
 
 	// Call the GetAverageCPUUtilizationByWorkload method
-	dataPoints, err := ps.GetAverageCPUUtilizationByWorkload(ctx, namespace, workloadType, workloadName, start)
+	dataPoints, err := ps.GetAverageCPUUtilizationByWorkload(namespace, workloadType, workloadName, start)
 
 	// Check that the error is as expected
 	assert.Error(t, err)
