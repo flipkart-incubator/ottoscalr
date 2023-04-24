@@ -160,9 +160,9 @@ $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 PROMETHEUS_VERSION ?= 2.43.0
-PROMETHEUS_DIR ?= $(LOCALBIN)/prometheus/$(PROMETHEUS_VERSION)-$(shell uname -s| tr '[:upper:]' '[:lower:]')-$(shell uname -m)
+PROMETHEUS_DIR ?= $(LOCALBIN)/prometheus/$(PROMETHEUS_VERSION)-$(shell uname -s| tr '[:upper:]' '[:lower:]')-amd64
 PROMETHEUS ?= $(PROMETHEUS_DIR)/prometheus
-PROMETHEUS_URL = https://github.com/prometheus/prometheus/releases/download/v$(PROMETHEUS_VERSION)/prometheus-$(PROMETHEUS_VERSION).$(shell uname -s)-$(shell uname -m).tar.gz
+PROMETHEUS_URL = https://github.com/prometheus/prometheus/releases/download/v$(PROMETHEUS_VERSION)/prometheus-$(PROMETHEUS_VERSION).$(shell uname -s)-amd64.tar.gz
 
 .PHONY: prometheus
 prometheus: $(PROMETHEUS) ## Download Prometheus locally if necessary.
@@ -170,6 +170,6 @@ $(PROMETHEUS): $(LOCALBIN)
 	@if [ ! -s $(PROMETHEUS) ]; then \
 		mkdir -p $(PROMETHEUS_DIR) && \
 		curl -L -o prometheus.tar.gz $(PROMETHEUS_URL) && \
-		tar -zxvf prometheus.tar.gz -C $(PROMETHEUS_DIR) --strip-components=1 prometheus-$(PROMETHEUS_VERSION).$(shell uname -s| tr '[:upper:]' '[:lower:]')-$(shell uname -m)/prometheus && \
+		tar -zxvf prometheus.tar.gz -C $(PROMETHEUS_DIR) --strip-components=1 prometheus-$(PROMETHEUS_VERSION).$(shell uname -s| tr '[:upper:]' '[:lower:]')-amd64/prometheus && \
 		rm prometheus.tar.gz; \
 	fi
