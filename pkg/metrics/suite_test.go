@@ -73,8 +73,8 @@ var _ = BeforeSuite(func() {
 	replicaSetOwnerMetric := "kube_replicaset_owner"
 	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
 	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
-
-	scraper = &PrometheusScraper{api: v1.NewAPI(client),
+	api := v1.NewAPI(client)
+	scraper = &PrometheusScraper{api: api,
 		metricRegistry: &MetricNameRegistry{
 			utilizationMetric:     utilizationMetric,
 			podOwnerMetric:        podOwnerMetric,
@@ -84,7 +84,8 @@ var _ = BeforeSuite(func() {
 			hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
 			hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
 		},
-		queryTimeout: 30 * time.Second}
+		queryTimeout:       30 * time.Second,
+		rangeQuerySplitter: NewRangeQuerySplitter(api, 1*time.Second)}
 
 	go func() {
 		metricsAddress = "localhost:9091"

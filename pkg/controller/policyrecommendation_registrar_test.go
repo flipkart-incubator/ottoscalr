@@ -36,7 +36,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 	Context("When creating a new Rollout", func() {
 		It("Should Create a new PolicyRecommendation", func() {
 			By("By creating a new Rollout")
-			ctx := context.Background()
+			ctx := context.TODO()
 			rollout := &rolloutv1alpha1.Rollout{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      RolloutName,
@@ -92,7 +92,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 	Context("When creating a new Deployment", func() {
 		It("Should Create a new PolicyRecommendation", func() {
 			By("By creating a new Deployment")
-			ctx := context.Background()
+			ctx := context.TODO()
 			deployment := &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DeploymentName,

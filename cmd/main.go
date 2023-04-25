@@ -63,8 +63,9 @@ type Config struct {
 	EnableLeaderElection   bool   `yaml:"enableLeaderElection"`
 	LeaderElectionID       string `yaml:"leaderElectionID"`
 	MetricsScraper         struct {
-		PrometheusUrl   string `yaml:"prometheusUrl"`
-		QueryTimeoutSec int    `yaml:"queryTimeoutSec"`
+		PrometheusUrl        string `yaml:"prometheusUrl"`
+		QueryTimeoutSec      int    `yaml:"queryTimeoutSec"`
+		QuerySplitIntervalHr int    `yaml:"querySplitIntervalHr"`
 	} `yaml:"metricsScraper"`
 
 	BreachMonitor struct {
@@ -144,7 +145,9 @@ func main() {
 	}
 
 	scraper, err := metrics.NewPrometheusScraper(config.MetricsScraper.PrometheusUrl,
-		time.Duration(config.MetricsScraper.QueryTimeoutSec)*time.Second)
+		time.Duration(config.MetricsScraper.QueryTimeoutSec)*time.Second,
+		time.Duration(config.MetricsScraper.QuerySplitIntervalHr)*time.Hour,
+	)
 	if err != nil {
 		setupLog.Error(err, "unable to start prometheus scraper")
 		os.Exit(1)

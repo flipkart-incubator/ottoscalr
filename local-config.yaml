@@ -6,6 +6,7 @@ leaderElectionID: "85d48caf.fcp.ottoscalr.io"
 metricsScraper:
   prometheusUrl: "http://localhost:9090"
   queryTimeoutSec: 30
+  querySplitIntervalHr: 24
 breachMonitor:
   pollingIntervalSec: 300
   cpuRedLine: 0.85
