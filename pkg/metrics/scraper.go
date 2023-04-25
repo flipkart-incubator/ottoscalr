@@ -13,72 +13,193 @@ import (
 // Scraper is an interface for scraping metrics data.
 type Scraper interface {
 	GetAverageCPUUtilizationByWorkload(namespace,
+		workload string,
+		start time.Time,
+		end time.Time,
+		step time.Duration) ([]float64, error)
+
+	GetCPUUtilizationBreachDataPoints(namespace,
 		workloadType,
-		workload string, start time.Time) ([]float64, error)
+		workload string,
+		redLineUtilization float32,
+		start time.Time,
+		end time.Time,
+		step time.Duration) ([]float64, error)
 }
 
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
 type PrometheusScraper struct {
-	api v1.API
+	api            v1.API
+	metricRegistry *MetricNameRegistry
+	queryTimeout   time.Duration
+}
+
+type MetricNameRegistry struct {
+	utilizationMetric     string
+	podOwnerMetric        string
+	resourceLimitMetric   string
+	readyReplicasMetric   string
+	replicaSetOwnerMetric string
+	hpaMaxReplicasMetric  string
+	hpaOwnerInfoMetric    string
+}
+
+func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
+	cpuUtilizationMetric := "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate"
+	podOwnerMetric := "namespace_workload_pod:kube_pod_owner:relabel"
+	resourceLimitMetric := "cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits"
+	readyReplicasMetric := "kube_replicaset_status_ready_replicas"
+	replicaSetOwnerMetric := "kube_replicaset_owner"
+	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
+	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
+
+	return &MetricNameRegistry{utilizationMetric: cpuUtilizationMetric,
+		podOwnerMetric:        podOwnerMetric,
+		resourceLimitMetric:   resourceLimitMetric,
+		readyReplicasMetric:   readyReplicasMetric,
+		replicaSetOwnerMetric: replicaSetOwnerMetric,
+		hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
+		hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
+	}
 }
 
 // NewPrometheusScraper returns a new PrometheusScraper instance.
 
-func NewPrometheusScraper(apiURL string) (*PrometheusScraper, error) {
+func NewPrometheusScraper(apiURL string, timeout time.Duration) (*PrometheusScraper, error) {
+
 	client, err := api.NewClient(api.Config{
 		Address: apiURL,
 	})
+
 	if err != nil {
 		return nil, fmt.Errorf("error creating Prometheus client: %v", err)
 	}
 
-	promAPI := v1.NewAPI(client)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, _, err = promAPI.LabelValues(ctx, "__name__", []string{}, time.Now(), time.Now())
-	if err != nil {
-		return nil, fmt.Errorf("error connecting to Prometheus: %v", err)
-	}
-
-	return &PrometheusScraper{api: promAPI}, nil
+	return &PrometheusScraper{api: v1.NewAPI(client),
+			metricRegistry: NewKubePrometheusMetricNameRegistry(),
+			queryTimeout:   timeout},
+		nil
 }
 
 // GetAverageCPUUtilizationByWorkload returns the average CPU utilization for the given workload type and name in the
-// specified namespace, starting from the given time.
+// specified namespace, in the given time range.
 func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string,
-	workloadType string,
-	workloadName string,
-	start time.Time) ([]float64, error) {
+	workload string,
+	start time.Time,
+	end time.Time,
+	step time.Duration) ([]float64, error) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	query := fmt.Sprintf("sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate) "+
-		"by (workload, workload_type) * on(namespace, pod) "+
-		"group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel namespace=\"%s\", "+
-		"workload=\"%s\", workload_type=\"%s\"", namespace, workloadName, workloadType)
+	query := fmt.Sprintf("sum(%s"+
+		"{namespace=\"%s\"} * on (namespace,pod) group_left(workload, workload_type)"+
+		"%s{namespace=\"%s\", workload=\"%s\","+
+		" workload_type=\"deployment\"}) by(namespace, workload, workload_type)",
+		ps.metricRegistry.utilizationMetric,
+		namespace,
+		ps.metricRegistry.podOwnerMetric,
+		namespace,
+		workload)
 
-	result, _, err := ps.api.Query(ctx, query, start)
+	queryRange := v1.Range{Start: start, End: end, Step: step}
+	result, _, err := ps.api.QueryRange(ctx, query, queryRange)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)
 	}
-	if result.Type() != model.ValVector {
+	if result.Type() != model.ValMatrix {
 		return nil, fmt.Errorf("unexpected result type: %v", result.Type())
 	}
-	vector := *result.(*model.Vector)
-	if len(vector) == 0 {
-		return nil, nil
+
+	matrix := result.(model.Matrix)
+	if len(matrix) != 1 {
+		return nil, fmt.Errorf("unexpected no of time series: %v", len(matrix))
 	}
 
 	var dataPoints []float64
-	for _, sample := range vector {
+	for _, sample := range matrix[0].Values {
 		cpuUtilization := float64(sample.Value)
 		if !sample.Timestamp.Time().IsZero() {
 			dataPoints = append(dataPoints, cpuUtilization)
 		}
 	}
+	return dataPoints, nil
+}
 
+// GetCPUUtilizationBreachDataPoints returns the data points where avg CPU utilization for a workload goes above the
+// redLineUtilization while no of ready pods for the workload were < maxReplicas defined in the HPA.
+func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
+	workloadType,
+	workload string,
+	redLineUtilization float32,
+	start time.Time,
+	end time.Time,
+	step time.Duration) ([]float64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
+	defer cancel()
+
+	query := fmt.Sprintf("(sum(%s{"+
+		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type) "+
+		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"deployment\"})"+
+		" by (namespace, workload, workload_type)/ on (namespace, workload, workload_type) "+
+		"group_left sum(%s{"+
+		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type)"+
+		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"deployment\"}) "+
+		"by (namespace, workload, workload_type) > %.2f) and on(namespace, workload) "+
+		"label_replace(sum(%s{namespace=\"%s\"} * on(replicaset)"+
+		" group_left(namespace, owner_kind, owner_name) %s{namespace=\"%s\", owner_kind=\"%s\", owner_name=\"%s\"}) by"+
+		" (namespace, owner_kind, owner_name) >= on(namespace, owner_kind, owner_name) "+
+		"(%s{namespace=\"%s\"} * on(namespace, horizontalpodautoscaler) "+
+		"group_left(owner_kind, owner_name) label_replace(label_replace(%s{"+
+		"namespace=\"%s\", scaletargetref_kind=\"%s\", scaletargetref_name=\"%s\"},\"owner_kind\", \"$1\", "+
+		"\"scaletargetref_kind\", \"(.*)\"), \"owner_name\", \"$1\", \"scaletargetref_name\", \"(.*)\")),"+
+		"\"workload\", \"$1\", \"owner_name\", \"(.*)\")",
+		ps.metricRegistry.utilizationMetric,
+		namespace,
+		ps.metricRegistry.podOwnerMetric,
+		namespace,
+		workload,
+		ps.metricRegistry.resourceLimitMetric,
+		namespace,
+		ps.metricRegistry.podOwnerMetric,
+		namespace,
+		workload,
+		redLineUtilization,
+		ps.metricRegistry.readyReplicasMetric,
+		namespace,
+		ps.metricRegistry.replicaSetOwnerMetric,
+		namespace,
+		workloadType,
+		workload,
+		ps.metricRegistry.hpaMaxReplicasMetric,
+		namespace,
+		ps.metricRegistry.hpaOwnerInfoMetric,
+		namespace,
+		workloadType,
+		workload)
+
+	queryRange := v1.Range{Start: start, End: end, Step: step}
+
+	result, _, err := ps.api.QueryRange(ctx, query, queryRange)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)
+	}
+	if result.Type() != model.ValMatrix {
+		return nil, fmt.Errorf("unexpected result type: %v", result.Type())
+	}
+	matrix := result.(model.Matrix)
+
+	if len(matrix) != 1 {
+		return nil, fmt.Errorf("unexpected no of time series: %v", len(matrix))
+	}
+
+	var dataPoints []float64
+	for _, sample := range matrix[0].Values {
+		cpuUtilization := float64(sample.Value)
+		if !sample.Timestamp.Time().IsZero() {
+			dataPoints = append(dataPoints, cpuUtilization)
+		}
+	}
 	return dataPoints, nil
 }

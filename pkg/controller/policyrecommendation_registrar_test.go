@@ -3,14 +3,15 @@ package controller
 import (
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 // +kubebuilder:docs-gen:collapse=Imports
@@ -25,9 +26,12 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		DeploymentNamespace = "default"
 
 		timeout  = time.Second * 10
-		duration = time.Second * 10
 		interval = time.Millisecond * 250
 	)
+
+	BeforeEach(func() {
+		queuedAllRecos = false
+	})
 
 	Context("When creating a new Rollout", func() {
 		It("Should Create a new PolicyRecommendation", func() {
@@ -75,9 +79,13 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
 			Expect(createdPolicy.Name).Should(Equal(RolloutName))
 			Expect(createdPolicy.Namespace).Should(Equal(RolloutNamespace))
+			Expect(createdPolicy.Spec.Policy.Spec.ID).Should(Equal("safestPolicy"))
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(RolloutName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Rollout"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("argoproj.io/v1alpha1"))
+
+			By("Testing that monitor has been queuedAllRecos")
+			Eventually(Expect(queuedAllRecos).Should(BeTrue()))
 		})
 	})
 
@@ -119,13 +127,15 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			createdPolicy := &ottoscaleriov1alpha1.PolicyRecommendation{}
 
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
+				err := k8sClient.Get(ctx,
+					types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
 					createdDeployment)
 				if err != nil {
 					return false
 				}
 
-				err = k8sClient.Get(ctx, types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
+				err = k8sClient.Get(ctx,
+					types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
 					createdPolicy)
 				if err != nil {
 					return false
@@ -137,9 +147,13 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
 			Expect(createdPolicy.Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.Namespace).Should(Equal(DeploymentNamespace))
+			Expect(createdPolicy.Spec.Policy.Spec.ID).Should(Equal("safestPolicy"))
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Deployment"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
+
+			By("Testing that monitor has been queuedAllRecos")
+			Eventually(Expect(queuedAllRecos).Should(BeTrue()))
 		})
 	})
 

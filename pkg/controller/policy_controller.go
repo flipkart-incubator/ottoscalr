@@ -19,38 +19,73 @@ package controller
 import (
 	"context"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // PolicyWatcher reconciles a Policy object
 type PolicyWatcher struct {
-	client.Client
-	Scheme *runtime.Scheme
+	Client         client.Client
+	Scheme         *runtime.Scheme
+	requeueAllFunc func()
+}
+
+func NewPolicyWatcher(client client.Client,
+	scheme *runtime.Scheme,
+	requeueAllFunc func(),
+) *PolicyWatcher {
+	return &PolicyWatcher{Client: client,
+		Scheme:         scheme,
+		requeueAllFunc: requeueAllFunc,
+	}
 }
 
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policies/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Policy object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *PolicyWatcher) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
 
-	// TODO(bharathguvvala): Add policy watcher trigger logic
-	// If any change to policy configuration or policy creation/deletion happens
-	// then requeue all the policyrecommendations which are affected by the change for execution
+	logger := log.FromContext(ctx)
+	// Get the Policy instance
+	var policy ottoscaleriov1alpha1.Policy
+	if err := r.Client.Get(ctx, req.NamespacedName, &policy); err != nil {
+		if errors.IsNotFound(err) {
+			// Ignore not found errors, as the object might have been deleted
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	if policy.Spec.IsDefault {
+		// If the policy is marked as default, ensure no other policy is marked as default
+		var allPolicies ottoscaleriov1alpha1.PolicyList
+		if err := r.Client.List(ctx, &allPolicies); err != nil {
+			logger.Error(err, "Error getting allPolicies")
+			return ctrl.Result{}, err
+		}
+
+		for _, otherPolicy := range allPolicies.Items {
+			// Skip the current policy
+			if otherPolicy.Name == policy.Name {
+				continue
+			}
+			// If the other policy is marked as default, update it to be non-default
+			if otherPolicy.Spec.IsDefault {
+				otherPolicy.Spec.IsDefault = false
+				if err := r.Client.Update(ctx, &otherPolicy); err != nil {
+					logger.Error(err, "Error marking policy as default", "policy", otherPolicy)
+					return ctrl.Result{}, err
+				}
+			}
+		}
+		//requeue all policyRecommendations
+		r.requeueAllFunc()
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -58,7 +93,6 @@ func (r *PolicyWatcher) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 // SetupWithManager sets up the controller with the Manager.
 func (r *PolicyWatcher) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		// Uncomment the following line adding a pointer to an instance of the controlled resource as an argument
 		For(&ottoscaleriov1alpha1.Policy{}).
 		Complete(r)
 }

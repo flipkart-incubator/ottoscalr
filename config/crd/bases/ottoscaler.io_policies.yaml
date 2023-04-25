@@ -35,11 +35,11 @@ spec:
           spec:
             description: PolicySpec defines the desired state of Policy
             properties:
+              isDefault:
+                type: boolean
               minReplicaPercentageCut:
                 type: integer
               riskIndex:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                  Important: Run "make" to regenerate code after modifying this file'
                 type: string
               targetUtilization:
                 type: integer

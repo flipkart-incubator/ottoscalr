@@ -18,18 +18,18 @@ package controller
 
 import (
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	"golang.org/x/net/context"
-	"path/filepath"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"testing"
-
+	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
+	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"golang.org/x/net/context"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"testing"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -43,9 +43,10 @@ import (
 var (
 	cfg       *rest.Config
 	k8sClient client.Client
-	testEnv   *envtest.Environment
 	ctx       context.Context
 	cancel    context.CancelFunc
+
+	queuedAllRecos = false
 )
 
 func TestAPIs(t *testing.T) {
@@ -55,20 +56,14 @@ func TestAPIs(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+	logger := zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true))
+	logf.SetLogger(logger)
 	ctx, cancel = context.WithCancel(context.TODO())
 
 	By("bootstrapping test environment")
-	testEnv = &envtest.Environment{
-		CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases"),
-			filepath.Join("..", "..", "testdata")},
-		ErrorIfCRDPathMissing: true,
-	}
-
 	var err error
 	// cfg is defined in this file globally.
-	cfg, err = testEnv.Start()
-	Expect(err).NotTo(HaveOccurred())
+	cfg, ctx, cancel = testutil.SetupEnvironment()
 	Expect(cfg).NotTo(BeNil())
 
 	err = rolloutv1alpha1.AddToScheme(scheme.Scheme)
@@ -77,7 +72,7 @@ var _ = BeforeSuite(func() {
 	err = ottoscaleriov1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	//+kubebuilder:scaffold:scheme
+	//+kubebuilder:scaffold:Scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
@@ -89,10 +84,20 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&PolicyRecommendationRegistrar{
+		Client:         k8sManager.GetClient(),
+		Scheme:         k8sManager.GetScheme(),
+		MonitorManager: &FakeMonitorManager{},
+		PolicyStore:    &FakePolicyStore{},
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&PolicyWatcher{
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
+		requeueAllFunc: func() {
+			queuedAllRecos = true
+		},
 	}).SetupWithManager(k8sManager)
-
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {
@@ -105,6 +110,29 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	cancel()
 	By("tearing down the test environment")
-	err := testEnv.Stop()
+	err := testutil.TeardownEnvironment()
 	Expect(err).NotTo(HaveOccurred())
 })
+
+type FakeMonitorManager struct{}
+
+func (f *FakeMonitorManager) RegisterMonitor(workloadType string,
+	workload types.NamespacedName) *trigger.Monitor {
+	queuedAllRecos = true
+	return nil
+}
+
+func (f *FakeMonitorManager) DeregisterMonitor(workload types.NamespacedName) {}
+func (f *FakeMonitorManager) Shutdown()                                       {}
+
+type FakePolicyStore struct{}
+
+func (ps *FakePolicyStore) GetSafestPolicy() (*ottoscaleriov1alpha1.Policy, error) {
+	return &ottoscaleriov1alpha1.Policy{Spec: ottoscaleriov1alpha1.PolicySpec{ID: "safestPolicy"}}, nil
+
+}
+
+func (ps *FakePolicyStore) GetNextPolicy(currentPolicy *ottoscaleriov1alpha1.Policy) (*ottoscaleriov1alpha1.Policy,
+	error) {
+	return &ottoscaleriov1alpha1.Policy{Spec: ottoscaleriov1alpha1.PolicySpec{ID: "nextSafestPolicy"}}, nil
+}

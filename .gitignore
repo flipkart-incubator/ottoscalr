@@ -26,3 +26,9 @@ Dockerfile.cross
 *~
 *.iml
 vendor/
+
+.DS_Store
+
+#Prometheus data
+data
+*.gz

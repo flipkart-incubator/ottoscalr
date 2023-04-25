@@ -43,6 +43,17 @@ type PolicyRecommendationReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	MaxConcurrentReconciles int
+}
+
+func NewPolicyRecommendationReconciler(client client.Client,
+	scheme *runtime.Scheme,
+	maxConcurrentReconciles int) *PolicyRecommendationReconciler {
+	return &PolicyRecommendationReconciler{
+		Client:                  client,
+		Scheme:                  scheme,
+		MaxConcurrentReconciles: maxConcurrentReconciles,
+	}
 }
 
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations,verbs=get;list;watch;create;update;patch;delete
