@@ -23,7 +23,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"testing"
 
@@ -128,11 +130,14 @@ func (f *FakeMonitorManager) Shutdown()                                       {}
 type FakePolicyStore struct{}
 
 func (ps *FakePolicyStore) GetSafestPolicy() (*ottoscaleriov1alpha1.Policy, error) {
-	return &ottoscaleriov1alpha1.Policy{Spec: ottoscaleriov1alpha1.PolicySpec{ID: "safestPolicy"}}, nil
+	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
+		Name: "safestPolicy",
+	}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
 
 }
 
 func (ps *FakePolicyStore) GetNextPolicy(currentPolicy *ottoscaleriov1alpha1.Policy) (*ottoscaleriov1alpha1.Policy,
 	error) {
-	return &ottoscaleriov1alpha1.Policy{Spec: ottoscaleriov1alpha1.PolicySpec{ID: "nextSafestPolicy"}}, nil
+	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
+		Name: "nextSafestPolicy"}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
 }

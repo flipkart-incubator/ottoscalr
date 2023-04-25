@@ -28,7 +28,7 @@ type PolicySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	IsDefault         bool   `json:"isDefault,omitempty"`
+	IsDefault               bool   `json:"isDefault,omitempty"`
 	RiskIndex               string `json:"riskIndex"`
 	MinReplicaPercentageCut int    `json:"minReplicaPercentageCut"`
 	TargetUtilization       int    `json:"targetUtilization"`

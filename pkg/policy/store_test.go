@@ -17,10 +17,9 @@ var _ = Describe("PolicyStore", func() {
 					Name: "policy1",
 				},
 				Spec: v1alpha1.PolicySpec{
-					ID:                "1",
-					RiskIndex:         "1",
-					Min:               1,
-					TargetUtilization: 60,
+					RiskIndex:               "1",
+					MinReplicaPercentageCut: 1,
+					TargetUtilization:       60,
 				},
 			},
 			{
@@ -28,10 +27,9 @@ var _ = Describe("PolicyStore", func() {
 					Name: "policy2",
 				},
 				Spec: v1alpha1.PolicySpec{
-					ID:                "2",
-					RiskIndex:         "2",
-					Min:               2,
-					TargetUtilization: 80,
+					RiskIndex:               "2",
+					MinReplicaPercentageCut: 2,
+					TargetUtilization:       80,
 				},
 			},
 		}

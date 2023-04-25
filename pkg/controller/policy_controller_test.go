@@ -31,7 +31,6 @@ var _ = Describe("PolicyWatcher controller", func() {
 					Namespace: "default",
 				},
 				Spec: ottoscaleriov1alpha1.PolicySpec{
-					ID:        "policy1",
 					IsDefault: true,
 				},
 			}
@@ -41,7 +40,6 @@ var _ = Describe("PolicyWatcher controller", func() {
 					Namespace: "default",
 				},
 				Spec: ottoscaleriov1alpha1.PolicySpec{
-					ID:        "policy2",
 					IsDefault: false,
 				},
 			}
@@ -51,7 +49,6 @@ var _ = Describe("PolicyWatcher controller", func() {
 					Namespace: "default",
 				},
 				Spec: ottoscaleriov1alpha1.PolicySpec{
-					ID:        "policy3",
 					IsDefault: false,
 				},
 			}
