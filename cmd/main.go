@@ -40,7 +40,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	argorolloutsv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
@@ -138,7 +137,7 @@ func main() {
 	}
 
 	if err = controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
-		mgr.GetScheme(),
+		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.POLICY_RECO_WORKFLOW_CTRL_NAME),
 		config.PolicyRecommendationController.MaxConcurrentReconciles).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)

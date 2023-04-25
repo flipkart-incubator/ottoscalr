@@ -41,18 +41,19 @@ const (
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
 type PolicyRecommendationReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Scheme                  *runtime.Scheme
+	Recorder                record.EventRecorder
 	MaxConcurrentReconciles int
 }
 
 func NewPolicyRecommendationReconciler(client client.Client,
-	scheme *runtime.Scheme,
+	scheme *runtime.Scheme, recorder record.EventRecorder,
 	maxConcurrentReconciles int) *PolicyRecommendationReconciler {
 	return &PolicyRecommendationReconciler{
 		Client:                  client,
 		Scheme:                  scheme,
 		MaxConcurrentReconciles: maxConcurrentReconciles,
+		Recorder:                recorder,
 	}
 }
 
