@@ -94,9 +94,6 @@ spec:
                 - name
                 - namespace
                 type: object
-            required:
-            - queuedForExecution
-            - workload
             type: object
           status:
             description: PolicyRecommendationStatus defines the observed state of

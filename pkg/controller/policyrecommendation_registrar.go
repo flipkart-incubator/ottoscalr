@@ -93,7 +93,7 @@ func (r *PolicyRecommendationRegistrar) createPolicyRecommendation(ctx context.C
 			//TODO Set the policy in the spec to safest policy
 			Policy:               "",
 			QueuedForExecution:   true,
-			QueuedForExecutionAt: metav1.NewTime(time.Now()),
+			QueuedForExecutionAt: metav1.Now(),
 		},
 	}
 

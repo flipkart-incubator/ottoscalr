@@ -19,12 +19,12 @@ package controller
 import (
 	"context"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -50,7 +50,7 @@ type PolicyRecommendationReconciler struct {
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
 
 func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	policyreco := v1alpha1.PolicyRecommendation{}
 	if err := r.Get(ctx, req.NamespacedName, &policyreco); err != nil {
@@ -59,6 +59,8 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		// on deleted requests.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecoQueuedForExecution", "This workload has been queued for execution.")
 
 	recowf, err := reco.NewRecommendationWorkflow()
 	if err != nil {
@@ -70,28 +72,44 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		Namespace: policyreco.Spec.WorkloadMeta.Namespace,
 	})
 
+	var policyName string
+	if policy != nil {
+		policyName = policy.Name
+	}
 	if err := r.Patch(ctx, &v1alpha1.PolicyRecommendation{
-		TypeMeta:   policyreco.TypeMeta,
-		ObjectMeta: policyreco.ObjectMeta,
+		TypeMeta: policyreco.TypeMeta,
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      policyreco.Name,
+			Namespace: policyreco.Namespace,
+		},
 		Spec: v1alpha1.PolicyRecommendationSpec{
 			TargetHPAConfiguration:  *targetreco,
-			Policy:                  policy.Name,
+			Policy:                  policyName,
 			CurrentHPAConfiguration: *currentreco,
+			//TODO(bharathguvvala): This will cause a bug when the next queued requests fail to execute due to a controller crash,
+			// and the subsequent restart will not reprocess it. Will need to handle that case
+			//QueuedForExecution:   false,
+			QueuedForExecutionAt: metav1.Now(),
+			GeneratedAt:          metav1.Now(),
 		},
 	}, client.Apply, client.ForceOwnership, client.FieldOwner(POLICY_RECO_WORKFLOW_CTRL_NAME)); err != nil {
+		logger.Error(err, "Error patching the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	statusPatch := &v1alpha1.PolicyRecommendation{
-		TypeMeta:   policyreco.TypeMeta,
-		ObjectMeta: policyreco.ObjectMeta,
-		Status:     v1alpha1.PolicyRecommendationStatus{},
+		TypeMeta: policyreco.TypeMeta,
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      policyreco.Name,
+			Namespace: policyreco.Namespace,
+		},
+		Status: v1alpha1.PolicyRecommendationStatus{},
 	}
 	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions()); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecommendtionGenerated", "The HPA recommendation has been generated successfully.")
+	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecommendationGenerated", "The HPA recommendation has been generated successfully.")
 	return ctrl.Result{}, nil
 }
 
@@ -124,8 +142,10 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 			oldObjSpec := e.ObjectOld.(*v1alpha1.PolicyRecommendation).Spec
 			newObjSpec := e.ObjectNew.(*v1alpha1.PolicyRecommendation).Spec
 			switch {
+			// updates which transition QueuedForExecution from false to true
 			case oldObjSpec.QueuedForExecution == false && newObjSpec.QueuedForExecution == true:
 				return true
+			//	updates where there's no change to the QueuedForExecution but to the QueuedForExecutionAt with a later timestamp
 			case newObjSpec.QueuedForExecution == true && (oldObjSpec.QueuedForExecutionAt.Before(&newObjSpec.QueuedForExecutionAt)):
 				return true
 			default:

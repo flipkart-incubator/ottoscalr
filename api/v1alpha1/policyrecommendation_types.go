@@ -22,12 +22,12 @@ import (
 
 // PolicyRecommendationSpec defines the desired state of PolicyRecommendation
 type PolicyRecommendationSpec struct {
-	WorkloadMeta            WorkloadMeta     `json:"workload"`
+	WorkloadMeta            WorkloadMeta     `json:"workload,omitempty"`
 	TargetHPAConfiguration  HPAConfiguration `json:"targetHPAConfig,omitempty"`
 	CurrentHPAConfiguration HPAConfiguration `json:"currentHPAConfig,omitempty"`
 	Policy                  string           `json:"policy,omitempty"`
 	GeneratedAt             metav1.Time      `json:"generatedAt,omitempty"`
-	QueuedForExecution      bool             `json:"queuedForExecution"`
+	QueuedForExecution      bool             `json:"queuedForExecution,omitempty"`
 	QueuedForExecutionAt    metav1.Time      `json:"queuedForExecutionAt,omitempty"`
 }
 

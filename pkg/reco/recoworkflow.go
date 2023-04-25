@@ -37,10 +37,29 @@ func NewRecommendationWorkflow() (*SerialRecomendationWorkflow, error) {
 	//TODO: Implementation
 	return &SerialRecomendationWorkflow{
 		RecommendationWorkflowImpl: RecommendationWorkflowImpl{
-			Recommender:     nil,
+			Recommender: MockRecommender{
+				min:       1,
+				threshold: 20,
+				max:       10,
+			},
 			PolicyIterators: nil,
 		},
 	}, nil
+}
+
+type MockRecommender struct {
+	min       int
+	threshold int
+	max       int
+}
+
+func (r MockRecommender) Recommend(wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
+	return &v1alpha1.HPAConfiguration{
+		Min:               r.min,
+		Max:               r.max,
+		TargetMetricValue: r.threshold,
+	}, nil
+
 }
 
 func (w WorkloadMeta) GetReplicas() (int, error) {
@@ -92,6 +111,9 @@ func createRecoConfigFromPolicy(policy *Policy, wm WorkloadMeta) (*v1alpha1.HPAC
 
 // Determines whether the recommendation should take precedence over the nextPolicy
 func shouldApplyReco(config *v1alpha1.HPAConfiguration, policy *Policy) bool {
+	if policy == nil {
+		return true
+	}
 	// Returns true if the reco is safer than the next policy
 	if policy.MinReplicaPercentageCut == 100 && config.TargetMetricValue < policy.TargetUtilization {
 		return true
