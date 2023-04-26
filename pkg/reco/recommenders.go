@@ -21,7 +21,7 @@ type Recommender interface {
 
 type RecommendationWorkflowImpl struct {
 	Recommender     Recommender
-	PolicyIterators []PolicyIterator
+	PolicyIterators map[string]PolicyIterator
 	logger          logr.Logger
 }
 
@@ -42,8 +42,13 @@ func (b *RecoWorkflowBuilder) AddRecommender(r Recommender) *RecoWorkflowBuilder
 	return b
 }
 
-func (b *RecoWorkflowBuilder) AddPolicyIterator(p PolicyIterator) *RecoWorkflowBuilder {
-	b.PolicyIterators = append(b.PolicyIterators, p)
+func (b *RecoWorkflowBuilder) AddPolicyIterator(name string, p PolicyIterator) *RecoWorkflowBuilder {
+	if b.PolicyIterators == nil {
+		b.PolicyIterators = make(map[string]PolicyIterator)
+		b.PolicyIterators[name] = p
+	} else if _, ok := b.PolicyIterators[name]; !ok {
+		b.PolicyIterators[name] = p
+	}
 	return b
 }
 

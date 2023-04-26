@@ -78,7 +78,8 @@ type Config struct {
 	} `yaml:"periodicTrigger"`
 
 	PolicyRecommendationController struct {
-		MaxConcurrentReconciles int `yaml:"maxConcurrentReconciles"`
+		MaxConcurrentReconciles int    `yaml:"maxConcurrentReconciles"`
+		PolicyExpiryAge         string `yaml:"policyExpiryAge"`
 	} `yaml:"policyRecommendationController"`
 
 	PolicyRecommendationRegistrar struct {
@@ -136,9 +137,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	policyExpiryAge, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAge)
+	if err != nil {
+		logger.Error(err, "Failed to parse policyExpiryAge. Defaulting to 60s")
+		policyExpiryAge = 60 * time.Second
+	}
+
 	if err = controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.POLICY_RECO_WORKFLOW_CTRL_NAME),
-		config.PolicyRecommendationController.MaxConcurrentReconciles).SetupWithManager(mgr); err != nil {
+		config.PolicyRecommendationController.MaxConcurrentReconciles, policyExpiryAge).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)
 	}

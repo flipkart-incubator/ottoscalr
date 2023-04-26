@@ -44,15 +44,17 @@ type PolicyRecommendationReconciler struct {
 	Scheme                  *runtime.Scheme
 	Recorder                record.EventRecorder
 	MaxConcurrentReconciles int
+	PolicyExpiryAge         time.Duration
 }
 
 func NewPolicyRecommendationReconciler(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder,
-	maxConcurrentReconciles int) *PolicyRecommendationReconciler {
+	maxConcurrentReconciles int, policyExpiryAge time.Duration) *PolicyRecommendationReconciler {
 	return &PolicyRecommendationReconciler{
 		Client:                  client,
 		Scheme:                  scheme,
 		MaxConcurrentReconciles: maxConcurrentReconciles,
+		PolicyExpiryAge:         policyExpiryAge,
 		Recorder:                recorder,
 	}
 }
@@ -83,8 +85,8 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 			Threshold: 60,
 			Max:       60,
 		}).
-		AddPolicyIterator(reco.NewDefaultPolicyIterator(r.Client)).
-		AddPolicyIterator(reco.NewAgingPolicyIterator(r.Client, 60*time.Second)).
+		AddPolicyIterator("DefaultPolicy", reco.NewDefaultPolicyIterator(r.Client)).
+		AddPolicyIterator("Aging", reco.NewAgingPolicyIterator(r.Client, 60*time.Second)).
 		WithLogger(logger.WithName("RecoWorkflow")).
 		Build()
 
