@@ -2,7 +2,7 @@ import sys
 import os
 import csv
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objs as go
 from prophet import Prophet
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import math
@@ -36,27 +36,31 @@ def process_workload(csv_file, workload_name):
     future = model.make_future_dataframe(periods=len(validation_data), freq='30S')
     forecast = model.predict(future)
 
-    # Plot the results
-    fig, ax = plt.subplots()
-    ax.plot(data['ds'], data['y'], label='Observed', linewidth=0.5)
-    ax.plot(forecast['ds'], forecast['yhat'], label='Predicted', linewidth=0.5)
-    ax.legend(loc='upper right')
-    ax.set_title('Prophet Model Forecast vs Observed - ' + workload_name)
-    ax.set_xlabel('Timestamp')
-    ax.set_ylabel('CPU Usage')
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.savefig(f"plots/{workload_name}.png", dpi=1500)
-    plt.close(fig)
+    # Plot the results using Plotly
+    observed_trace = go.Scatter(x=data['ds'], y=data['y'], mode='lines', name='Observed')
+    predicted_trace = go.Scatter(x=forecast['ds'], y=forecast['yhat'], mode='lines', name='Predicted')
+
+    layout = go.Layout(
+        title='Prophet Model Forecast vs Observed - ' + workload_name,
+        xaxis=dict(title='Timestamp'),
+        yaxis=dict(title='CPU Usage'),
+    )
+
+    fig = go.Figure(data=[observed_trace, predicted_trace], layout=layout)
+    fig.write_image(f"plots/{workload_name}.png", format='png', width=1600, height=1200, scale=1.5)  # Save the figure as a static image
+    fig.show()  # Display the figure
 
     # Calculate accuracy metrics
     actual = validation_data['y'].values
     predicted = forecast.iloc[-len(validation_data):]['yhat'].values
-    mae = mean_absolute_error(actual, predicted)
-    mse = mean_squared_error(actual, predicted)
-    rmse = math.sqrt(mse)
+
+    # Calculate MAE, MSE, and RMSE as percentages
+    mae = mean_absolute_error(actual, predicted) / max(actual) * 100
+    mse = mean_squared_error(actual, predicted) / max(actual*actual) * 100
+    rmse = math.sqrt(mse) / max(actual) * 100
 
     return mae, mse, rmse
+
 
 if len(sys.argv) != 2:
     print("Usage: python3 scriptname.py folder_path")
@@ -78,4 +82,3 @@ else:
                 mae, mse, rmse = process_workload(csv_file, workload_name)
                 print(f"{workload_name}: MAE={mae:.2f}, MSE={mse:.2f}, RMSE={rmse:.2f}")
                 writer.writerow([workload_name, mae, mse, rmse])
-
