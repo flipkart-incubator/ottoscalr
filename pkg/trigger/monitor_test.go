@@ -25,7 +25,7 @@ func (fs *FakeScraper) GetAverageCPUUtilizationByWorkload(namespace,
 func (fs *FakeScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	workloadType,
 	workload string,
-	redLineUtilization float32,
+	redLineUtilization float64,
 	start time.Time,
 	end time.Time,
 	step time.Duration) ([]metrics.DataPoint, error) {

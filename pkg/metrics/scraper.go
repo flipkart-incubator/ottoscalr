@@ -26,7 +26,7 @@ type Scraper interface {
 	GetCPUUtilizationBreachDataPoints(namespace,
 		workloadType,
 		workload string,
-		redLineUtilization float32,
+		redLineUtilization float64,
 		start time.Time,
 		end time.Time,
 		step time.Duration) ([]DataPoint, error)
@@ -143,7 +143,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	workloadType,
 	workload string,
-	redLineUtilization float32,
+	redLineUtilization float64,
 	start time.Time,
 	end time.Time,
 	step time.Duration) ([]DataPoint, error) {

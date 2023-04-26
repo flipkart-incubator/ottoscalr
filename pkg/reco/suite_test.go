@@ -27,18 +27,47 @@ var (
 
 	logger logr.Logger
 
-	currentReplicas   = 2
-	redLineUtil       = float32(80)
-	metricWindow      = 7 * 24 * time.Hour
-	metricStep        = 5 * time.Minute
-	minTarget         = 50
-	maxTarget         = 200
-	fakeScraper       metrics.Scraper
-	recommender       *CpuUtilizationBasedRecommender
-	workloadNamespace = "test-namespace"
-	workloadName      = "test-workload"
+	redLineUtil  = 0.85
+	metricWindow = 1 * time.Hour
+	metricStep   = 5 * time.Minute
+	minTarget    = 10
+	maxTarget    = 60
+	fakeScraper  metrics.Scraper
+	recommender  *CpuUtilizationBasedRecommender
 )
 
+type FakeScraper struct{}
+
+func (fs *FakeScraper) GetAverageCPUUtilizationByWorkload(namespace,
+	workload string,
+	start time.Time,
+	end time.Time,
+	step time.Duration) ([]metrics.DataPoint, error) {
+	dataPoints := []metrics.DataPoint{
+		{Timestamp: time.Now().Add(-10 * time.Minute), Value: 60},
+		{Timestamp: time.Now().Add(-9 * time.Minute), Value: 80},
+		{Timestamp: time.Now().Add(-8 * time.Minute), Value: 100},
+		{Timestamp: time.Now().Add(-7 * time.Minute), Value: 50},
+		{Timestamp: time.Now().Add(-6 * time.Minute), Value: 30},
+	}
+	return dataPoints, nil
+}
+
+func (fs *FakeScraper) GetCPUUtilizationBreachDataPoints(namespace,
+	workloadType,
+	workload string,
+	redLineUtilization float64,
+	start time.Time,
+	end time.Time,
+	step time.Duration) ([]metrics.DataPoint, error) {
+	datapoint := metrics.DataPoint{Timestamp: time.Now(), Value: 1.3}
+	return []metrics.DataPoint{datapoint}, nil
+}
+func (fs *FakeScraper) GetACL(namespace,
+	workloadType,
+	workload string) (time.Duration, error) {
+	return 5 * time.Minute, nil
+}
 func TestPolicies(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Policy Suite")
@@ -67,7 +96,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
-	recommender = NewCpuUtilizationBasedRecommender(k8sClient, ctx, currentReplicas, redLineUtil,
+	fakeScraper = &FakeScraper{}
+
+	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
 		metricWindow, fakeScraper, metricStep, minTarget, maxTarget, logger)
 
 	go func() {
