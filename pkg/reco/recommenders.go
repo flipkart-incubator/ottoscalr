@@ -3,12 +3,12 @@ package reco
 import (
 	"context"
 	"errors"
-	"fmt"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"log"
 	"math"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 type RecommendationWorkflow interface {
@@ -19,10 +19,10 @@ type Recommender interface {
 	Recommend(wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error)
 }
 
-// TODO(bharathguvvala): make metric scraper part of this struct
 type RecommendationWorkflowImpl struct {
 	Recommender     Recommender
 	PolicyIterators []PolicyIterator
+	logger          logr.Logger
 }
 
 type WorkloadMeta struct {
@@ -47,10 +47,23 @@ func (b *RecoWorkflowBuilder) AddPolicyIterator(p PolicyIterator) *RecoWorkflowB
 	return b
 }
 
+func (b *RecoWorkflowBuilder) WithLogger(log logr.Logger) *RecoWorkflowBuilder {
+	var zeroValLogger logr.Logger
+	if b.logger == zeroValLogger {
+		b.logger = log
+	}
+	return b
+}
+
 func (b *RecoWorkflowBuilder) Build() RecommendationWorkflow {
+	var zeroValLogger logr.Logger
+	if b.logger == zeroValLogger {
+		b.logger = zap.New()
+	}
 	return &RecommendationWorkflowImpl{
 		Recommender:     b.Recommender,
 		PolicyIterators: b.PolicyIterators,
+		logger:          b.logger,
 	}
 }
 
@@ -78,20 +91,21 @@ func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMe
 	}
 	recoConfig, err := rw.Recommender.Recommend(wm)
 	if err != nil {
-		log.Printf("Error while generating recommendation")
+		rw.logger.Error(err, "Error while generating recommendation")
 		return nil, nil, nil, errors.New("Unable to generate recommendation")
 	}
 	var nextPolicy *Policy
 	for i, pi := range rw.PolicyIterators {
-		log.Printf("Running policy iterator %d", i)
+		rw.logger.V(0).Info("Running policy iterator", "iterator", i)
 		p, err := pi.NextPolicy(wm)
 		if err != nil {
-			log.Println("Error while generating recommendation")
-			return nil, nil, nil, errors.New(fmt.Sprintf("Unable to generate next policy from policy iterator. Cause: %s", err))
+			rw.logger.Error(err, "Error while generating recommendation")
+			return nil, nil, nil, err
 		}
-		log.Printf("Next Policy recommended by PI %d is %s", i, p.Name)
+		rw.logger.V(0).Info("Next Policy recommended by PI", "iterator", i, "policy", p)
+
 		nextPolicy = pickSafestPolicy(nextPolicy, p)
-		log.Printf("Next Policy after applying PI %d is %s", i, nextPolicy.Name)
+		rw.logger.V(0).Info("Next Policy after applying PI", "iterator", i, "policy", nextPolicy)
 
 	}
 

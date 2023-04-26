@@ -85,6 +85,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		}).
 		AddPolicyIterator(reco.NewDefaultPolicyIterator(r.Client)).
 		AddPolicyIterator(reco.NewAgingPolicyIterator(r.Client, 60*time.Second)).
+		WithLogger(logger.WithName("RecoWorkflow")).
 		Build()
 
 	currentreco, targetreco, policy, err := recowf.Execute(ctx, reco.WorkloadMeta{

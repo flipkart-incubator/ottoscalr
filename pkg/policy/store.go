@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/types"
+	"log"
 	"sort"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,6 +28,8 @@ func NewPolicyStore(k8sClient client.Client) *PolicyStore {
 		k8sClient: k8sClient,
 	}
 }
+
+var NO_NEXT_POLICY_FOUND_ERR = errors.New("no next policy found")
 
 func (ps *PolicyStore) GetSafestPolicy() (*v1alpha1.Policy, error) {
 	policies := &v1alpha1.PolicyList{}
@@ -66,10 +69,11 @@ func (ps *PolicyStore) GetNextPolicy(currentPolicy *v1alpha1.Policy) (*v1alpha1.
 		}
 	}
 
-	return nil, fmt.Errorf("no next policy found")
+	return nil, NO_NEXT_POLICY_FOUND_ERR
 }
 
 func (ps *PolicyStore) GetNextPolicyByName(name string) (*v1alpha1.Policy, error) {
+	log.Println("Identifying next policy to ", name)
 	currentPolicy, err := ps.GetPolicyByName(name)
 	if err != nil {
 		return nil, err
@@ -86,7 +90,7 @@ func (ps *PolicyStore) GetNextPolicyByName(name string) (*v1alpha1.Policy, error
 	})
 
 	for i, policy := range policies.Items {
-		if policy.Spec.RiskIndex == currentPolicy.Spec.RiskIndex {
+		if policy.Name == currentPolicy.Name {
 			if i+1 < len(policies.Items) {
 				return &policies.Items[i+1], nil
 			}
@@ -94,7 +98,7 @@ func (ps *PolicyStore) GetNextPolicyByName(name string) (*v1alpha1.Policy, error
 		}
 	}
 
-	return nil, fmt.Errorf("no next policy found")
+	return nil, NO_NEXT_POLICY_FOUND_ERR
 }
 
 func (ps *PolicyStore) GetPolicyByName(name string) (*v1alpha1.Policy, error) {

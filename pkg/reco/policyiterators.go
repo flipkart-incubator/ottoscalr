@@ -76,25 +76,33 @@ func (pi *AgingPolicyIterator) NextPolicy(wm WorkloadMeta) (*Policy, error) {
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("Not policy has been configured. Returning safest policy %s", safestPolicy.Name)
+		log.Printf("No policy has been configured. Returning safest policy %s", safestPolicy.Name)
 		return PolicyFromCR(safestPolicy), nil
 	}
 
-	if !expired {
-		log.Println("Policy hasn't expired yet")
-		p, err := pi.store.GetPolicyByName(policyreco.Spec.Policy)
-		if err != nil {
-			return nil, err
-		}
-		return PolicyFromCR(p), nil
-	}
-
-	nextPolicy, err := pi.store.GetNextPolicyByName(policyreco.Spec.Policy)
+	currentAppliedPolicy, err := pi.store.GetPolicyByName(policyreco.Spec.Policy)
 	if err != nil {
 		return nil, err
 	}
 
+	if !expired {
+		log.Println("Policy hasn't expired yet")
+		return PolicyFromCR(currentAppliedPolicy), nil
+	}
+
+	nextPolicy, err := pi.store.GetNextPolicyByName(policyreco.Spec.Policy)
+	if err != nil {
+		if IsLastPolicy(err) {
+			return PolicyFromCR(currentAppliedPolicy), nil
+		}
+		return nil, err
+	}
+
 	return PolicyFromCR(nextPolicy), nil
+}
+
+func IsLastPolicy(err error) bool {
+	return errors.Is(err, policy.NO_NEXT_POLICY_FOUND_ERR)
 }
 
 func PolicyFromCR(policy *v1alpha1.Policy) *Policy {
@@ -107,8 +115,8 @@ func PolicyFromCR(policy *v1alpha1.Policy) *Policy {
 }
 
 func isAgeBeyondExpiry(policyreco *v1alpha1.PolicyRecommendation, age time.Duration) (bool, error) {
-	if policyreco == nil {
-		return false, errors.New("Policy recommendation is nil")
+	if policyreco == nil || policyreco.Spec.TransitionedAt.IsZero() {
+		return false, errors.New("Policy recommendation is nil or TransitionedAt is nil")
 	}
 	// if now() is still before last reco transitionedAt + expiry age
 	if policyreco.Spec.TransitionedAt.Add(age).After(metav1.Now().Time) {
