@@ -136,8 +136,27 @@ func (ps *FakePolicyStore) GetSafestPolicy() (*ottoscaleriov1alpha1.Policy, erro
 
 }
 
+func (ps *FakePolicyStore) GetDefaultPolicy() (*ottoscaleriov1alpha1.Policy, error) {
+	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
+		Name: "safestPolicy",
+	}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
+
+}
+
 func (ps *FakePolicyStore) GetNextPolicy(currentPolicy *ottoscaleriov1alpha1.Policy) (*ottoscaleriov1alpha1.Policy,
 	error) {
 	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
 		Name: "nextSafestPolicy"}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
+}
+
+func (ps *FakePolicyStore) GetNextPolicyByName(name string) (*ottoscaleriov1alpha1.Policy,
+	error) {
+	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
+		Name: "nextSafestPolicy"}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
+}
+
+func (ps *FakePolicyStore) GetPolicyByName(name string) (*ottoscaleriov1alpha1.Policy,
+	error) {
+	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
+		Name: name}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
 }

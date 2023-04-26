@@ -12,7 +12,7 @@ import (
 )
 
 type RecommendationWorkflow interface {
-	Execute(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error)
+	Execute(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *v1alpha1.HPAConfiguration, *Policy, error)
 }
 
 type Recommender interface {
@@ -22,11 +22,7 @@ type Recommender interface {
 // TODO(bharathguvvala): make metric scraper part of this struct
 type RecommendationWorkflowImpl struct {
 	Recommender     Recommender
-	PolicyIterators map[string]PolicyIterator
-}
-
-type SerialRecomendationWorkflow struct {
-	RecommendationWorkflowImpl
+	PolicyIterators []PolicyIterator
 }
 
 type WorkloadMeta struct {
@@ -35,57 +31,68 @@ type WorkloadMeta struct {
 	Namespace string
 }
 
-func NewRecommendationWorkflow() (*SerialRecomendationWorkflow, error) {
-	return &SerialRecomendationWorkflow{
-		RecommendationWorkflowImpl: RecommendationWorkflowImpl{
-			Recommender: MockRecommender{
-				min:       1,
-				threshold: 20,
-				max:       10,
-			},
-			PolicyIterators: nil,
-		},
-	}, nil
+type RecoWorkflowBuilder RecommendationWorkflowImpl
+
+func (b *RecoWorkflowBuilder) AddRecommender(r Recommender) *RecoWorkflowBuilder {
+	if b.Recommender == nil {
+		b.Recommender = r
+		return b
+	}
+	log.Println("Only one recommender must be added. There's already one configured so ignoring this one.")
+	return b
+}
+
+func (b *RecoWorkflowBuilder) AddPolicyIterator(p PolicyIterator) *RecoWorkflowBuilder {
+	b.PolicyIterators = append(b.PolicyIterators, p)
+	return b
+}
+
+func (b *RecoWorkflowBuilder) Build() RecommendationWorkflow {
+	return &RecommendationWorkflowImpl{
+		Recommender:     b.Recommender,
+		PolicyIterators: b.PolicyIterators,
+	}
+}
+
+func NewRecommendationWorkflowBuilder() *RecoWorkflowBuilder {
+	return &RecoWorkflowBuilder{}
 }
 
 type MockRecommender struct {
-	min       int
-	threshold int
-	max       int
+	Min       int
+	Threshold int
+	Max       int
 }
 
-func (r MockRecommender) Recommend(wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
+func (r *MockRecommender) Recommend(wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
 	return &v1alpha1.HPAConfiguration{
-		Min:               r.min,
-		Max:               r.max,
-		TargetMetricValue: r.threshold,
+		Min:               r.Min,
+		Max:               r.Max,
+		TargetMetricValue: r.Threshold,
 	}, nil
-
 }
 
-func (w WorkloadMeta) GetReplicas() (int, error) {
-	//	TODO: query the k8s apiserver fetch the replicas; return a constant for now
-	return 10, nil
-}
-
-func (rw *SerialRecomendationWorkflow) Execute(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *v1alpha1.HPAConfiguration, *Policy, error) {
+func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *v1alpha1.HPAConfiguration, *Policy, error) {
 	if rw.Recommender == nil {
 		return nil, nil, nil, errors.New("No recommenders configured in the workflow.")
 	}
 	recoConfig, err := rw.Recommender.Recommend(wm)
 	if err != nil {
-		log.Println("Error while generating recommendation")
-		// TODO: fallback
+		log.Printf("Error while generating recommendation")
 		return nil, nil, nil, errors.New("Unable to generate recommendation")
 	}
 	var nextPolicy *Policy
-	for name, pi := range rw.PolicyIterators {
+	for i, pi := range rw.PolicyIterators {
+		log.Printf("Running policy iterator %d", i)
 		p, err := pi.NextPolicy(wm)
 		if err != nil {
 			log.Println("Error while generating recommendation")
-			return nil, nil, nil, errors.New(fmt.Sprintf("Unable to generate next policy from policy iterator %s", name))
+			return nil, nil, nil, errors.New(fmt.Sprintf("Unable to generate next policy from policy iterator. Cause: %s", err))
 		}
+		log.Printf("Next Policy recommended by PI %d is %s", i, p.Name)
 		nextPolicy = pickSafestPolicy(nextPolicy, p)
+		log.Printf("Next Policy after applying PI %d is %s", i, nextPolicy.Name)
+
 	}
 
 	nextConfig := generateNextRecoConfig(recoConfig, nextPolicy, wm)
@@ -96,19 +103,15 @@ func generateNextRecoConfig(config *v1alpha1.HPAConfiguration, policy *Policy, w
 	if shouldApplyReco(config, policy) {
 		return config
 	} else {
-		recoConfig, _ := createRecoConfigFromPolicy(policy, wm)
+		recoConfig, _ := createRecoConfigFromPolicy(policy, config, wm)
 		return recoConfig
 	}
 }
 
-func createRecoConfigFromPolicy(policy *Policy, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
-	replicas, err := wm.GetReplicas()
-	if err != nil {
-		return nil, errors.New("Error fetching replicas for workload")
-	}
+func createRecoConfigFromPolicy(policy *Policy, recoConfig *v1alpha1.HPAConfiguration, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
 	return &v1alpha1.HPAConfiguration{
-		Min:               int(math.Ceil(float64(policy.MinReplicaPercentageCut * replicas / 100))),
-		Max:               replicas,
+		Min:               recoConfig.Max - int(math.Ceil(float64(policy.MinReplicaPercentageCut*(recoConfig.Max-recoConfig.Min)/100))),
+		Max:               recoConfig.Max,
 		TargetMetricValue: policy.TargetUtilization,
 	}, nil
 }
@@ -118,7 +121,7 @@ func shouldApplyReco(config *v1alpha1.HPAConfiguration, policy *Policy) bool {
 	if policy == nil {
 		return true
 	}
-	// Returns true if the reco is safer than the next policy
+	// Returns true if the reco is safer than the policy
 	if policy.MinReplicaPercentageCut == 100 && config.TargetMetricValue < policy.TargetUtilization {
 		return true
 	} else {
@@ -127,6 +130,15 @@ func shouldApplyReco(config *v1alpha1.HPAConfiguration, policy *Policy) bool {
 }
 
 func pickSafestPolicy(p1, p2 *Policy) *Policy {
+	// if either or both of the policies are nil
+	if p1 == nil && p2 != nil {
+		return p2
+	} else if p2 == nil && p1 != nil {
+		return p1
+	} else if p1 == nil && p2 == nil {
+		return nil
+	}
+
 	if p1.RiskIndex <= p2.RiskIndex {
 		return p1
 	} else {

@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -27,8 +26,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"time"
 
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 )
@@ -63,7 +62,7 @@ func NewPolicyRecommendationReconciler(client client.Client,
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
 
 func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
+	logger := ctrl.LoggerFrom(ctx).WithName(POLICY_RECO_WORKFLOW_CTRL_NAME)
 
 	policyreco := v1alpha1.PolicyRecommendation{}
 	if err := r.Get(ctx, req.NamespacedName, &policyreco); err != nil {
@@ -73,23 +72,36 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	fmt.Println(policyreco)
+	logger.V(2).Info("PolicyRecomemndation retrieved", "policyreco", policyreco)
+
 	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecoQueuedForExecution", "This workload has been queued for a fresh HPA recommendation.")
 
-	recowf, err := reco.NewRecommendationWorkflow()
-	if err != nil {
-		return ctrl.Result{}, err
-	}
+	//TODO(bharathg): make this config driven
+	recowf := reco.NewRecommendationWorkflowBuilder().
+		AddRecommender(&reco.MockRecommender{
+			Min:       10,
+			Threshold: 60,
+			Max:       60,
+		}).
+		AddPolicyIterator(reco.NewDefaultPolicyIterator(r.Client)).
+		AddPolicyIterator(reco.NewAgingPolicyIterator(r.Client, 60*time.Second)).
+		Build()
+
 	currentreco, targetreco, policy, err := recowf.Execute(ctx, reco.WorkloadMeta{
 		TypeMeta:  policyreco.Spec.WorkloadMeta.TypeMeta,
 		Name:      policyreco.Spec.WorkloadMeta.Name,
 		Namespace: policyreco.Spec.WorkloadMeta.Namespace,
 	})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	var policyName string
 	if policy != nil {
 		policyName = policy.Name
 	}
+
+	transitionedAt := retrieveTransitionTime(currentreco, policyreco)
 	if err := r.Patch(ctx, &v1alpha1.PolicyRecommendation{
 		TypeMeta: policyreco.TypeMeta,
 		ObjectMeta: metav1.ObjectMeta{
@@ -103,7 +115,8 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 			//TODO(bharathguvvala): This will cause a bug when the next queued requests fail to execute due to a controller crash,
 			// and the subsequent restart will not reprocess it. Will need to handle that case
 			QueuedForExecution:   false,
-			QueuedForExecutionAt: metav1.Now(),
+			QueuedForExecutionAt: policyreco.Spec.QueuedForExecutionAt,
+			TransitionedAt:       transitionedAt,
 			GeneratedAt:          metav1.Now(),
 		},
 	}, client.Apply, client.ForceOwnership, client.FieldOwner(POLICY_RECO_WORKFLOW_CTRL_NAME)); err != nil {
@@ -120,11 +133,20 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		Status: v1alpha1.PolicyRecommendationStatus{},
 	}
 	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions()); err != nil {
+		logger.Error(err, "Failed to patch the status")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecommendationGenerated", "The HPA recommendation has been generated successfully.")
+	logger.V(1).Info("Successfully generated HPA Recommendation.")
 	return ctrl.Result{}, nil
+}
+
+func retrieveTransitionTime(currentreco *v1alpha1.HPAConfiguration, policyreco v1alpha1.PolicyRecommendation) metav1.Time {
+	if !currentreco.DeepEquals(policyreco.Spec.CurrentHPAConfiguration) {
+		return metav1.Now()
+	}
+	return policyreco.Spec.TransitionedAt
 }
 
 func getSubresourcePatchOptions() *client.SubResourcePatchOptions {

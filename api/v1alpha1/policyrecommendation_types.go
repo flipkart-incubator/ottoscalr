@@ -27,6 +27,7 @@ type PolicyRecommendationSpec struct {
 	CurrentHPAConfiguration HPAConfiguration `json:"currentHPAConfig,omitempty"`
 	Policy                  string           `json:"policy,omitempty"`
 	GeneratedAt             metav1.Time      `json:"generatedAt,omitempty"`
+	TransitionedAt          metav1.Time      `json:"TransitionedAt,omitempty"`
 	QueuedForExecution      bool             `json:"queuedForExecution,omitempty"`
 	QueuedForExecutionAt    metav1.Time      `json:"queuedForExecutionAt,omitempty"`
 }
@@ -41,6 +42,13 @@ type HPAConfiguration struct {
 	Min               int `json:"min"`
 	Max               int `json:"max"`
 	TargetMetricValue int `json:"targetMetricValue"`
+}
+
+func (h HPAConfiguration) DeepEquals(h2 HPAConfiguration) bool {
+	if h.Min != h2.Min || h.Max != h2.Max || h.TargetMetricValue != h2.TargetMetricValue {
+		return false
+	}
+	return true
 }
 
 // PolicyRecommendationStatus defines the observed state of PolicyRecommendation

@@ -132,6 +132,7 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 				Namespace: instance.GetNamespace(),
 				TypeMeta:  metav1.TypeMeta{Kind: gvk.Kind, APIVersion: gvk.GroupVersion().String()}},
 			Policy:               safestPolicy.Name,
+			TransitionedAt:       metav1.Now(),
 			QueuedForExecution:   true,
 			QueuedForExecutionAt: metav1.Now(),
 		},
