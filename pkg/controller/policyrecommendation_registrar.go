@@ -24,6 +24,8 @@ import (
 	"time"
 )
 
+const POLICY_RECO_REGISTRAR_CTRL_NAME = "PolicyRecommendationRegistrar"
+
 // PolicyRecommendationRegistrar reconciles a Deployment or ArgoRollout
 // object to ensure a PolicyRecommendation exists.
 type PolicyRecommendationRegistrar struct {
@@ -186,7 +188,6 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		Named("PolicyRecommendationRegistrar").
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
@@ -197,5 +198,6 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(createPredicate),
 		).
+		Named(POLICY_RECO_REGISTRAR_CTRL_NAME).
 		Complete(controller)
 }

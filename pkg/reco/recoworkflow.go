@@ -6,6 +6,7 @@ import (
 	"fmt"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"log"
 	"math"
 )
@@ -18,6 +19,7 @@ type Recommender interface {
 	Recommend(wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error)
 }
 
+// TODO(bharathguvvala): make metric scraper part of this struct
 type RecommendationWorkflowImpl struct {
 	Recommender     Recommender
 	PolicyIterators map[string]PolicyIterator
@@ -34,7 +36,6 @@ type WorkloadMeta struct {
 }
 
 func NewRecommendationWorkflow() (*SerialRecomendationWorkflow, error) {
-	//TODO: Implementation
 	return &SerialRecomendationWorkflow{
 		RecommendationWorkflowImpl: RecommendationWorkflowImpl{
 			Recommender: MockRecommender{
@@ -68,6 +69,9 @@ func (w WorkloadMeta) GetReplicas() (int, error) {
 }
 
 func (rw *SerialRecomendationWorkflow) Execute(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *v1alpha1.HPAConfiguration, *Policy, error) {
+	if rw.Recommender == nil {
+		return nil, nil, nil, errors.New("No recommenders configured in the workflow.")
+	}
 	recoConfig, err := rw.Recommender.Recommend(wm)
 	if err != nil {
 		log.Println("Error while generating recommendation")
@@ -84,11 +88,11 @@ func (rw *SerialRecomendationWorkflow) Execute(ctx context.Context, wm WorkloadM
 		nextPolicy = pickSafestPolicy(nextPolicy, p)
 	}
 
-	nextConfig := generateFinalRecoConfig(recoConfig, nextPolicy, wm)
+	nextConfig := generateNextRecoConfig(recoConfig, nextPolicy, wm)
 	return nextConfig, recoConfig, nextPolicy, nil
 }
 
-func generateFinalRecoConfig(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) *v1alpha1.HPAConfiguration {
+func generateNextRecoConfig(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) *v1alpha1.HPAConfiguration {
 	if shouldApplyReco(config, policy) {
 		return config
 	} else {

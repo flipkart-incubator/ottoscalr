@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -72,7 +73,8 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecoQueuedForExecution", "This workload has been queued for execution.")
+	fmt.Println(policyreco)
+	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecoQueuedForExecution", "This workload has been queued for a fresh HPA recommendation.")
 
 	recowf, err := reco.NewRecommendationWorkflow()
 	if err != nil {
@@ -100,7 +102,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 			CurrentHPAConfiguration: *currentreco,
 			//TODO(bharathguvvala): This will cause a bug when the next queued requests fail to execute due to a controller crash,
 			// and the subsequent restart will not reprocess it. Will need to handle that case
-			//QueuedForExecution:   false,
+			QueuedForExecution:   false,
 			QueuedForExecutionAt: metav1.Now(),
 			GeneratedAt:          metav1.Now(),
 		},
