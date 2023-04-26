@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 	"github.com/prometheus/client_golang/api"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 )
+
+const MetricIngestionTime = 15.0
+const MetricProbeTime = 15.0
 
 // Scraper is an interface for scraping metrics data.
 type Scraper interface {
@@ -25,6 +30,10 @@ type Scraper interface {
 		start time.Time,
 		end time.Time,
 		step time.Duration) ([]float64, error)
+
+	GetPodReadyLatencyByWorkload(namespace,
+		workload string,
+	) (float64, error)
 }
 
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
@@ -42,6 +51,35 @@ type MetricNameRegistry struct {
 	replicaSetOwnerMetric string
 	hpaMaxReplicasMetric  string
 	hpaOwnerInfoMetric    string
+	podCreatedTimeMetric  string
+	podReadyTimeMetric    string
+}
+
+type ACLComponents struct {
+	scraper             *PrometheusScraper
+	metricIngestionTime float64
+	metricProbeTime     float64
+}
+
+func NewACLComponent(ps *PrometheusScraper) *ACLComponents {
+	metricIngestionTime := MetricIngestionTime
+	metricProbeTime := MetricProbeTime
+
+	return &ACLComponents{
+		scraper:             ps,
+		metricIngestionTime: metricIngestionTime,
+		metricProbeTime:     metricProbeTime,
+	}
+
+}
+
+func (ac *ACLComponents) GetACLByWorkload(namespace string, workload string) (float64, error) {
+	podBootStrapTime, err := ac.scraper.GetPodReadyLatencyByWorkload(namespace, workload)
+	if err != nil {
+		return 0.0, fmt.Errorf("error getting pod bootstrap time: %v", err)
+	}
+	totalACL := ac.metricIngestionTime + ac.metricProbeTime + podBootStrapTime
+	return totalACL, nil
 }
 
 func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
@@ -52,6 +90,8 @@ func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
 	replicaSetOwnerMetric := "kube_replicaset_owner"
 	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
 	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
+	podCreatedTimeMetric := "kube_pod_created"
+	podReadyTimeMetric := "alm_kube_pod_ready_time"
 
 	return &MetricNameRegistry{utilizationMetric: cpuUtilizationMetric,
 		podOwnerMetric:        podOwnerMetric,
@@ -60,6 +100,8 @@ func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
 		replicaSetOwnerMetric: replicaSetOwnerMetric,
 		hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
 		hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
+		podCreatedTimeMetric:  podCreatedTimeMetric,
+		podReadyTimeMetric:    podReadyTimeMetric,
 	}
 }
 
@@ -202,4 +244,39 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		}
 	}
 	return dataPoints, nil
+}
+
+func (ps *PrometheusScraper) GetPodReadyLatencyByWorkload(namespace string,
+	workload string,
+) (float64, error) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
+	defer cancel()
+
+	query := fmt.Sprintf("min((%s"+
+		"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload, workload_type)"+
+		"(%s{namespace=\"%s\", workload=\"%s\","+
+		" workload_type=\"deployment\"}))",
+		ps.metricRegistry.podReadyTimeMetric,
+		namespace,
+		ps.metricRegistry.podCreatedTimeMetric,
+		namespace,
+		ps.metricRegistry.podOwnerMetric,
+		namespace,
+		workload)
+
+	result, _, err := ps.api.Query(ctx, query, time.Now())
+
+	if err != nil {
+		return 0.0, fmt.Errorf("failed to execute Prometheus query: %v", err)
+	}
+	if len(result.String()) == 0 {
+		return 0.0, fmt.Errorf("failed to get result from query: %v", err)
+	}
+	podBootstrapTime, err := strconv.ParseFloat(strings.Split(strings.Split(result.String(), "=> ")[1], " @")[0], 32)
+	if err != nil {
+		return 0.0, fmt.Errorf("failed to get time in required format: %v", err)
+	}
+
+	return podBootstrapTime, nil
 }

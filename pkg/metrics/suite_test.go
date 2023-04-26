@@ -52,8 +52,12 @@ var (
 	replicaSetOwnerMetric *prometheus.GaugeVec
 	hpaMaxReplicasMetric  *prometheus.GaugeVec
 	hpaOwnerInfoMetric    *prometheus.GaugeVec
+	podCreatedTimeMetric  *prometheus.GaugeVec
+	podReadyTimeMetric    *prometheus.GaugeVec
 
 	scraper *PrometheusScraper
+
+	acl *ACLComponents
 )
 
 var _ = BeforeSuite(func() {
@@ -73,6 +77,8 @@ var _ = BeforeSuite(func() {
 	replicaSetOwnerMetric := "kube_replicaset_owner"
 	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
 	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
+	podCreatedTimeMetric := "kube_pod_created"
+	podReadyTimeMetric := "alm_kube_pod_ready_time"
 
 	scraper = &PrometheusScraper{api: v1.NewAPI(client),
 		metricRegistry: &MetricNameRegistry{
@@ -83,8 +89,14 @@ var _ = BeforeSuite(func() {
 			replicaSetOwnerMetric: replicaSetOwnerMetric,
 			hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
 			hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
+			podCreatedTimeMetric:  podCreatedTimeMetric,
+			podReadyTimeMetric:    podReadyTimeMetric,
 		},
 		queryTimeout: 30 * time.Second}
+
+	acl = &ACLComponents{scraper: scraper,
+		metricIngestionTime: MetricIngestionTime,
+		metricProbeTime:     MetricProbeTime}
 
 	go func() {
 		metricsAddress = "localhost:9091"
@@ -151,6 +163,16 @@ func registerMetrics() {
 		Help: "Test metric for hpa owner",
 	}, []string{"namespace", "horizontalpodautoscaler", "scaletargetref_kind", "scaletargetref_name"})
 
+	podCreatedTimeMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_pod_created",
+		Help: "Test metric pod created",
+	}, []string{"namespace", "pod"})
+
+	podReadyTimeMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "alm_kube_pod_ready_time",
+		Help: "Test metric pod ready",
+	}, []string{"namespace", "pod"})
+
 	registry.MustRegister(cpuUsageMetric)
 	registry.MustRegister(kubePodOwnerMetric)
 	registry.MustRegister(resourceLimitMetric)
@@ -158,4 +180,6 @@ func registerMetrics() {
 	registry.MustRegister(replicaSetOwnerMetric)
 	registry.MustRegister(hpaMaxReplicasMetric)
 	registry.MustRegister(hpaOwnerInfoMetric)
+	registry.MustRegister(podCreatedTimeMetric)
+	registry.MustRegister(podReadyTimeMetric)
 }
