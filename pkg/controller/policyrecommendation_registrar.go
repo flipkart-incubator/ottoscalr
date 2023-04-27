@@ -208,10 +208,7 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 	return ctrl.NewControllerManagedBy(mgr).
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
-			&handler.EnqueueRequestForOwner{
-				OwnerType:    &argov1alpha1.Rollout{},
-				IsController: true,
-			},
+			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(createPredicate),
 		).
 		Watches(
