@@ -36,9 +36,6 @@ spec:
           spec:
             description: PolicyRecommendationSpec defines the desired state of PolicyRecommendation
             properties:
-              TransitionedAt:
-                format: date-time
-                type: string
               currentHPAConfig:
                 properties:
                   max:
@@ -75,6 +72,9 @@ spec:
                 - min
                 - targetMetricValue
                 type: object
+              transitionedAt:
+                format: date-time
+                type: string
               workload:
                 properties:
                   apiVersion:
