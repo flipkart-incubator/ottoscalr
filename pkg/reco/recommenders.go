@@ -20,8 +20,8 @@ type Recommender interface {
 }
 
 type RecommendationWorkflowImpl struct {
-	Recommender     Recommender
-	PolicyIterators map[string]PolicyIterator
+	recommender     Recommender
+	policyIterators map[string]PolicyIterator
 	logger          logr.Logger
 }
 
@@ -33,21 +33,21 @@ type WorkloadMeta struct {
 
 type RecoWorkflowBuilder RecommendationWorkflowImpl
 
-func (b *RecoWorkflowBuilder) AddRecommender(r Recommender) *RecoWorkflowBuilder {
-	if b.Recommender == nil {
-		b.Recommender = r
+func (b *RecoWorkflowBuilder) WithRecommender(r Recommender) *RecoWorkflowBuilder {
+	if b.recommender == nil {
+		b.recommender = r
 		return b
 	}
 	log.Println("Only one recommender must be added. There's already one configured so ignoring this one.")
 	return b
 }
 
-func (b *RecoWorkflowBuilder) AddPolicyIterator(name string, p PolicyIterator) *RecoWorkflowBuilder {
-	if b.PolicyIterators == nil {
-		b.PolicyIterators = make(map[string]PolicyIterator)
-		b.PolicyIterators[name] = p
-	} else if _, ok := b.PolicyIterators[name]; !ok {
-		b.PolicyIterators[name] = p
+func (b *RecoWorkflowBuilder) WithPolicyIterator(name string, p PolicyIterator) *RecoWorkflowBuilder {
+	if b.policyIterators == nil {
+		b.policyIterators = make(map[string]PolicyIterator)
+		b.policyIterators[name] = p
+	} else if _, ok := b.policyIterators[name]; !ok {
+		b.policyIterators[name] = p
 	}
 	return b
 }
@@ -66,8 +66,8 @@ func (b *RecoWorkflowBuilder) Build() RecommendationWorkflow {
 		b.logger = zap.New()
 	}
 	return &RecommendationWorkflowImpl{
-		Recommender:     b.Recommender,
-		PolicyIterators: b.PolicyIterators,
+		recommender:     b.recommender,
+		policyIterators: b.policyIterators,
 		logger:          b.logger,
 	}
 }
@@ -91,16 +91,16 @@ func (r *MockRecommender) Recommend(wm WorkloadMeta) (*v1alpha1.HPAConfiguration
 }
 
 func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *v1alpha1.HPAConfiguration, *Policy, error) {
-	if rw.Recommender == nil {
+	if rw.recommender == nil {
 		return nil, nil, nil, errors.New("No recommenders configured in the workflow.")
 	}
-	recoConfig, err := rw.Recommender.Recommend(wm)
+	recoConfig, err := rw.recommender.Recommend(wm)
 	if err != nil {
 		rw.logger.Error(err, "Error while generating recommendation")
 		return nil, nil, nil, errors.New("Unable to generate recommendation")
 	}
 	var nextPolicy *Policy
-	for i, pi := range rw.PolicyIterators {
+	for i, pi := range rw.policyIterators {
 		rw.logger.V(0).Info("Running policy iterator", "iterator", i)
 		p, err := pi.NextPolicy(wm)
 		if err != nil {

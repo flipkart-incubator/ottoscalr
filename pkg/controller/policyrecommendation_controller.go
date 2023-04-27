@@ -80,13 +80,13 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	//TODO(bharathg): make this config driven
 	recowf := reco.NewRecommendationWorkflowBuilder().
-		AddRecommender(&reco.MockRecommender{
+		WithRecommender(&reco.MockRecommender{
 			Min:       10,
 			Threshold: 60,
 			Max:       60,
 		}).
-		AddPolicyIterator("DefaultPolicy", reco.NewDefaultPolicyIterator(r.Client)).
-		AddPolicyIterator("Aging", reco.NewAgingPolicyIterator(r.Client, 60*time.Second)).
+		WithPolicyIterator("DefaultPolicy", reco.NewDefaultPolicyIterator(r.Client)).
+		WithPolicyIterator("Aging", reco.NewAgingPolicyIterator(r.Client, 60*time.Second)).
 		WithLogger(logger.WithName("RecoWorkflow")).
 		Build()
 

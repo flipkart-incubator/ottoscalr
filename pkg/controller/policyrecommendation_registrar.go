@@ -15,6 +15,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -60,14 +61,14 @@ func NewPolicyRecommendationRegistrar(client client.Client,
 func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	request ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger = logger.WithValues("request", request)
+	logger = logger.WithValues("request", request).WithName(POLICY_RECO_REGISTRAR_CTRL_NAME)
 
 	// Check if Rollout exists
 	rollout := argov1alpha1.Rollout{}
 	err := controller.Client.Get(ctx, request.NamespacedName, &rollout)
 	if err == nil {
 		// Rollout exists, create policy recommendation
-		return ctrl.Result{}, controller.handleReconcile(ctx, &rollout, logger)
+		return ctrl.Result{}, controller.handleReconcile(ctx, &rollout, controller.Scheme, logger)
 	}
 
 	if !errors.IsNotFound(err) {
@@ -81,7 +82,7 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	err = controller.Client.Get(ctx, request.NamespacedName, &deployment)
 	if err == nil {
 		// Deployment exists, create policy recommendation
-		return ctrl.Result{}, controller.handleReconcile(ctx, &deployment, logger)
+		return ctrl.Result{}, controller.handleReconcile(ctx, &deployment, controller.Scheme, logger)
 	}
 
 	if !errors.IsNotFound(err) {
@@ -96,6 +97,7 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 	ctx context.Context,
 	instance client.Object,
+	scheme *runtime.Scheme,
 	logger logr.Logger) (*ottoscaleriov1alpha1.PolicyRecommendation, error) {
 
 	// Check if a PolicyRecommendation object already exists
@@ -122,9 +124,6 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.GetName(),
 			Namespace: instance.GetNamespace(),
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(instance, gvk),
-			},
 		},
 		Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
 			WorkloadMeta: ottoscaleriov1alpha1.WorkloadMeta{
@@ -137,6 +136,8 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 			QueuedForExecutionAt: metav1.Now(),
 		},
 	}
+
+	controllerutil.SetControllerReference(instance, newPolicyRecommendation, scheme)
 
 	err = controller.Client.Create(ctx, newPolicyRecommendation)
 	if err != nil {
@@ -152,9 +153,10 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 
 func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Context,
 	object client.Object,
+	scheme *runtime.Scheme,
 	logger logr.Logger) error {
 
-	_, err := controller.createPolicyRecommendation(ctx, object, logger)
+	_, err := controller.createPolicyRecommendation(ctx, object, scheme, logger)
 
 	if err == nil {
 		controller.MonitorManager.RegisterMonitor(object.GetObjectKind().GroupVersionKind().Kind,
@@ -183,6 +185,21 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 		},
 	}
 
+	deletePredicate := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return true
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return false
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+
 	enqueueFunc := func(obj client.Object) []reconcile.Request {
 		return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: obj.GetName(),
 			Namespace: obj.GetNamespace()}}}
@@ -191,13 +208,32 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 	return ctrl.NewControllerManagedBy(mgr).
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
-			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
+			&handler.EnqueueRequestForOwner{
+				OwnerType:    &argov1alpha1.Rollout{},
+				IsController: true,
+			},
 			builder.WithPredicates(createPredicate),
 		).
 		Watches(
 			&source.Kind{Type: &appsv1.Deployment{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(createPredicate),
+		).
+		Watches(
+			&source.Kind{Type: &ottoscaleriov1alpha1.PolicyRecommendation{}},
+			&handler.EnqueueRequestForOwner{
+				OwnerType:    &argov1alpha1.Rollout{},
+				IsController: true,
+			},
+			builder.WithPredicates(deletePredicate),
+		).
+		Watches(
+			&source.Kind{Type: &ottoscaleriov1alpha1.PolicyRecommendation{}},
+			&handler.EnqueueRequestForOwner{
+				OwnerType:    &appsv1.Deployment{},
+				IsController: true,
+			},
+			builder.WithPredicates(deletePredicate),
 		).
 		Named(POLICY_RECO_REGISTRAR_CTRL_NAME).
 		Complete(controller)
