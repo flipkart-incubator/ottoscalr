@@ -272,9 +272,6 @@ func (ps *PrometheusScraper) GetPodReadyLatencyByWorkload(namespace string,
 	}
 
 	podBootstrapTime := float64(matrix[0].Value)
-	if err != nil {
-		return 0.0, fmt.Errorf("")
-	}
 
 	return podBootstrapTime, nil
 }
