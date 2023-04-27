@@ -84,6 +84,8 @@ type Config struct {
 	PolicyRecommendationRegistrar struct {
 		RequeueDelayMs int `yaml:"requeueDelayMs"`
 	} `yaml:"policyRecommendationRegistrar"`
+	MetricIngestionTime float64 `yaml:"metricIngestionTime"`
+	MetricProbeTime     float64 `yaml:"metricProbeTime"`
 }
 
 func main() {

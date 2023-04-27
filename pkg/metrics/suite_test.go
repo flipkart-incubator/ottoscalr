@@ -94,9 +94,11 @@ var _ = BeforeSuite(func() {
 		},
 		queryTimeout: 30 * time.Second}
 
+	metricIngestionTime := 15.0
+	metricProbeTime := 15.0
 	acl = &ACLComponents{scraper: scraper,
-		metricIngestionTime: MetricIngestionTime,
-		metricProbeTime:     MetricProbeTime}
+		metricIngestionTime: metricIngestionTime,
+		metricProbeTime:     metricProbeTime}
 
 	go func() {
 		metricsAddress = "localhost:9091"

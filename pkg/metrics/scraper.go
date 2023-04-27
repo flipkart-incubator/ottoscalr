@@ -4,16 +4,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/prometheus/client_golang/api"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 )
-
-const MetricIngestionTime = 15.0
-const MetricProbeTime = 15.0
 
 // Scraper is an interface for scraping metrics data.
 type Scraper interface {
@@ -61,10 +56,7 @@ type ACLComponents struct {
 	metricProbeTime     float64
 }
 
-func NewACLComponent(ps *PrometheusScraper) *ACLComponents {
-	metricIngestionTime := MetricIngestionTime
-	metricProbeTime := MetricProbeTime
-
+func NewACLComponent(ps *PrometheusScraper, metricIngestionTime float64, metricProbeTime float64) *ACLComponents {
 	return &ACLComponents{
 		scraper:             ps,
 		metricIngestionTime: metricIngestionTime,
@@ -270,12 +262,18 @@ func (ps *PrometheusScraper) GetPodReadyLatencyByWorkload(namespace string,
 	if err != nil {
 		return 0.0, fmt.Errorf("failed to execute Prometheus query: %v", err)
 	}
-	if len(result.String()) == 0 {
-		return 0.0, fmt.Errorf("failed to get result from query: %v", err)
+	if result.Type() != model.ValVector {
+		return 0.0, fmt.Errorf("unexpected result type: %v", result.Type())
 	}
-	podBootstrapTime, err := strconv.ParseFloat(strings.Split(strings.Split(result.String(), "=> ")[1], " @")[0], 32)
+	matrix := result.(model.Vector)
+
+	if len(matrix) != 1 {
+		return 0.0, fmt.Errorf("unexpected no of time series: %v", len(matrix))
+	}
+
+	podBootstrapTime := float64(matrix[0].Value)
 	if err != nil {
-		return 0.0, fmt.Errorf("failed to get time in required format: %v", err)
+		return 0.0, fmt.Errorf("")
 	}
 
 	return podBootstrapTime, nil
