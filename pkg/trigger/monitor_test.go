@@ -31,6 +31,11 @@ func (fs *FakeScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	return []float64{1.3}, nil
 }
 
+func (fs *FakeScraper) GetPodReadyLatencyByWorkload(namespace,
+	workload string) (float64, error) {
+	return 0.0, nil
+}
+
 var _ = Describe("PolicyRecommendationMonitorManager and Monitor", func() {
 	var (
 		manager            *PolicyRecommendationMonitorManager

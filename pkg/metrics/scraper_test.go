@@ -79,6 +79,39 @@ var _ = Describe("PrometheusScraper", func() {
 		})
 	})
 
+	Context("when querying GetACLByWorkload", func() {
+		It("should return correct ACL", func() {
+
+			By("creating a metric before queryRange window")
+
+			podCreatedTimeMetric.WithLabelValues("test-ns-1", "test-pod-1").Set(45)
+			podCreatedTimeMetric.WithLabelValues("test-ns-1", "test-pod-2").Set(55)
+			podCreatedTimeMetric.WithLabelValues("test-ns-1", "test-pod-3").Set(65)
+			podCreatedTimeMetric.WithLabelValues("test-ns-2", "test-pod-4").Set(75)
+
+			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-1").Set(50)
+			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-2").Set(70)
+			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-3").Set(80)
+			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-4").Set(100)
+
+			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-workload-1", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-workload-2", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-workload-3", "deployment").Set(1)
+
+			//wait for the metric to be scraped - scraping interval is 1s
+			time.Sleep(2 * time.Second)
+
+			autoscalingLag1, err := acl.GetACLByWorkload("test-ns-1", "test-workload-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(autoscalingLag1).To(Equal(35.0))
+
+			autoscalingLag2, err := acl.GetACLByWorkload("test-ns-2", "test-workload-3")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(autoscalingLag2).To(Equal(55.0))
+		})
+	})
+
 	Context("when querying GetCPUUtilizationBreachDataPoints", func() {
 		It("should return correct data points when workload is a deployment", func() {
 			cpuUsageMetric.WithLabelValues("dep-test-ns-1", "dep-test-pod-1", "dep-test-node-1", "dep-test-container-1").Set(14)
