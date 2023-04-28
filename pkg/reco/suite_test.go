@@ -63,8 +63,7 @@ func (fs *FakeScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	datapoint := metrics.DataPoint{Timestamp: time.Now(), Value: 1.3}
 	return []metrics.DataPoint{datapoint}, nil
 }
-func (fs *FakeScraper) GetACL(namespace,
-	workloadType,
+func (fs *FakeScraper) GetACLByWorkload(namespace,
 	workload string) (time.Duration, error) {
 	return 5 * time.Minute, nil
 }

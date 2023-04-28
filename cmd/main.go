@@ -93,6 +93,8 @@ type Config struct {
 		MinTarget          int `yaml:"minTarget"`
 		MaxTarget          int `yaml:"minTarget"`
 	} `yaml:"cpuUtilizationBasedRecommender"`
+	MetricIngestionTime float64 `yaml:"metricIngestionTime"`
+	MetricProbeTime     float64 `yaml:"metricProbeTime"`
 }
 
 func main() {
@@ -155,6 +157,8 @@ func main() {
 	scraper, err := metrics.NewPrometheusScraper(config.MetricsScraper.PrometheusUrl,
 		time.Duration(config.MetricsScraper.QueryTimeoutSec)*time.Second,
 		time.Duration(config.MetricsScraper.QuerySplitIntervalHr)*time.Hour,
+		config.MetricIngestionTime,
+		config.MetricProbeTime,
 	)
 	if err != nil {
 		setupLog.Error(err, "unable to start prometheus scraper")

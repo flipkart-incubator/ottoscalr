@@ -67,7 +67,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(workloadSpec v1alpha1.Workloa
 		return nil, nil
 	}
 
-	acl, err := c.scraper.GetACL(workloadSpec.Namespace, workloadSpec.Kind, workloadSpec.Name)
+	acl, err := c.scraper.GetACLByWorkload(workloadSpec.Namespace, workloadSpec.Name)
 	if err != nil {
 		c.logger.Error(err, "Error while getting GetACL.")
 		return nil, nil

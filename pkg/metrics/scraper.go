@@ -31,17 +31,18 @@ type Scraper interface {
 		end time.Time,
 		step time.Duration) ([]DataPoint, error)
 
-	GetACL(namespace,
-		workloadType,
+	GetACLByWorkload(namespace,
 		workload string) (time.Duration, error)
 }
 
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
 type PrometheusScraper struct {
-	api                v1.API
-	metricRegistry     *MetricNameRegistry
-	queryTimeout       time.Duration
-	rangeQuerySplitter *RangeQuerySplitter
+	api                 v1.API
+	metricRegistry      *MetricNameRegistry
+	queryTimeout        time.Duration
+	rangeQuerySplitter  *RangeQuerySplitter
+	metricIngestionTime float64
+	metricProbeTime     float64
 }
 
 type MetricNameRegistry struct {
@@ -52,6 +53,17 @@ type MetricNameRegistry struct {
 	replicaSetOwnerMetric string
 	hpaMaxReplicasMetric  string
 	hpaOwnerInfoMetric    string
+	podCreatedTimeMetric  string
+	podReadyTimeMetric    string
+}
+
+func (ps *PrometheusScraper) GetACLByWorkload(namespace string, workload string) (time.Duration, error) {
+	podBootStrapTime, err := ps.getPodReadyLatencyByWorkload(namespace, workload)
+	if err != nil {
+		return 0.0, fmt.Errorf("error getting pod bootstrap time: %v", err)
+	}
+	totalACL := ps.metricIngestionTime + ps.metricProbeTime + podBootStrapTime
+	return time.Duration(totalACL) * time.Second, nil
 }
 
 func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
@@ -62,6 +74,8 @@ func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
 	replicaSetOwnerMetric := "kube_replicaset_owner"
 	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
 	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
+	podCreatedTimeMetric := "kube_pod_created"
+	podReadyTimeMetric := "alm_kube_pod_ready_time"
 
 	return &MetricNameRegistry{utilizationMetric: cpuUtilizationMetric,
 		podOwnerMetric:        podOwnerMetric,
@@ -70,12 +84,18 @@ func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
 		replicaSetOwnerMetric: replicaSetOwnerMetric,
 		hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
 		hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
+		podCreatedTimeMetric:  podCreatedTimeMetric,
+		podReadyTimeMetric:    podReadyTimeMetric,
 	}
 }
 
 // NewPrometheusScraper returns a new PrometheusScraper instance.
 
-func NewPrometheusScraper(apiURL string, timeout time.Duration, splitInterval time.Duration) (*PrometheusScraper, error) {
+func NewPrometheusScraper(apiURL string,
+	timeout time.Duration,
+	splitInterval time.Duration,
+	metricIngestionTime float64,
+	metricProbeTime float64) (*PrometheusScraper, error) {
 
 	client, err := api.NewClient(api.Config{
 		Address: apiURL,
@@ -87,10 +107,11 @@ func NewPrometheusScraper(apiURL string, timeout time.Duration, splitInterval ti
 
 	v1Api := v1.NewAPI(client)
 	return &PrometheusScraper{api: v1Api,
-			metricRegistry:     NewKubePrometheusMetricNameRegistry(),
-			queryTimeout:       timeout,
-			rangeQuerySplitter: NewRangeQuerySplitter(v1Api, splitInterval)},
-		nil
+		metricRegistry:      NewKubePrometheusMetricNameRegistry(),
+		queryTimeout:        timeout,
+		rangeQuerySplitter:  NewRangeQuerySplitter(v1Api, splitInterval),
+		metricProbeTime:     metricProbeTime,
+		metricIngestionTime: metricIngestionTime}, nil
 }
 
 // GetAverageCPUUtilizationByWorkload returns the average CPU utilization for the given workload type and name in the
@@ -213,13 +234,6 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	return dataPoints, nil
 }
 
-// TODO: @neerajb remove this Dummy implementation of GetACL
-func (ps *PrometheusScraper) GetACL(namespace,
-	workloadType,
-	workload string) (time.Duration, error) {
-	return 5 * time.Minute, nil
-}
-
 // RangeQuerySplitter splits a given queryRange into multiple range queries of width splitInterval. This is done to
 // avoid loading too many samples into P8s memory.
 type RangeQuerySplitter struct {
@@ -288,4 +302,39 @@ func mergeMatrices(matrixA, matrixB model.Matrix) model.Matrix {
 	}
 
 	return resultMatrix
+}
+func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, workload string) (float64, error) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
+	defer cancel()
+
+	query := fmt.Sprintf("min((%s"+
+		"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload, workload_type)"+
+		"(%s{namespace=\"%s\", workload=\"%s\","+
+		" workload_type=\"deployment\"}))",
+		ps.metricRegistry.podReadyTimeMetric,
+		namespace,
+		ps.metricRegistry.podCreatedTimeMetric,
+		namespace,
+		ps.metricRegistry.podOwnerMetric,
+		namespace,
+		workload)
+
+	result, _, err := ps.api.Query(ctx, query, time.Now())
+
+	if err != nil {
+		return 0.0, fmt.Errorf("failed to execute Prometheus query: %v", err)
+	}
+	if result.Type() != model.ValVector {
+		return 0.0, fmt.Errorf("unexpected result type: %v", result.Type())
+	}
+	matrix := result.(model.Vector)
+
+	if len(matrix) != 1 {
+		return 0.0, fmt.Errorf("unexpected no of time series: %v", len(matrix))
+	}
+
+	podBootstrapTime := float64(matrix[0].Value)
+
+	return podBootstrapTime, nil
 }
