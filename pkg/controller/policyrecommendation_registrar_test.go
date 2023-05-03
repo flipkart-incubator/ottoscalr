@@ -155,7 +155,6 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 	})
 
 	When("A PolicyRecommendation is deleted", func() {
-		By("An out of band delete operation")
 		var deployment *appsv1.Deployment
 		var createdPolicy *ottoscaleriov1alpha1.PolicyRecommendation
 
