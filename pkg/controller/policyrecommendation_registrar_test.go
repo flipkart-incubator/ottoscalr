@@ -56,7 +56,6 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 					},
 				},
 			}
-
 			Expect(k8sClient.Create(ctx, rollout)).Should(Succeed())
 			createdRollout := &rolloutv1alpha1.Rollout{}
 			createdPolicy := &ottoscaleriov1alpha1.PolicyRecommendation{}
