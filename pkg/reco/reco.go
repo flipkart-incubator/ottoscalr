@@ -97,6 +97,13 @@ type TimerEvent struct {
 	Delta     float64
 }
 
+// simulateHPA simulates the operation of HPA by adding a delay of amount Autoscaling Cycle Lag (ACL)
+// to all upscale events. It takes as input
+// dataPoints - sum of cpu utilization data points for a workload.
+// acl - Autoscaling Cycle Lag for the workload
+// perPodResources - these are required ot more accurately mimic the working of HPA by making the available resources
+// multiples of perPodResources.
+
 func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPoint,
 	acl time.Duration,
 	targetUtilization int,
@@ -121,11 +128,12 @@ func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPo
 	simulatedDataPoints[0] = metrics.DataPoint{Timestamp: dataPoints[0].Timestamp,
 		Value: currentResources * c.redLineUtil}
 
+	//stores the list of all upscale events with a time delay of acl added.
 	readyResourcesTimerList := []TimerEvent{}
 
 	for i, dp := range dataPoints[1:] {
 
-		// Consume timers before the current time
+		// Consume timers for all upscale events before the current time.
 		for len(readyResourcesTimerList) > 0 && !dp.Timestamp.Before(readyResourcesTimerList[0].Timestamp) {
 			readyResources += readyResourcesTimerList[0].Delta
 			readyResourcesTimerList = readyResourcesTimerList[1:]
