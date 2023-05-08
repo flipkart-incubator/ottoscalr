@@ -26,10 +26,10 @@ type PolicyRecommendationSpec struct {
 	TargetHPAConfiguration  HPAConfiguration `json:"targetHPAConfig,omitempty"`
 	CurrentHPAConfiguration HPAConfiguration `json:"currentHPAConfig,omitempty"`
 	Policy                  string           `json:"policy,omitempty"`
-	GeneratedAt             metav1.Time      `json:"generatedAt,omitempty"`
-	TransitionedAt          metav1.Time      `json:"transitionedAt,omitempty"`
+	GeneratedAt             *metav1.Time     `json:"generatedAt,omitempty"`
+	TransitionedAt          *metav1.Time     `json:"transitionedAt,omitempty"`
 	QueuedForExecution      bool             `json:"queuedForExecution,omitempty"`
-	QueuedForExecutionAt    metav1.Time      `json:"queuedForExecutionAt,omitempty"`
+	QueuedForExecutionAt    *metav1.Time     `json:"queuedForExecutionAt,omitempty"`
 }
 
 type WorkloadMeta struct {

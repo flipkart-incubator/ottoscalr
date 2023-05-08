@@ -17,7 +17,9 @@ limitations under the License.
 package controller
 
 import (
+	"errors"
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	. "github.com/onsi/ginkgo/v2"
@@ -25,6 +27,7 @@ import (
 	"golang.org/x/net/context"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"time"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"testing"
@@ -50,6 +53,8 @@ var (
 
 	queuedAllRecos = false
 )
+
+const policyAge = 1 * time.Second
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -89,7 +94,7 @@ var _ = BeforeSuite(func() {
 		Client:         k8sManager.GetClient(),
 		Scheme:         k8sManager.GetScheme(),
 		MonitorManager: &FakeMonitorManager{},
-		PolicyStore:    &FakePolicyStore{},
+		PolicyStore:    newFakePolicyStore(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -100,6 +105,15 @@ var _ = BeforeSuite(func() {
 			queuedAllRecos = true
 		},
 	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = NewPolicyRecommendationReconciler(k8sManager.GetClient(),
+		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(POLICY_RECO_WORKFLOW_CTRL_NAME),
+		1, &reco.MockRecommender{
+			Min:       10,
+			Threshold: 60,
+			Max:       60,
+		}, reco.NewDefaultPolicyIterator(logger, k8sManager.GetClient()), reco.NewAgingPolicyIterator(logger, k8sManager.GetClient(), policyAge)).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {
@@ -127,20 +141,73 @@ func (f *FakeMonitorManager) RegisterMonitor(workloadType string,
 func (f *FakeMonitorManager) DeregisterMonitor(workload types.NamespacedName) {}
 func (f *FakeMonitorManager) Shutdown()                                       {}
 
-type FakePolicyStore struct{}
+type FakePolicyStore struct {
+	policies []ottoscaleriov1alpha1.Policy
+}
+
+func newFakePolicyStore() *FakePolicyStore {
+	fakepolicies := []ottoscaleriov1alpha1.Policy{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "safest-policy"},
+			Spec: ottoscaleriov1alpha1.PolicySpec{
+				IsDefault:               false,
+				RiskIndex:               1,
+				MinReplicaPercentageCut: 80,
+				TargetUtilization:       10,
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "policy-1"},
+			Spec: ottoscaleriov1alpha1.PolicySpec{
+				IsDefault:               false,
+				RiskIndex:               10,
+				MinReplicaPercentageCut: 100,
+				TargetUtilization:       15,
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "policy-2"},
+			Spec: ottoscaleriov1alpha1.PolicySpec{
+				IsDefault:               false,
+				RiskIndex:               20,
+				MinReplicaPercentageCut: 100,
+				TargetUtilization:       20,
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "policy-3"},
+			Spec: ottoscaleriov1alpha1.PolicySpec{
+				IsDefault:               true,
+				RiskIndex:               30,
+				MinReplicaPercentageCut: 100,
+				TargetUtilization:       30,
+			},
+		}, {
+			ObjectMeta: metav1.ObjectMeta{Name: "policy-4"},
+			Spec: ottoscaleriov1alpha1.PolicySpec{
+				IsDefault:               false,
+				RiskIndex:               40,
+				MinReplicaPercentageCut: 100,
+				TargetUtilization:       40,
+			},
+		},
+	}
+	return &FakePolicyStore{policies: fakepolicies}
+}
 
 func (ps *FakePolicyStore) GetSafestPolicy() (*ottoscaleriov1alpha1.Policy, error) {
-	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
-		Name: "safestPolicy",
-	}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
+	return &ps.policies[0], nil
 
 }
 
 func (ps *FakePolicyStore) GetDefaultPolicy() (*ottoscaleriov1alpha1.Policy, error) {
-	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
-		Name: "safestPolicy",
-	}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
+	for _, policy := range ps.policies {
+		if policy.Spec.IsDefault {
+			return &policy, nil
+		}
+	}
 
+	return nil, errors.New("No default policy found")
 }
 
 func (ps *FakePolicyStore) GetNextPolicy(currentPolicy *ottoscaleriov1alpha1.Policy) (*ottoscaleriov1alpha1.Policy,

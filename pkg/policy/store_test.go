@@ -9,15 +9,21 @@ import (
 
 var _ = Describe("PolicyStore", func() {
 
+	var policies []v1alpha1.Policy
+	AfterEach(func() {
+		for _, policy := range policies {
+			Expect(k8sClient.Delete(ctx, &policy)).Should(Succeed())
+		}
+	})
 	It("should get the safest policy and next policy", func() {
 		By("creating policies")
-		policies := []v1alpha1.Policy{
+		policies = []v1alpha1.Policy{
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "policy1",
 				},
 				Spec: v1alpha1.PolicySpec{
-					RiskIndex:               "1",
+					RiskIndex:               1,
 					MinReplicaPercentageCut: 1,
 					TargetUtilization:       60,
 				},
@@ -27,7 +33,7 @@ var _ = Describe("PolicyStore", func() {
 					Name: "policy2",
 				},
 				Spec: v1alpha1.PolicySpec{
-					RiskIndex:               "2",
+					RiskIndex:               2,
 					MinReplicaPercentageCut: 2,
 					TargetUtilization:       80,
 				},

@@ -31,13 +31,20 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
 	BeforeEach(func() {
 		queuedAllRecos = false
+		DeferCleanup(func() {
+			queuedAllRecos = false
+		})
 	})
 
 	Context("When creating a new Rollout", func() {
+		var rollout *rolloutv1alpha1.Rollout
+		AfterEach(func() {
+			Expect(k8sClient.Delete(ctx, rollout)).Should(Succeed())
+		})
 		It("Should Create a new PolicyRecommendation", func() {
 			By("By creating a new Rollout")
 			ctx := context.Background()
-			rollout := &rolloutv1alpha1.Rollout{
+			rollout = &rolloutv1alpha1.Rollout{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      RolloutName,
 					Namespace: RolloutNamespace,
@@ -70,7 +77,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 				createdPolicy)).Should(Succeed()))
 			Expect(createdPolicy.Name).Should(Equal(RolloutName))
 			Expect(createdPolicy.Namespace).Should(Equal(RolloutNamespace))
-			Expect(createdPolicy.Spec.Policy).Should(Equal("safestPolicy"))
+			Expect(createdPolicy.Spec.Policy).Should(Equal("safest-policy"))
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(RolloutName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Rollout"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("argoproj.io/v1alpha1"))
@@ -144,7 +151,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
 			Expect(createdPolicy.Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.Namespace).Should(Equal(DeploymentNamespace))
-			Expect(createdPolicy.Spec.Policy).Should(Equal("safestPolicy"))
+			Expect(createdPolicy.Spec.Policy).Should(Equal("safest-policy"))
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Deployment"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
@@ -218,7 +225,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
 			Expect(createdPolicy.Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.Namespace).Should(Equal(DeploymentNamespace))
-			Expect(createdPolicy.Spec.Policy).Should(Equal("safestPolicy"))
+			Expect(createdPolicy.Spec.Policy).Should(Equal("safest-policy"))
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Deployment"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
@@ -240,7 +247,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
 			Expect(createdPolicy.Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.Namespace).Should(Equal(DeploymentNamespace))
-			Expect(createdPolicy.Spec.Policy).Should(Equal("safestPolicy"))
+			Expect(createdPolicy.Spec.Policy).Should(Equal("safest-policy"))
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(DeploymentName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Deployment"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))

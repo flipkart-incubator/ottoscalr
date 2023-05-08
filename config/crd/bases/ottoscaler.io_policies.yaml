@@ -40,7 +40,7 @@ spec:
               minReplicaPercentageCut:
                 type: integer
               riskIndex:
-                type: string
+                type: integer
               targetUtilization:
                 type: integer
             required:

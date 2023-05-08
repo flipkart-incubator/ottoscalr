@@ -107,8 +107,13 @@ func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMe
 			rw.logger.Error(err, "Error while generating recommendation")
 			return nil, nil, nil, err
 		}
-		rw.logger.V(0).Info("Next Policy recommended by PI", "iterator", i, "policy", p)
 
+		if p == nil {
+			rw.logger.V(0).Info("Skipping this PI since it has recommended nil policy", "iterator", i)
+			continue
+		}
+
+		rw.logger.V(0).Info("Next Policy recommended by PI", "iterator", i, "policy", p)
 		nextPolicy = pickSafestPolicy(nextPolicy, p)
 		rw.logger.V(0).Info("Next Policy after applying PI", "iterator", i, "policy", nextPolicy)
 

@@ -45,17 +45,23 @@ type PolicyRecommendationReconciler struct {
 	Recorder                record.EventRecorder
 	MaxConcurrentReconciles int
 	PolicyExpiryAge         time.Duration
+	RecoWorkflow            reco.RecommendationWorkflow
 }
 
 func NewPolicyRecommendationReconciler(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder,
-	maxConcurrentReconciles int, policyExpiryAge time.Duration) *PolicyRecommendationReconciler {
+	maxConcurrentReconciles int, recommender reco.Recommender, policyIterators ...reco.PolicyIterator) *PolicyRecommendationReconciler {
+	recoWfBuilder := reco.NewRecommendationWorkflowBuilder().
+		WithRecommender(recommender)
+	for _, pi := range policyIterators {
+		recoWfBuilder = recoWfBuilder.WithPolicyIterator(pi.GetName(), pi)
+	}
 	return &PolicyRecommendationReconciler{
 		Client:                  client,
 		Scheme:                  scheme,
 		MaxConcurrentReconciles: maxConcurrentReconciles,
-		PolicyExpiryAge:         policyExpiryAge,
 		Recorder:                recorder,
+		RecoWorkflow:            recoWfBuilder.Build(),
 	}
 }
 
@@ -78,19 +84,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecoQueuedForExecution", "This workload has been queued for a fresh HPA recommendation.")
 
-	//TODO(bharathg): make this config driven
-	recowf := reco.NewRecommendationWorkflowBuilder().
-		WithRecommender(&reco.MockRecommender{
-			Min:       10,
-			Threshold: 60,
-			Max:       60,
-		}).
-		WithPolicyIterator("DefaultPolicy", reco.NewDefaultPolicyIterator(r.Client)).
-		WithPolicyIterator("Aging", reco.NewAgingPolicyIterator(r.Client, 60*time.Second)).
-		WithLogger(logger.WithName("RecoWorkflow")).
-		Build()
-
-	currentreco, targetreco, policy, err := recowf.Execute(ctx, reco.WorkloadMeta{
+	currentreco, targetreco, policy, err := r.RecoWorkflow.Execute(ctx, reco.WorkloadMeta{
 		TypeMeta:  policyreco.Spec.WorkloadMeta.TypeMeta,
 		Name:      policyreco.Spec.WorkloadMeta.Name,
 		Namespace: policyreco.Spec.WorkloadMeta.Namespace,
@@ -105,6 +99,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	transitionedAt := retrieveTransitionTime(currentreco, policyreco)
+	now := metav1.Now()
 	if err := r.Patch(ctx, &v1alpha1.PolicyRecommendation{
 		TypeMeta: policyreco.TypeMeta,
 		ObjectMeta: metav1.ObjectMeta{
@@ -119,8 +114,8 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 			// and the subsequent restart will not reprocess it. Will need to handle that case
 			QueuedForExecution:   false,
 			QueuedForExecutionAt: policyreco.Spec.QueuedForExecutionAt,
-			TransitionedAt:       transitionedAt,
-			GeneratedAt:          metav1.Now(),
+			TransitionedAt:       &transitionedAt,
+			GeneratedAt:          &now,
 		},
 	}, client.Apply, client.ForceOwnership, client.FieldOwner(POLICY_RECO_WORKFLOW_CTRL_NAME)); err != nil {
 		logger.Error(err, "Error patching the policy reco object")
@@ -149,7 +144,7 @@ func retrieveTransitionTime(currentreco *v1alpha1.HPAConfiguration, policyreco v
 	if !currentreco.DeepEquals(policyreco.Spec.CurrentHPAConfiguration) {
 		return metav1.Now()
 	}
-	return policyreco.Spec.TransitionedAt
+	return *policyreco.Spec.TransitionedAt
 }
 
 func getSubresourcePatchOptions() *client.SubResourcePatchOptions {
@@ -180,12 +175,16 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldObjSpec := e.ObjectOld.(*v1alpha1.PolicyRecommendation).Spec
 			newObjSpec := e.ObjectNew.(*v1alpha1.PolicyRecommendation).Spec
+			// If it hasn't been touched by the registrar don't reconcile
+			if len(newObjSpec.Policy) == 0 || newObjSpec.QueuedForExecutionAt.IsZero() || newObjSpec.TransitionedAt.IsZero() {
+				return false
+			}
 			switch {
 			// updates which transition QueuedForExecution from false to true
 			case oldObjSpec.QueuedForExecution == false && newObjSpec.QueuedForExecution == true:
 				return true
 			//	updates where there's no change to the QueuedForExecution but to the QueuedForExecutionAt with a later timestamp
-			case newObjSpec.QueuedForExecution == true && (oldObjSpec.QueuedForExecutionAt.Before(&newObjSpec.QueuedForExecutionAt)):
+			case newObjSpec.QueuedForExecution == true && (oldObjSpec.QueuedForExecutionAt.Before(newObjSpec.QueuedForExecutionAt)):
 				return true
 			default:
 				return false
@@ -195,11 +194,11 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 			return false
 		},
 	}
-	predicate := predicate.And(predicate.GenerationChangedPredicate{}, queuedTaskPredicate)
+	compoundPredicate := predicate.And(predicate.GenerationChangedPredicate{}, queuedTaskPredicate)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.PolicyRecommendation{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
-		WithEventFilter(predicate).
+		WithEventFilter(compoundPredicate).
 		Named(POLICY_RECO_WORKFLOW_CTRL_NAME).
 		Complete(r)
 }

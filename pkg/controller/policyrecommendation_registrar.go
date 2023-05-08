@@ -120,6 +120,7 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 	gvk := instance.GetObjectKind().GroupVersionKind()
 	logger.Info("Creating a new PolicyRecommendation object", "GroupVersionKind", gvk)
 
+	now := metav1.Now()
 	newPolicyRecommendation := &ottoscaleriov1alpha1.PolicyRecommendation{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.GetName(),
@@ -131,9 +132,9 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 				Namespace: instance.GetNamespace(),
 				TypeMeta:  metav1.TypeMeta{Kind: gvk.Kind, APIVersion: gvk.GroupVersion().String()}},
 			Policy:               safestPolicy.Name,
-			TransitionedAt:       metav1.Now(),
+			TransitionedAt:       &now,
 			QueuedForExecution:   true,
-			QueuedForExecutionAt: metav1.Now(),
+			QueuedForExecutionAt: &now,
 		},
 	}
 

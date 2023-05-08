@@ -22,6 +22,7 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
+	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	"github.com/spf13/viper"
 	"os"
@@ -79,7 +80,7 @@ type Config struct {
 
 	PolicyRecommendationController struct {
 		MaxConcurrentReconciles int    `yaml:"maxConcurrentReconciles"`
-		PolicyExpiryAge         string `yaml:"policyExpiryAge"`
+		PolicyExpiryAgeSeconds  string `yaml:"policyExpiryAgeSeconds"`
 	} `yaml:"policyRecommendationController"`
 
 	PolicyRecommendationRegistrar struct {
@@ -137,15 +138,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	policyExpiryAge, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAge)
+	agingPolicyTTL, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAgeSeconds)
 	if err != nil {
 		logger.Error(err, "Failed to parse policyExpiryAge. Defaulting to 60s")
-		policyExpiryAge = 60 * time.Second
+		agingPolicyTTL = 60 * time.Second
 	}
 
 	if err = controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.POLICY_RECO_WORKFLOW_CTRL_NAME),
-		config.PolicyRecommendationController.MaxConcurrentReconciles, policyExpiryAge).SetupWithManager(mgr); err != nil {
+		config.PolicyRecommendationController.MaxConcurrentReconciles, &reco.MockRecommender{
+			Min:       10,
+			Threshold: 60,
+			Max:       60,
+		}, reco.NewDefaultPolicyIterator(logger, mgr.GetClient()), reco.NewAgingPolicyIterator(logger, mgr.GetClient(), agingPolicyTTL)).
+		SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)
 	}

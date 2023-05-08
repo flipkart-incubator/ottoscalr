@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
+	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"log"
@@ -15,23 +16,28 @@ import (
 
 type Policy struct {
 	Name                    string `json:"name"`
-	RiskIndex               string `json:"riskIndex"`
+	RiskIndex               int    `json:"riskIndex"`
 	MinReplicaPercentageCut int    `json:"minReplicaPercentageCut"`
 	TargetUtilization       int    `json:"targetUtilization"`
 }
 
 type PolicyIterator interface {
 	NextPolicy(wm WorkloadMeta) (*Policy, error)
+	GetName() string
 }
 
 type PolicyIteratorImpl struct {
-	store policy.Store
+	store  policy.Store
+	logger logr.Logger
 }
 
 type DefaultPolicyIterator PolicyIteratorImpl
 
-func NewDefaultPolicyIterator(k8sClient client.Client) *DefaultPolicyIterator {
-	return &DefaultPolicyIterator{store: policy.NewPolicyStore(k8sClient)}
+func NewDefaultPolicyIterator(logger logr.Logger, k8sClient client.Client) *DefaultPolicyIterator {
+	return &DefaultPolicyIterator{
+		store:  policy.NewPolicyStore(k8sClient),
+		logger: logger,
+	}
 }
 
 func (pi *DefaultPolicyIterator) NextPolicy(wm WorkloadMeta) (*Policy, error) {
@@ -47,14 +53,24 @@ func (pi *DefaultPolicyIterator) NextPolicy(wm WorkloadMeta) (*Policy, error) {
 	}, nil
 }
 
+func (pi *DefaultPolicyIterator) GetName() string {
+	return "DefaultPolicy"
+}
+
 type AgingPolicyIterator struct {
 	store  policy.Store
 	client client.Client
 	Age    time.Duration
+	logger logr.Logger
 }
 
-func NewAgingPolicyIterator(k8sClient client.Client, age time.Duration) *AgingPolicyIterator {
-	return &AgingPolicyIterator{store: policy.NewPolicyStore(k8sClient), client: k8sClient, Age: age}
+func NewAgingPolicyIterator(logger logr.Logger, k8sClient client.Client, age time.Duration) *AgingPolicyIterator {
+	return &AgingPolicyIterator{
+		store:  policy.NewPolicyStore(k8sClient),
+		client: k8sClient,
+		Age:    age,
+		logger: logger,
+	}
 }
 
 func (pi *AgingPolicyIterator) NextPolicy(wm WorkloadMeta) (*Policy, error) {
@@ -101,11 +117,18 @@ func (pi *AgingPolicyIterator) NextPolicy(wm WorkloadMeta) (*Policy, error) {
 	return PolicyFromCR(nextPolicy), nil
 }
 
+func (pi *AgingPolicyIterator) GetName() string {
+	return "Aging"
+}
+
 func IsLastPolicy(err error) bool {
 	return errors.Is(err, policy.NO_NEXT_POLICY_FOUND_ERR)
 }
 
 func PolicyFromCR(policy *v1alpha1.Policy) *Policy {
+	if policy == nil {
+		return nil
+	}
 	return &Policy{
 		Name:                    policy.Name,
 		RiskIndex:               policy.Spec.RiskIndex,
@@ -116,7 +139,8 @@ func PolicyFromCR(policy *v1alpha1.Policy) *Policy {
 
 func isAgeBeyondExpiry(policyreco *v1alpha1.PolicyRecommendation, age time.Duration) (bool, error) {
 	if policyreco == nil || policyreco.Spec.TransitionedAt.IsZero() {
-		return false, errors.New("Policy recommendation is nil or TransitionedAt is nil")
+		// For new policyreco which haven't been touched by the registrar return false
+		return false, nil
 	}
 	// if now() is still before last reco transitionedAt + expiry age
 	if policyreco.Spec.TransitionedAt.Add(age).After(metav1.Now().Time) {
