@@ -1,6 +1,9 @@
 package metrics
 
 import (
+	"context"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/common/model"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -74,8 +77,8 @@ var _ = Describe("PrometheusScraper", func() {
 			//since metrics could have been scraped multiple times, we just check the first and last value
 			Expect(len(dataPoints) >= 2).To(BeTrue())
 
-			Expect(dataPoints[0]).To(Equal(26.0))
-			Expect(dataPoints[len(dataPoints)-1]).To(Equal(9.0))
+			Expect(dataPoints[0].Value).To(Equal(26.0))
+			Expect(dataPoints[len(dataPoints)-1].Value).To(Equal(9.0))
 		})
 	})
 
@@ -102,13 +105,13 @@ var _ = Describe("PrometheusScraper", func() {
 			//wait for the metric to be scraped - scraping interval is 1s
 			time.Sleep(2 * time.Second)
 
-			autoscalingLag1, err := acl.GetACLByWorkload("test-ns-1", "test-workload-1")
+			autoscalingLag1, err := scraper.GetACLByWorkload("test-ns-1", "test-workload-1")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(autoscalingLag1).To(Equal(35.0))
+			Expect(autoscalingLag1).To(Equal(time.Duration(35.0 * time.Second)))
 
-			autoscalingLag2, err := acl.GetACLByWorkload("test-ns-2", "test-workload-3")
+			autoscalingLag2, err := scraper.GetACLByWorkload("test-ns-2", "test-workload-3")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(autoscalingLag2).To(Equal(55.0))
+			Expect(autoscalingLag2).To(Equal(time.Duration(55.0 * time.Second)))
 		})
 	})
 
@@ -251,7 +254,7 @@ var _ = Describe("PrometheusScraper", func() {
 			Expect(len(dataPoints) >= 1).To(BeTrue())
 
 			for _, dataPoint := range dataPoints {
-				Expect(dataPoint).To(Equal(1.0))
+				Expect(dataPoint.Value).To(Equal(1.0))
 			}
 		})
 
@@ -393,9 +396,94 @@ var _ = Describe("PrometheusScraper", func() {
 			Expect(len(dataPoints) >= 1).To(BeTrue())
 
 			for _, dataPoint := range dataPoints {
-				Expect(dataPoint).To(Equal(1.0))
+				Expect(dataPoint.Value).To(Equal(1.0))
 			}
 		})
 	})
+})
 
+var _ = Describe("mergeMatrices", func() {
+	It("should correctly merge two matrices", func() {
+		matrix1 := model.Matrix{
+			&model.SampleStream{
+				Metric: model.Metric{"label": "test"},
+				Values: []model.SamplePair{
+					{Timestamp: 100, Value: 1},
+					{Timestamp: 200, Value: 2},
+				},
+			},
+		}
+
+		matrix2 := model.Matrix{
+			&model.SampleStream{
+				Metric: model.Metric{"label": "test"},
+				Values: []model.SamplePair{
+					{Timestamp: 300, Value: 3},
+					{Timestamp: 400, Value: 4},
+				},
+			},
+		}
+
+		expectedMergedMatrix := model.Matrix{
+			&model.SampleStream{
+				Metric: model.Metric{"label": "test"},
+				Values: []model.SamplePair{
+					{Timestamp: 100, Value: 1},
+					{Timestamp: 200, Value: 2},
+					{Timestamp: 300, Value: 3},
+					{Timestamp: 400, Value: 4},
+				},
+			},
+		}
+
+		mergedMatrix := mergeMatrices(matrix1, matrix2)
+		Expect(mergedMatrix).To(Equal(expectedMergedMatrix))
+	})
+})
+
+type mockAPI struct {
+	v1.API
+	queryRangeFunc func(ctx context.Context, query string, r v1.Range, options ...v1.Option) (model.Value,
+		v1.Warnings, error)
+}
+
+func (m *mockAPI) QueryRange(ctx context.Context, query string, r v1.Range, options ...v1.Option) (model.Value,
+	v1.Warnings, error) {
+	return m.queryRangeFunc(ctx, query, r)
+}
+
+var _ = Describe("RangeQuerySplitter", func() {
+	It("should split and query correctly by duration", func() {
+		query := "test_query"
+		start := time.Now().Add(-5 * time.Minute)
+		end := time.Now()
+		step := 1 * time.Minute
+		splitDuration := 2 * time.Minute
+
+		mockApi := &mockAPI{
+			queryRangeFunc: func(ctx context.Context, query string, r v1.Range, options ...v1.Option) (model.Value,
+				v1.Warnings, error) {
+				matrix := model.Matrix{
+					&model.SampleStream{
+						Metric: model.Metric{"label": "test"},
+						Values: []model.SamplePair{
+							{Timestamp: model.TimeFromUnix(r.Start.Unix()), Value: 1},
+							{Timestamp: model.TimeFromUnix(r.End.Unix()), Value: 2},
+						},
+					},
+				}
+				return matrix, nil, nil
+			},
+		}
+
+		splitter := NewRangeQuerySplitter(mockApi, splitDuration)
+
+		result, err := splitter.QueryRangeByInterval(context.TODO(), query, start, end, step)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Type()).To(Equal(model.ValMatrix))
+
+		matrix := result.(model.Matrix)
+		Expect(len(matrix)).To(Equal(1))
+		Expect(len(matrix[0].Values)).To(Equal(6))
+	})
 })

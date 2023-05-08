@@ -56,8 +56,6 @@ var (
 	podReadyTimeMetric    *prometheus.GaugeVec
 
 	scraper *PrometheusScraper
-
-	acl *ACLComponents
 )
 
 var _ = BeforeSuite(func() {
@@ -77,10 +75,15 @@ var _ = BeforeSuite(func() {
 	replicaSetOwnerMetric := "kube_replicaset_owner"
 	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
 	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
+
 	podCreatedTimeMetric := "kube_pod_created"
 	podReadyTimeMetric := "alm_kube_pod_ready_time"
 
-	scraper = &PrometheusScraper{api: v1.NewAPI(client),
+	api := v1.NewAPI(client)
+	metricIngestionTime := 15.0
+	metricProbeTime := 15.0
+
+	scraper = &PrometheusScraper{api: api,
 		metricRegistry: &MetricNameRegistry{
 			utilizationMetric:     utilizationMetric,
 			podOwnerMetric:        podOwnerMetric,
@@ -92,13 +95,11 @@ var _ = BeforeSuite(func() {
 			podCreatedTimeMetric:  podCreatedTimeMetric,
 			podReadyTimeMetric:    podReadyTimeMetric,
 		},
-		queryTimeout: 30 * time.Second}
-
-	metricIngestionTime := 15.0
-	metricProbeTime := 15.0
-	acl = &ACLComponents{scraper: scraper,
+		queryTimeout:        30 * time.Second,
+		rangeQuerySplitter:  NewRangeQuerySplitter(api, 1*time.Second),
 		metricIngestionTime: metricIngestionTime,
-		metricProbeTime:     metricProbeTime}
+		metricProbeTime:     metricProbeTime,
+	}
 
 	go func() {
 		metricsAddress = "localhost:9091"

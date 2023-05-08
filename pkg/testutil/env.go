@@ -33,7 +33,7 @@ func getInstance() *singletonEnvironment {
 			panic(err)
 		}
 		instance.Cfg = cfg
-		instance.Ctx, instance.Cancel = context.WithCancel(context.Background())
+		instance.Ctx, instance.Cancel = context.WithCancel(context.TODO())
 	})
 	return instance
 }

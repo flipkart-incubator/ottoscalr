@@ -19,7 +19,7 @@ var _ = Describe("K8sTriggerHandler", func() {
 
 	BeforeEach(func() {
 		handler = NewK8sTriggerHandler(k8sClient, zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
-		ctx = context.Background()
+		ctx = context.TODO()
 	})
 
 	Context("For QueueForExecution", func() {

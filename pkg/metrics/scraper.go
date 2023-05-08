@@ -10,32 +10,39 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+type DataPoint struct {
+	Timestamp time.Time
+	Value     float64
+}
+
 // Scraper is an interface for scraping metrics data.
 type Scraper interface {
 	GetAverageCPUUtilizationByWorkload(namespace,
 		workload string,
 		start time.Time,
 		end time.Time,
-		step time.Duration) ([]float64, error)
+		step time.Duration) ([]DataPoint, error)
 
 	GetCPUUtilizationBreachDataPoints(namespace,
 		workloadType,
 		workload string,
-		redLineUtilization float32,
+		redLineUtilization float64,
 		start time.Time,
 		end time.Time,
-		step time.Duration) ([]float64, error)
+		step time.Duration) ([]DataPoint, error)
 
-	GetPodReadyLatencyByWorkload(namespace,
-		workload string,
-	) (float64, error)
+	GetACLByWorkload(namespace,
+		workload string) (time.Duration, error)
 }
 
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
 type PrometheusScraper struct {
-	api            v1.API
-	metricRegistry *MetricNameRegistry
-	queryTimeout   time.Duration
+	api                 v1.API
+	metricRegistry      *MetricNameRegistry
+	queryTimeout        time.Duration
+	rangeQuerySplitter  *RangeQuerySplitter
+	metricIngestionTime float64
+	metricProbeTime     float64
 }
 
 type MetricNameRegistry struct {
@@ -50,28 +57,13 @@ type MetricNameRegistry struct {
 	podReadyTimeMetric    string
 }
 
-type ACLComponents struct {
-	scraper             *PrometheusScraper
-	metricIngestionTime float64
-	metricProbeTime     float64
-}
-
-func NewACLComponent(ps *PrometheusScraper, metricIngestionTime float64, metricProbeTime float64) *ACLComponents {
-	return &ACLComponents{
-		scraper:             ps,
-		metricIngestionTime: metricIngestionTime,
-		metricProbeTime:     metricProbeTime,
-	}
-
-}
-
-func (ac *ACLComponents) GetACLByWorkload(namespace string, workload string) (float64, error) {
-	podBootStrapTime, err := ac.scraper.GetPodReadyLatencyByWorkload(namespace, workload)
+func (ps *PrometheusScraper) GetACLByWorkload(namespace string, workload string) (time.Duration, error) {
+	podBootStrapTime, err := ps.getPodReadyLatencyByWorkload(namespace, workload)
 	if err != nil {
 		return 0.0, fmt.Errorf("error getting pod bootstrap time: %v", err)
 	}
-	totalACL := ac.metricIngestionTime + ac.metricProbeTime + podBootStrapTime
-	return totalACL, nil
+	totalACL := ps.metricIngestionTime + ps.metricProbeTime + podBootStrapTime
+	return time.Duration(totalACL) * time.Second, nil
 }
 
 func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
@@ -99,7 +91,11 @@ func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
 
 // NewPrometheusScraper returns a new PrometheusScraper instance.
 
-func NewPrometheusScraper(apiURL string, timeout time.Duration) (*PrometheusScraper, error) {
+func NewPrometheusScraper(apiURL string,
+	timeout time.Duration,
+	splitInterval time.Duration,
+	metricIngestionTime float64,
+	metricProbeTime float64) (*PrometheusScraper, error) {
 
 	client, err := api.NewClient(api.Config{
 		Address: apiURL,
@@ -109,10 +105,13 @@ func NewPrometheusScraper(apiURL string, timeout time.Duration) (*PrometheusScra
 		return nil, fmt.Errorf("error creating Prometheus client: %v", err)
 	}
 
-	return &PrometheusScraper{api: v1.NewAPI(client),
-			metricRegistry: NewKubePrometheusMetricNameRegistry(),
-			queryTimeout:   timeout},
-		nil
+	v1Api := v1.NewAPI(client)
+	return &PrometheusScraper{api: v1Api,
+		metricRegistry:      NewKubePrometheusMetricNameRegistry(),
+		queryTimeout:        timeout,
+		rangeQuerySplitter:  NewRangeQuerySplitter(v1Api, splitInterval),
+		metricProbeTime:     metricProbeTime,
+		metricIngestionTime: metricIngestionTime}, nil
 }
 
 // GetAverageCPUUtilizationByWorkload returns the average CPU utilization for the given workload type and name in the
@@ -121,7 +120,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	workload string,
 	start time.Time,
 	end time.Time,
-	step time.Duration) ([]float64, error) {
+	step time.Duration) ([]DataPoint, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
@@ -136,8 +135,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 		namespace,
 		workload)
 
-	queryRange := v1.Range{Start: start, End: end, Step: step}
-	result, _, err := ps.api.QueryRange(ctx, query, queryRange)
+	result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, query, start, end, step)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)
@@ -151,11 +149,11 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 		return nil, fmt.Errorf("unexpected no of time series: %v", len(matrix))
 	}
 
-	var dataPoints []float64
+	var dataPoints []DataPoint
 	for _, sample := range matrix[0].Values {
-		cpuUtilization := float64(sample.Value)
+		datapoint := DataPoint{sample.Timestamp.Time(), float64(sample.Value)}
 		if !sample.Timestamp.Time().IsZero() {
-			dataPoints = append(dataPoints, cpuUtilization)
+			dataPoints = append(dataPoints, datapoint)
 		}
 	}
 	return dataPoints, nil
@@ -166,10 +164,10 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	workloadType,
 	workload string,
-	redLineUtilization float32,
+	redLineUtilization float64,
 	start time.Time,
 	end time.Time,
-	step time.Duration) ([]float64, error) {
+	step time.Duration) ([]DataPoint, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
@@ -213,9 +211,7 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		workloadType,
 		workload)
 
-	queryRange := v1.Range{Start: start, End: end, Step: step}
-
-	result, _, err := ps.api.QueryRange(ctx, query, queryRange)
+	result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, query, start, end, step)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)
 	}
@@ -228,19 +224,86 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		return nil, fmt.Errorf("unexpected no of time series: %v", len(matrix))
 	}
 
-	var dataPoints []float64
+	var dataPoints []DataPoint
 	for _, sample := range matrix[0].Values {
-		cpuUtilization := float64(sample.Value)
+		datapoint := DataPoint{sample.Timestamp.Time(), float64(sample.Value)}
 		if !sample.Timestamp.Time().IsZero() {
-			dataPoints = append(dataPoints, cpuUtilization)
+			dataPoints = append(dataPoints, datapoint)
 		}
 	}
 	return dataPoints, nil
 }
 
-func (ps *PrometheusScraper) GetPodReadyLatencyByWorkload(namespace string,
-	workload string,
-) (float64, error) {
+// RangeQuerySplitter splits a given queryRange into multiple range queries of width splitInterval. This is done to
+// avoid loading too many samples into P8s memory.
+type RangeQuerySplitter struct {
+	api           v1.API
+	splitInterval time.Duration
+}
+
+func NewRangeQuerySplitter(api v1.API, splitInterval time.Duration) *RangeQuerySplitter {
+	return &RangeQuerySplitter{api: api, splitInterval: splitInterval}
+}
+func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
+	query string,
+	start, end time.Time,
+	step time.Duration) (model.Value, error) {
+
+	var resultMatrix model.Matrix
+
+	for start.Before(end) {
+		splitEnd := start.Add(rqs.splitInterval)
+		if splitEnd.After(end) {
+			splitEnd = end
+		}
+
+		splitRange := v1.Range{
+			Start: start,
+			End:   splitEnd,
+			Step:  step,
+		}
+
+		partialResult, _, err := rqs.api.QueryRange(ctx, query, splitRange)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)
+		}
+
+		if partialResult.Type() != model.ValMatrix {
+			return nil, fmt.Errorf("unexpected result type: %v", partialResult.Type())
+		}
+
+		partialMatrix := partialResult.(model.Matrix)
+		resultMatrix = mergeMatrices(resultMatrix, partialMatrix)
+
+		start = splitEnd
+	}
+
+	return resultMatrix, nil
+}
+
+func mergeMatrices(matrixA, matrixB model.Matrix) model.Matrix {
+	if len(matrixA) == 0 {
+		return matrixB
+	}
+
+	if len(matrixB) == 0 {
+		return matrixA
+	}
+
+	resultMatrix := make(model.Matrix, len(matrixA))
+
+	for i, seriesA := range matrixA {
+		seriesB := matrixB[i]
+		mergedSeries := model.SampleStream{
+			Metric: seriesA.Metric,
+			Values: append(seriesA.Values, seriesB.Values...),
+		}
+		resultMatrix[i] = &mergedSeries
+	}
+
+	return resultMatrix
+}
+func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, workload string) (float64, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()

@@ -18,7 +18,7 @@ type MonitorManager interface {
 type PolicyRecommendationMonitorManager struct {
 	metricScraper            metrics.Scraper
 	metricStep               time.Duration
-	cpuRedLine               float32
+	cpuRedLine               float64
 	periodicRequeueFrequency time.Duration
 	breachCheckFrequency     time.Duration
 	handlerFunc              func(workloadName types.NamespacedName)
@@ -32,7 +32,7 @@ func NewPolicyRecommendationMonitorManager(metricScraper metrics.Scraper,
 	breachCheckFrequency time.Duration,
 	handlerFunc func(workloadName types.NamespacedName),
 	stepSec int,
-	cpuRedLine float32,
+	cpuRedLine float64,
 	logger logr.Logger) *PolicyRecommendationMonitorManager {
 
 	return &PolicyRecommendationMonitorManager{
@@ -98,7 +98,7 @@ type Monitor struct {
 	workload                 types.NamespacedName
 	workloadType             string
 	metricScraper            metrics.Scraper
-	cpuRedLine               float32
+	cpuRedLine               float64
 	metricStep               time.Duration
 	periodicRequeueFrequency time.Duration
 	breachCheckFrequency     time.Duration
@@ -113,7 +113,7 @@ func NewMonitor(namespace string,
 	workload types.NamespacedName,
 	workloadType string,
 	metricScraper metrics.Scraper,
-	cpuRedLine float32,
+	cpuRedLine float64,
 	metricStep time.Duration,
 	periodicRequeueFrequency time.Duration,
 	breachCheckFrequency time.Duration,
