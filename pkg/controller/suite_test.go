@@ -113,7 +113,9 @@ var _ = BeforeSuite(func() {
 			Min:       10,
 			Threshold: 60,
 			Max:       60,
-		}, reco.NewDefaultPolicyIterator(logger, k8sManager.GetClient()), reco.NewAgingPolicyIterator(logger, k8sManager.GetClient(), policyAge)).SetupWithManager(k8sManager)
+		}, reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
+		reco.NewAgingPolicyIterator(k8sManager.GetClient(), policyAge)).
+		SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {

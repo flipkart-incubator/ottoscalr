@@ -150,7 +150,7 @@ func main() {
 			Min:       10,
 			Threshold: 60,
 			Max:       60,
-		}, reco.NewDefaultPolicyIterator(logger, mgr.GetClient()), reco.NewAgingPolicyIterator(logger, mgr.GetClient(), agingPolicyTTL)).
+		}, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL)).
 		SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)

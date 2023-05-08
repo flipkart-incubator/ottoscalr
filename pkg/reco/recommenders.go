@@ -6,8 +6,9 @@ import (
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"log"
+	golog "log"
 	"math"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
@@ -16,7 +17,7 @@ type RecommendationWorkflow interface {
 }
 
 type Recommender interface {
-	Recommend(wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error)
+	Recommend(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error)
 }
 
 type RecommendationWorkflowImpl struct {
@@ -38,7 +39,7 @@ func (b *RecoWorkflowBuilder) WithRecommender(r Recommender) *RecoWorkflowBuilde
 		b.recommender = r
 		return b
 	}
-	log.Println("Only one recommender must be added. There's already one configured so ignoring this one.")
+	golog.Println("Only one recommender must be added. There's already one configured so ignoring this one.")
 	return b
 }
 
@@ -82,7 +83,7 @@ type MockRecommender struct {
 	Max       int
 }
 
-func (r *MockRecommender) Recommend(wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
+func (r *MockRecommender) Recommend(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
 	return &v1alpha1.HPAConfiguration{
 		Min:               r.Min,
 		Max:               r.Max,
@@ -91,10 +92,11 @@ func (r *MockRecommender) Recommend(wm WorkloadMeta) (*v1alpha1.HPAConfiguration
 }
 
 func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *v1alpha1.HPAConfiguration, *Policy, error) {
+	ctx = log.IntoContext(ctx, rw.logger)
 	if rw.recommender == nil {
 		return nil, nil, nil, errors.New("No recommenders configured in the workflow.")
 	}
-	recoConfig, err := rw.recommender.Recommend(wm)
+	recoConfig, err := rw.recommender.Recommend(ctx, wm)
 	if err != nil {
 		rw.logger.Error(err, "Error while generating recommendation")
 		return nil, nil, nil, errors.New("Unable to generate recommendation")
@@ -102,7 +104,7 @@ func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMe
 	var nextPolicy *Policy
 	for i, pi := range rw.policyIterators {
 		rw.logger.V(0).Info("Running policy iterator", "iterator", i)
-		p, err := pi.NextPolicy(wm)
+		p, err := pi.NextPolicy(ctx, wm)
 		if err != nil {
 			rw.logger.Error(err, "Error while generating recommendation")
 			return nil, nil, nil, err

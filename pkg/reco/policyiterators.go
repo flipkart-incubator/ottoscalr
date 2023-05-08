@@ -5,12 +5,10 @@ import (
 	"errors"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
-	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"log"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"time"
 )
 
@@ -22,27 +20,27 @@ type Policy struct {
 }
 
 type PolicyIterator interface {
-	NextPolicy(wm WorkloadMeta) (*Policy, error)
+	NextPolicy(ctx context.Context, wm WorkloadMeta) (*Policy, error)
 	GetName() string
 }
 
 type PolicyIteratorImpl struct {
-	store  policy.Store
-	logger logr.Logger
+	store policy.Store
 }
 
 type DefaultPolicyIterator PolicyIteratorImpl
 
-func NewDefaultPolicyIterator(logger logr.Logger, k8sClient client.Client) *DefaultPolicyIterator {
+func NewDefaultPolicyIterator(k8sClient client.Client) *DefaultPolicyIterator {
 	return &DefaultPolicyIterator{
-		store:  policy.NewPolicyStore(k8sClient),
-		logger: logger,
+		store: policy.NewPolicyStore(k8sClient),
 	}
 }
 
-func (pi *DefaultPolicyIterator) NextPolicy(wm WorkloadMeta) (*Policy, error) {
+func (pi *DefaultPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Policy, error) {
+	logger := log.FromContext(ctx)
 	policy, err := pi.store.GetDefaultPolicy()
 	if err != nil {
+		logger.V(0).Error(err, "Error fetching default policy.")
 		return nil, err
 	}
 	return &Policy{
@@ -61,19 +59,18 @@ type AgingPolicyIterator struct {
 	store  policy.Store
 	client client.Client
 	Age    time.Duration
-	logger logr.Logger
 }
 
-func NewAgingPolicyIterator(logger logr.Logger, k8sClient client.Client, age time.Duration) *AgingPolicyIterator {
+func NewAgingPolicyIterator(k8sClient client.Client, age time.Duration) *AgingPolicyIterator {
 	return &AgingPolicyIterator{
 		store:  policy.NewPolicyStore(k8sClient),
 		client: k8sClient,
 		Age:    age,
-		logger: logger,
 	}
 }
 
-func (pi *AgingPolicyIterator) NextPolicy(wm WorkloadMeta) (*Policy, error) {
+func (pi *AgingPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Policy, error) {
+	logger := log.FromContext(ctx)
 	policyreco := &v1alpha1.PolicyRecommendation{}
 	pi.client.Get(context.TODO(), types.NamespacedName{
 		Namespace: wm.Namespace,
@@ -92,7 +89,7 @@ func (pi *AgingPolicyIterator) NextPolicy(wm WorkloadMeta) (*Policy, error) {
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("No policy has been configured. Returning safest policy %s", safestPolicy.Name)
+		logger.V(0).Error(err, "No policy has been configured. Returning safest policy.", "policy", safestPolicy.Name)
 		return PolicyFromCR(safestPolicy), nil
 	}
 
@@ -102,7 +99,7 @@ func (pi *AgingPolicyIterator) NextPolicy(wm WorkloadMeta) (*Policy, error) {
 	}
 
 	if !expired {
-		log.Println("Policy hasn't expired yet")
+		logger.V(0).Error(errors.New("Policy hasn't expired yet"), "Policy hasn't expired yet")
 		return PolicyFromCR(currentAppliedPolicy), nil
 	}
 
