@@ -99,7 +99,7 @@ func (pi *AgingPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta) 
 	}
 
 	if !expired {
-		logger.V(0).Error(errors.New("Policy hasn't expired yet"), "Policy hasn't expired yet")
+		logger.V(0).Info("Policy hasn't expired yet")
 		return PolicyFromCR(currentAppliedPolicy), nil
 	}
 
