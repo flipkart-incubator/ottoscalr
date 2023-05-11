@@ -28,7 +28,7 @@ type PolicyRecommendationSpec struct {
 	Policy                  string           `json:"policy,omitempty"`
 	GeneratedAt             *metav1.Time     `json:"generatedAt,omitempty"`
 	TransitionedAt          *metav1.Time     `json:"transitionedAt,omitempty"`
-	QueuedForExecution      bool             `json:"queuedForExecution,omitempty"`
+	QueuedForExecution      *bool            `json:"queuedForExecution,omitempty"`
 	QueuedForExecutionAt    *metav1.Time     `json:"queuedForExecutionAt,omitempty"`
 }
 

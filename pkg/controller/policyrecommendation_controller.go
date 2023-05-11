@@ -38,6 +38,11 @@ const (
 	EVENT_TYPE_WARNING             = "Warning"
 )
 
+var (
+	FALSE_BOOL = false
+	TRUE_BOOL  = true
+)
+
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
 type PolicyRecommendationReconciler struct {
 	client.Client
@@ -100,27 +105,27 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	transitionedAt := retrieveTransitionTime(currentreco, policyreco)
 	now := metav1.Now()
-	if err := r.Patch(ctx, &v1alpha1.PolicyRecommendation{
+	policyRecoPatch := &v1alpha1.PolicyRecommendation{
 		TypeMeta: policyreco.TypeMeta,
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      policyreco.Name,
 			Namespace: policyreco.Namespace,
 		},
 		Spec: v1alpha1.PolicyRecommendationSpec{
+			QueuedForExecution:      &FALSE_BOOL,
 			TargetHPAConfiguration:  *targetreco,
 			Policy:                  policyName,
 			CurrentHPAConfiguration: *currentreco,
-			//TODO(bharathguvvala): This will cause a bug when the next queued requests fail to execute due to a controller crash,
-			// and the subsequent restart will not reprocess it. Will need to handle that case
-			QueuedForExecution:   false,
-			QueuedForExecutionAt: policyreco.Spec.QueuedForExecutionAt,
-			TransitionedAt:       &transitionedAt,
-			GeneratedAt:          &now,
+			TransitionedAt:          &transitionedAt,
+			GeneratedAt:             &now,
 		},
-	}, client.Apply, client.ForceOwnership, client.FieldOwner(POLICY_RECO_WORKFLOW_CTRL_NAME)); err != nil {
+	}
+	logger.V(0).Info("Policy Patch", "PolicyReco", *policyRecoPatch)
+	if err := r.Patch(ctx, policyRecoPatch, client.Apply, client.ForceOwnership, client.FieldOwner(POLICY_RECO_WORKFLOW_CTRL_NAME)); err != nil {
 		logger.Error(err, "Error patching the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	logger.V(0).Info("Policy Patch", "PolicyReco", *policyRecoPatch)
 
 	statusPatch := &v1alpha1.PolicyRecommendation{
 		TypeMeta: policyreco.TypeMeta,
@@ -135,7 +140,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecommendationGenerated", "The HPA recommendation has been generated successfully.")
+	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecommendationGenerated", fmt.Sprintf("The HPA recommendation has been generated successfully. The current policy this workload is at %s.", policyName))
 	logger.V(1).Info("Successfully generated HPA Recommendation.")
 	return ctrl.Result{}, nil
 }
@@ -158,14 +163,16 @@ func getSubresourcePatchOptions() *client.SubResourcePatchOptions {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// implement predicates to filter events with updates to QueuedForExecution or QueuedForExecutionAt
+	// predicates to filter events with updates to QueuedForExecution or QueuedForExecutionAt
 	queuedTaskPredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			objSpec := e.Object.(*v1alpha1.PolicyRecommendation).Spec
 			switch {
-			case objSpec.QueuedForExecution == true:
+			case *objSpec.QueuedForExecution == true:
+				fmt.Println("case 0")
 				return true
 			default:
+				fmt.Println("case falseC")
 				return false
 			}
 		},
@@ -176,21 +183,25 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 			oldObjSpec := e.ObjectOld.(*v1alpha1.PolicyRecommendation).Spec
 			newObjSpec := e.ObjectNew.(*v1alpha1.PolicyRecommendation).Spec
 			// If it hasn't been touched by the registrar don't reconcile
-			if len(newObjSpec.Policy) == 0 || newObjSpec.QueuedForExecutionAt.IsZero() || newObjSpec.TransitionedAt.IsZero() {
+			if len(newObjSpec.Policy) == 0 || newObjSpec.QueuedForExecutionAt.IsZero() /*|| newObjSpec.TransitionedAt.IsZero()*/ {
 				return false
 			}
 			switch {
 			// updates which transition QueuedForExecution from false to true
-			case oldObjSpec.QueuedForExecution == false && newObjSpec.QueuedForExecution == true:
+			case *oldObjSpec.QueuedForExecution == false && *newObjSpec.QueuedForExecution == true:
+				fmt.Println("case 1")
 				return true
 			//	updates where there's no change to the QueuedForExecution but to the QueuedForExecutionAt with a later timestamp
-			case newObjSpec.QueuedForExecution == true && (oldObjSpec.QueuedForExecutionAt.Before(newObjSpec.QueuedForExecutionAt)):
+			case (*newObjSpec.QueuedForExecution == true && oldObjSpec.QueuedForExecutionAt.Before(newObjSpec.QueuedForExecutionAt)) || newObjSpec.QueuedForExecutionAt.After(newObjSpec.GeneratedAt.Time):
+				fmt.Println("case 2")
 				return true
 			default:
+				fmt.Println("case false")
 				return false
 			}
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
+			fmt.Println("case falseG")
 			return false
 		},
 	}

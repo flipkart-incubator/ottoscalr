@@ -207,6 +207,7 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(POLICY_RECO_REGISTRAR_CTRL_NAME).
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
@@ -233,6 +234,5 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 			},
 			builder.WithPredicates(deletePredicate),
 		).
-		Named(POLICY_RECO_REGISTRAR_CTRL_NAME).
 		Complete(controller)
 }

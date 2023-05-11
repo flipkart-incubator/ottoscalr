@@ -173,6 +173,11 @@ func (in *PolicyRecommendationSpec) DeepCopyInto(out *PolicyRecommendationSpec) 
 		in, out := &in.TransitionedAt, &out.TransitionedAt
 		*out = (*in).DeepCopy()
 	}
+	if in.QueuedForExecution != nil {
+		in, out := &in.QueuedForExecution, &out.QueuedForExecution
+		*out = new(bool)
+		**out = **in
+	}
 	if in.QueuedForExecutionAt != nil {
 		in, out := &in.QueuedForExecutionAt, &out.QueuedForExecutionAt
 		*out = (*in).DeepCopy()
