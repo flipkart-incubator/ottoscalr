@@ -189,26 +189,22 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 			switch {
 			// updates which transition QueuedForExecution from false to true
 			case *oldObjSpec.QueuedForExecution == false && *newObjSpec.QueuedForExecution == true:
-				fmt.Println("case 1")
 				return true
 			//	updates where there's no change to the QueuedForExecution but to the QueuedForExecutionAt with a later timestamp
 			case (*newObjSpec.QueuedForExecution == true && oldObjSpec.QueuedForExecutionAt.Before(newObjSpec.QueuedForExecutionAt)) || newObjSpec.QueuedForExecutionAt.After(newObjSpec.GeneratedAt.Time):
-				fmt.Println("case 2")
 				return true
 			default:
-				fmt.Println("case false")
 				return false
 			}
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
-			fmt.Println("case falseG")
 			return false
 		},
 	}
 	compoundPredicate := predicate.And(predicate.GenerationChangedPredicate{}, queuedTaskPredicate)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.PolicyRecommendation{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		WithEventFilter(compoundPredicate).
 		Named(POLICY_RECO_WORKFLOW_CTRL_NAME).
 		Complete(r)
