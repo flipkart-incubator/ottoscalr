@@ -6,6 +6,7 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
 	"math/rand"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sync"
 	"time"
 )
@@ -161,24 +162,37 @@ func (m *Monitor) monitorBreaches() {
 			m.logger.Info("Executing breach monitor check.", "workload", m.workload)
 			end := time.Now()
 			start := end.Add(-m.breachCheckFrequency)
-			dataPoints, err := m.metricScraper.GetCPUUtilizationBreachDataPoints(m.namespace,
-				m.workloadType,
-				m.workload.Name,
-				m.cpuRedLine,
-				start,
-				end,
-				m.metricStep)
-			if err != nil {
-				m.logger.Error(err, "Error while executing GetCPUUtilizationBreachDataPoints.Continuing.",
-					"namespace", m.namespace,
-					"workloadType", m.workloadType,
-					"workloadName", m.workload.Name)
-			}
-			if len(dataPoints) > 0 {
+			if breached, _ := HasBreached(log.IntoContext(context.Background(), m.logger), start, end, m.workloadType, m.workload, m.metricScraper, m.cpuRedLine, m.metricStep); breached {
 				m.handlerFunc(m.workload)
 			}
 		}
 	}
+}
+
+func HasBreached(ctx context.Context, start, end time.Time, workloadType string,
+	workload types.NamespacedName,
+	metricScraper metrics.Scraper,
+	cpuRedLine float32,
+	metricStep time.Duration) (bool, error) {
+	logger := log.FromContext(ctx)
+	dataPoints, err := metricScraper.GetCPUUtilizationBreachDataPoints(workload.Namespace,
+		workloadType,
+		workload.Name,
+		cpuRedLine,
+		start,
+		end,
+		metricStep)
+	if err != nil {
+		logger.Error(err, "Error while executing GetCPUUtilizationBreachDataPoints.Continuing.",
+			"namespace", workload.Namespace,
+			"workloadType", workloadType,
+			"workloadName", workload.Name)
+		return false, err
+	}
+	if len(dataPoints) > 0 {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (m *Monitor) requeueAfterFixedInterval() {

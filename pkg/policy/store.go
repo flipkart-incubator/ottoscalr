@@ -17,7 +17,9 @@ type Store interface {
 	GetDefaultPolicy() (*v1alpha1.Policy, error)
 	GetNextPolicy(currentPolicy *v1alpha1.Policy) (*v1alpha1.Policy, error)
 	GetNextPolicyByName(name string) (*v1alpha1.Policy, error)
+	GetPreviousPolicyByName(name string) (*v1alpha1.Policy, error)
 	GetPolicyByName(name string) (*v1alpha1.Policy, error)
+	GetSortedPolicies() (*v1alpha1.PolicyList, error)
 }
 type PolicyStore struct {
 	k8sClient client.Client
@@ -30,6 +32,7 @@ func NewPolicyStore(k8sClient client.Client) *PolicyStore {
 }
 
 var NO_NEXT_POLICY_FOUND_ERR = errors.New("no next policy found")
+var NO_PREV_POLICY_FOUND_ERR = errors.New("no previous policy found")
 
 func (ps *PolicyStore) GetSafestPolicy() (*v1alpha1.Policy, error) {
 	policies := &v1alpha1.PolicyList{}
@@ -79,15 +82,11 @@ func (ps *PolicyStore) GetNextPolicyByName(name string) (*v1alpha1.Policy, error
 		return nil, err
 	}
 
-	policies := &v1alpha1.PolicyList{}
-	err2 := ps.k8sClient.List(context.Background(), policies)
+	policies, err2 := ps.GetSortedPolicies()
 	if err2 != nil {
+		log.Println("Error when fetching policies.")
 		return nil, err2
 	}
-
-	sort.Slice(policies.Items, func(i, j int) bool {
-		return policies.Items[i].Spec.RiskIndex < policies.Items[j].Spec.RiskIndex
-	})
 
 	for i, policy := range policies.Items {
 		if policy.Name == currentPolicy.Name {
@@ -99,6 +98,44 @@ func (ps *PolicyStore) GetNextPolicyByName(name string) (*v1alpha1.Policy, error
 	}
 
 	return nil, NO_NEXT_POLICY_FOUND_ERR
+}
+
+func (ps *PolicyStore) GetPreviousPolicyByName(name string) (*v1alpha1.Policy, error) {
+	log.Println("Identifying previous policy to ", name)
+	currentPolicy, err := ps.GetPolicyByName(name)
+	if err != nil {
+		return nil, err
+	}
+
+	policies, err2 := ps.GetSortedPolicies()
+	if err2 != nil {
+		log.Println("Error when fetching policies.")
+		return nil, err2
+	}
+
+	for i, policy := range policies.Items {
+		if policy.Name == currentPolicy.Name {
+			if i-1 >= 0 {
+				return &policies.Items[i-1], nil
+			}
+			break
+		}
+	}
+
+	return nil, NO_PREV_POLICY_FOUND_ERR
+}
+
+func (ps *PolicyStore) GetSortedPolicies() (*v1alpha1.PolicyList, error) {
+	policies := &v1alpha1.PolicyList{}
+	err2 := ps.k8sClient.List(context.Background(), policies)
+	if err2 != nil {
+		return nil, err2
+	}
+
+	sort.Slice(policies.Items, func(i, j int) bool {
+		return policies.Items[i].Spec.RiskIndex < policies.Items[j].Spec.RiskIndex
+	})
+	return policies, nil
 }
 
 func (ps *PolicyStore) GetPolicyByName(name string) (*v1alpha1.Policy, error) {

@@ -24,11 +24,9 @@ type PolicyIterator interface {
 	GetName() string
 }
 
-type PolicyIteratorImpl struct {
+type DefaultPolicyIterator struct {
 	store policy.Store
 }
-
-type DefaultPolicyIterator PolicyIteratorImpl
 
 func NewDefaultPolicyIterator(k8sClient client.Client) *DefaultPolicyIterator {
 	return &DefaultPolicyIterator{
@@ -145,20 +143,4 @@ func isAgeBeyondExpiry(policyreco *v1alpha1.PolicyRecommendation, age time.Durat
 	} else {
 		return true, nil
 	}
-}
-
-type BreachAnalyzer struct {
-}
-
-func NewBreachAnalayzer() (*BreachAnalyzer, error) {
-	return nil, nil
-}
-
-func (pi *BreachAnalyzer) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Policy, error) {
-	//	TODO: if breach then currenPolicy - 1; else currentPolicy
-	return nil, nil
-}
-
-func (pi *BreachAnalyzer) GetName() string {
-	return "BreachAnalyzer"
 }

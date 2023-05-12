@@ -133,12 +133,16 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 				TypeMeta:  metav1.TypeMeta{Kind: gvk.Kind, APIVersion: gvk.GroupVersion().String()}},
 			Policy:               safestPolicy.Name,
 			TransitionedAt:       &now,
-			QueuedForExecution:   true,
+			QueuedForExecution:   &TRUE_BOOL,
 			QueuedForExecutionAt: &now,
 		},
 	}
 
-	controllerutil.SetControllerReference(instance, newPolicyRecommendation, scheme)
+	err = controllerutil.SetControllerReference(instance, newPolicyRecommendation, scheme)
+	if err != nil {
+		logger.Error(err, "Error setting owner reference - requeue the request")
+		return nil, err
+	}
 
 	err = controller.Client.Create(ctx, newPolicyRecommendation)
 	if err != nil {

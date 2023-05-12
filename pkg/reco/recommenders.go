@@ -111,7 +111,7 @@ func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMe
 		}
 
 		if p == nil {
-			rw.logger.V(0).Info("Skipping this PI since it has recommended nil policy", "iterator", i)
+			rw.logger.V(0).Info("Skipping this PI since it has recommended nil policy (no-op)", "iterator", i)
 			continue
 		}
 

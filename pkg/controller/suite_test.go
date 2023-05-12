@@ -225,6 +225,19 @@ func (ps *FakePolicyStore) GetNextPolicyByName(name string) (*ottoscaleriov1alph
 		Name: "nextSafestPolicy"}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
 }
 
+func (ps *FakePolicyStore) GetPreviousPolicyByName(name string) (*ottoscaleriov1alpha1.Policy,
+	error) {
+	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
+		Name: "prevSafestPolicy"}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
+}
+
+func (ps *FakePolicyStore) GetSortedPolicies() (*ottoscaleriov1alpha1.PolicyList,
+	error) {
+	return &ottoscaleriov1alpha1.PolicyList{
+		Items: nil,
+	}, nil
+}
+
 func (ps *FakePolicyStore) GetPolicyByName(name string) (*ottoscaleriov1alpha1.Policy,
 	error) {
 	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
