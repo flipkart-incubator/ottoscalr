@@ -93,8 +93,9 @@ type Config struct {
 		MinTarget          int `yaml:"minTarget"`
 		MaxTarget          int `yaml:"minTarget"`
 	} `yaml:"cpuUtilizationBasedRecommender"`
-	MetricIngestionTime float64 `yaml:"metricIngestionTime"`
-	MetricProbeTime     float64 `yaml:"metricProbeTime"`
+	MetricIngestionTime      float64 `yaml:"metricIngestionTime"`
+	MetricProbeTime          float64 `yaml:"metricProbeTime"`
+	EventCalendarAPIEndpoint string  `yaml:"eventCalendarAPIEndpoint"`
 }
 
 func main() {
@@ -165,10 +166,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	metricsTransformer, err := metrics.NewEventMetricsTransformer(config.EventCalendarAPIEndpoint)
+	if err != nil {
+		setupLog.Error(err, "unable to start metrics transformer")
+		os.Exit(1)
+	}
+
 	_ = reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
 		scraper,
+		metricsTransformer,
 		time.Duration(config.CpuUtilizationBasedRecommender.StepSec)*time.Second,
 		config.CpuUtilizationBasedRecommender.MinTarget,
 		config.CpuUtilizationBasedRecommender.MaxTarget,

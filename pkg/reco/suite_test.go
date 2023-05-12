@@ -27,16 +27,19 @@ var (
 
 	logger logr.Logger
 
-	redLineUtil  = 0.85
-	metricWindow = 1 * time.Hour
-	metricStep   = 5 * time.Minute
-	minTarget    = 10
-	maxTarget    = 60
-	fakeScraper  metrics.Scraper
-	recommender  *CpuUtilizationBasedRecommender
+	redLineUtil            = 0.85
+	metricWindow           = 1 * time.Hour
+	metricStep             = 5 * time.Minute
+	minTarget              = 10
+	maxTarget              = 60
+	fakeScraper            metrics.Scraper
+	fakeMetricsTransformer metrics.MetricsTransformer
+	recommender            *CpuUtilizationBasedRecommender
 )
 
 type FakeScraper struct{}
+
+type FakeMetricsTransformer struct{}
 
 func (fs *FakeScraper) GetAverageCPUUtilizationByWorkload(namespace,
 	workload string,
@@ -67,6 +70,12 @@ func (fs *FakeScraper) GetACLByWorkload(namespace,
 	workload string) (time.Duration, error) {
 	return 5 * time.Minute, nil
 }
+
+func (fm *FakeMetricsTransformer) GetOutlierIntervalsAndInterpolate(
+	startTime time.Time, dataPoints []metrics.DataPoint) ([]metrics.DataPoint, error) {
+	return dataPoints, nil
+}
+
 func TestPolicies(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Policy Suite")
@@ -97,8 +106,10 @@ var _ = BeforeSuite(func() {
 
 	fakeScraper = &FakeScraper{}
 
+	fakeMetricsTransformer = &FakeMetricsTransformer{}
+
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
-		metricWindow, fakeScraper, metricStep, minTarget, maxTarget, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, logger)
 
 	go func() {
 		defer GinkgoRecover()

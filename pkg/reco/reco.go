@@ -21,33 +21,36 @@ type Recommender interface {
 }
 
 type CpuUtilizationBasedRecommender struct {
-	k8sClient    client.Client
-	redLineUtil  float64
-	metricWindow time.Duration
-	scraper      metrics.Scraper
-	metricStep   time.Duration
-	minTarget    int
-	maxTarget    int
-	logger       logr.Logger
+	k8sClient          client.Client
+	redLineUtil        float64
+	metricWindow       time.Duration
+	scraper            metrics.Scraper
+	metricsTransformer metrics.MetricsTransformer
+	metricStep         time.Duration
+	minTarget          int
+	maxTarget          int
+	logger             logr.Logger
 }
 
 func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 	redLineUtil float64,
 	metricWindow time.Duration,
 	scraper metrics.Scraper,
+	metricsTransformer metrics.MetricsTransformer,
 	metricStep time.Duration,
 	minTarget int,
 	maxTarget int,
 	logger logr.Logger) *CpuUtilizationBasedRecommender {
 	return &CpuUtilizationBasedRecommender{
-		k8sClient:    k8sClient,
-		redLineUtil:  redLineUtil,
-		metricWindow: metricWindow,
-		scraper:      scraper,
-		metricStep:   metricStep,
-		minTarget:    minTarget,
-		maxTarget:    maxTarget,
-		logger:       logger,
+		k8sClient:          k8sClient,
+		redLineUtil:        redLineUtil,
+		metricWindow:       metricWindow,
+		scraper:            scraper,
+		metricsTransformer: metricsTransformer,
+		metricStep:         metricStep,
+		minTarget:          minTarget,
+		maxTarget:          maxTarget,
+		logger:             logger,
 	}
 }
 
@@ -64,6 +67,11 @@ func (c *CpuUtilizationBasedRecommender) Recommend(workloadSpec v1alpha1.Workloa
 		c.metricStep)
 	if err != nil {
 		c.logger.Error(err, "Error while scraping GetCPUUtilizationBreachDataPoints.")
+		return nil, nil
+	}
+	dataPoints, err = c.metricsTransformer.GetOutlierIntervalsAndInterpolate(start, dataPoints)
+	if err != nil {
+		c.logger.Error(err, "Error while getting outlier interval from event api")
 		return nil, nil
 	}
 

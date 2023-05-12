@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"fmt"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
@@ -55,7 +56,8 @@ var (
 	podCreatedTimeMetric  *prometheus.GaugeVec
 	podReadyTimeMetric    *prometheus.GaugeVec
 
-	scraper *PrometheusScraper
+	scraper                 *PrometheusScraper
+	eventMetricsTransformer *EventMetricsTransformer
 )
 
 var _ = BeforeSuite(func() {
@@ -99,6 +101,11 @@ var _ = BeforeSuite(func() {
 		rangeQuerySplitter:  NewRangeQuerySplitter(api, 1*time.Second),
 		metricIngestionTime: metricIngestionTime,
 		metricProbeTime:     metricProbeTime,
+	}
+
+	eventMetricsTransformer = &EventMetricsTransformer{
+		Client:           retryablehttp.NewClient().StandardClient(),
+		EventAPIEndpoint: "",
 	}
 
 	go func() {

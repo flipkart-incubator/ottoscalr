@@ -4,10 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/prometheus/client_golang/api"
-	"time"
-
 	"github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"time"
 )
 
 type DataPoint struct {
