@@ -52,6 +52,7 @@ var (
 	cancel    context.CancelFunc
 
 	queuedAllRecos = false
+	recommender    *reco.MockRecommender
 )
 
 const policyAge = 1 * time.Second
@@ -108,13 +109,11 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	recommender = &reco.MockRecommender{}
+
 	err = NewPolicyRecommendationReconciler(k8sManager.GetClient(),
 		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(POLICY_RECO_WORKFLOW_CTRL_NAME),
-		1, &reco.MockRecommender{
-			Min:       10,
-			Threshold: 60,
-			Max:       60,
-		}, reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
+		1, recommender, reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
 		reco.NewAgingPolicyIterator(k8sManager.GetClient(), policyAge)).
 		SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())

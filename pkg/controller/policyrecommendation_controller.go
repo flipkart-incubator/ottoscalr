@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -89,7 +90,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecoQueuedForExecution", "This workload has been queued for a fresh HPA recommendation.")
 
-	currentreco, targetreco, policy, err := r.RecoWorkflow.Execute(ctx, reco.WorkloadMeta{
+	hpaConfigToBeApplied, targetHPAReco, policy, err := r.RecoWorkflow.Execute(ctx, reco.WorkloadMeta{
 		TypeMeta:  policyreco.Spec.WorkloadMeta.TypeMeta,
 		Name:      policyreco.Spec.WorkloadMeta.Name,
 		Namespace: policyreco.Spec.WorkloadMeta.Namespace,
@@ -99,11 +100,12 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	var policyName string
+
 	if policy != nil {
 		policyName = policy.Name
 	}
 
-	transitionedAt := retrieveTransitionTime(currentreco, policyreco)
+	transitionedAt := retrieveTransitionTime(hpaConfigToBeApplied, policyreco)
 	now := metav1.Now()
 	policyRecoPatch := &v1alpha1.PolicyRecommendation{
 		TypeMeta: policyreco.TypeMeta,
@@ -113,9 +115,9 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		},
 		Spec: v1alpha1.PolicyRecommendationSpec{
 			QueuedForExecution:      &FALSE_BOOL,
-			TargetHPAConfiguration:  *targetreco,
+			TargetHPAConfiguration:  *targetHPAReco,
 			Policy:                  policyName,
-			CurrentHPAConfiguration: *currentreco,
+			CurrentHPAConfiguration: *hpaConfigToBeApplied,
 			TransitionedAt:          &transitionedAt,
 			GeneratedAt:             &now,
 		},
@@ -145,8 +147,8 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	return ctrl.Result{}, nil
 }
 
-func retrieveTransitionTime(currentreco *v1alpha1.HPAConfiguration, policyreco v1alpha1.PolicyRecommendation) metav1.Time {
-	if !currentreco.DeepEquals(policyreco.Spec.CurrentHPAConfiguration) {
+func retrieveTransitionTime(hpaConfigToBeApplied *v1alpha1.HPAConfiguration, policyreco v1alpha1.PolicyRecommendation) metav1.Time {
+	if !hpaConfigToBeApplied.DeepEquals(policyreco.Spec.CurrentHPAConfiguration) {
 		return metav1.Now()
 	}
 	return *policyreco.Spec.TransitionedAt
@@ -169,10 +171,8 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 			objSpec := e.Object.(*v1alpha1.PolicyRecommendation).Spec
 			switch {
 			case *objSpec.QueuedForExecution == true:
-				fmt.Println("case 0")
 				return true
 			default:
-				fmt.Println("case falseC")
 				return false
 			}
 		},
@@ -183,7 +183,7 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 			oldObjSpec := e.ObjectOld.(*v1alpha1.PolicyRecommendation).Spec
 			newObjSpec := e.ObjectNew.(*v1alpha1.PolicyRecommendation).Spec
 			// If it hasn't been touched by the registrar don't reconcile
-			if len(newObjSpec.Policy) == 0 || newObjSpec.QueuedForExecutionAt.IsZero() /*|| newObjSpec.TransitionedAt.IsZero()*/ {
+			if len(newObjSpec.Policy) == 0 || newObjSpec.QueuedForExecutionAt.IsZero() {
 				return false
 			}
 			switch {

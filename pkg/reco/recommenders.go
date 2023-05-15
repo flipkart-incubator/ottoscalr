@@ -96,7 +96,7 @@ func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMe
 	if rw.recommender == nil {
 		return nil, nil, nil, errors.New("No recommenders configured in the workflow.")
 	}
-	recoConfig, err := rw.recommender.Recommend(ctx, wm)
+	targetRecoConfig, err := rw.recommender.Recommend(ctx, wm)
 	if err != nil {
 		rw.logger.Error(err, "Error while generating recommendation")
 		return nil, nil, nil, errors.New("Unable to generate recommendation")
@@ -121,16 +121,16 @@ func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMe
 
 	}
 
-	nextConfig := generateNextRecoConfig(recoConfig, nextPolicy, wm)
-	return nextConfig, recoConfig, nextPolicy, nil
+	nextConfig, policyToApply := generateNextRecoConfig(targetRecoConfig, nextPolicy, wm)
+	return nextConfig, targetRecoConfig, policyToApply, nil
 }
 
-func generateNextRecoConfig(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) *v1alpha1.HPAConfiguration {
+func generateNextRecoConfig(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *Policy) {
 	if shouldApplyReco(config, policy) {
-		return config
+		return config, nil
 	} else {
 		recoConfig, _ := createRecoConfigFromPolicy(policy, config, wm)
-		return recoConfig
+		return recoConfig, policy
 	}
 }
 
@@ -150,7 +150,7 @@ func shouldApplyReco(config *v1alpha1.HPAConfiguration, policy *Policy) bool {
 	// Returns true if the reco is safer than the policy
 	if policy.MinReplicaPercentageCut == 100 && config.TargetMetricValue < policy.TargetUtilization {
 		return true
-	} else {
+	} else { // Policy is safer than the reco or we've exhausted the list of policies and the last (most aggressive) policy is safer than the reco config
 		return false
 	}
 }

@@ -39,7 +39,7 @@ func (pi *DefaultPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta
 	policy, err := pi.store.GetDefaultPolicy()
 	if err != nil {
 		logger.V(0).Error(err, "Error fetching default policy.")
-		return nil, err
+		return nil, nil
 	}
 	return &Policy{
 		Name:                    policy.Name,
