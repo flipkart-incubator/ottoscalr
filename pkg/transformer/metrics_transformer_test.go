@@ -1,8 +1,9 @@
-package metrics
+package transformer
 
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +16,7 @@ import (
 
 var _ = Describe("cleanOutliersAndInterpolate", func() {
 	It("Should clear the outlier data corresponding to the given interval and perform a Linear Interpolation", func() {
-		dataPoints := []DataPoint{
+		dataPoints := []metrics.DataPoint{
 			{Timestamp: time.Now().Add(-30 * time.Minute), Value: 60},
 			{Timestamp: time.Now().Add(-29 * time.Minute), Value: 80},
 			{Timestamp: time.Now().Add(-28 * time.Minute), Value: 100},
@@ -128,7 +129,7 @@ var _ = Describe("GetOutlierIntervalsAndInterpolate", func() {
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer server.Close()
-		dataPoints := []DataPoint{
+		dataPoints := []metrics.DataPoint{
 			{Timestamp: time.Now().Add(-30 * time.Minute), Value: 60},
 			{Timestamp: time.Now().Add(-29 * time.Minute), Value: 80},
 			{Timestamp: time.Now().Add(-28 * time.Minute), Value: 100},

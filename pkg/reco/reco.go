@@ -25,7 +25,7 @@ type CpuUtilizationBasedRecommender struct {
 	redLineUtil        float64
 	metricWindow       time.Duration
 	scraper            metrics.Scraper
-	metricsTransformer metrics.MetricsTransformer
+	metricsTransformer []metrics.MetricsTransformer
 	metricStep         time.Duration
 	minTarget          int
 	maxTarget          int
@@ -36,7 +36,7 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 	redLineUtil float64,
 	metricWindow time.Duration,
 	scraper metrics.Scraper,
-	metricsTransformer metrics.MetricsTransformer,
+	metricsTransformer []metrics.MetricsTransformer,
 	metricStep time.Duration,
 	minTarget int,
 	maxTarget int,
@@ -69,10 +69,14 @@ func (c *CpuUtilizationBasedRecommender) Recommend(workloadSpec v1alpha1.Workloa
 		c.logger.Error(err, "Error while scraping GetCPUUtilizationBreachDataPoints.")
 		return nil, nil
 	}
-	dataPoints, err = c.metricsTransformer.GetOutlierIntervalsAndInterpolate(start, dataPoints)
-	if err != nil {
-		c.logger.Error(err, "Error while getting outlier interval from event api")
-		return nil, nil
+	if c.metricsTransformer != nil {
+		for _, transformers := range c.metricsTransformer {
+			dataPoints, err = transformers.GetOutlierIntervalsAndInterpolate(start, dataPoints)
+			if err != nil {
+				c.logger.Error(err, "Error while getting outlier interval from event api")
+				return nil, nil
+			}
+		}
 	}
 
 	acl, err := c.scraper.GetACLByWorkload(workloadSpec.Namespace, workloadSpec.Name)

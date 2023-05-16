@@ -23,6 +23,7 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
+	"github.com/flipkart-incubator/ottoscalr/pkg/transformer"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	"github.com/spf13/viper"
 	"os"
@@ -95,7 +96,10 @@ type Config struct {
 	} `yaml:"cpuUtilizationBasedRecommender"`
 	MetricIngestionTime      float64 `yaml:"metricIngestionTime"`
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
-	EventCalendarAPIEndpoint string  `yaml:"eventCalendarAPIEndpoint"`
+	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
+	MetricsTransformer       struct {
+		EventCalendarAPIEndpoint string `yaml:"eventCalendarAPIEndpoint"`
+	} `yaml:"metricsTransformer"`
 }
 
 func main() {
@@ -166,10 +170,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	metricsTransformer, err := metrics.NewEventMetricsTransformer(config.EventCalendarAPIEndpoint)
-	if err != nil {
-		setupLog.Error(err, "unable to start metrics transformer")
-		os.Exit(1)
+	var metricsTransformer []metrics.MetricsTransformer
+
+	if *config.EnableMetricsTransformer == true {
+		eventMetricsTransformer, err := transformer.NewEventMetricsTransformer(config.MetricsTransformer.EventCalendarAPIEndpoint)
+		if err != nil {
+			setupLog.Error(err, "unable to start metrics transformer")
+			os.Exit(1)
+		}
+
+		metricsTransformer = append(metricsTransformer, eventMetricsTransformer)
 	}
 
 	_ = reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),

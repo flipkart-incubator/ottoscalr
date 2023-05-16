@@ -33,7 +33,7 @@ var (
 	minTarget              = 10
 	maxTarget              = 60
 	fakeScraper            metrics.Scraper
-	fakeMetricsTransformer metrics.MetricsTransformer
+	fakeMetricsTransformer []metrics.MetricsTransformer
 	recommender            *CpuUtilizationBasedRecommender
 )
 
@@ -106,7 +106,7 @@ var _ = BeforeSuite(func() {
 
 	fakeScraper = &FakeScraper{}
 
-	fakeMetricsTransformer = &FakeMetricsTransformer{}
+	fakeMetricsTransformer = append(fakeMetricsTransformer, &FakeMetricsTransformer{})
 
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
 		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, logger)

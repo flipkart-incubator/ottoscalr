@@ -1,7 +1,8 @@
-package metrics
+package transformer
 
 import (
 	"fmt"
+	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -14,11 +15,6 @@ import (
 type OutlierInterval struct {
 	StartTime time.Time
 	EndTime   time.Time
-}
-
-type MetricsTransformer interface {
-	GetOutlierIntervalsAndInterpolate(
-		startTime time.Time, dataPoints []DataPoint) ([]DataPoint, error)
 }
 
 type ALLEvents struct {
@@ -104,7 +100,7 @@ func NewEventMetricsTransformer(eventAPIEndpoint string) (*EventMetricsTransform
 	}, nil
 }
 
-func (ec *EventMetricsTransformer) GetOutlierIntervalsAndInterpolate(startTime time.Time, dataPoints []DataPoint) ([]DataPoint, error) {
+func (ec *EventMetricsTransformer) GetOutlierIntervalsAndInterpolate(startTime time.Time, dataPoints []metrics.DataPoint) ([]metrics.DataPoint, error) {
 	var intervals []OutlierInterval
 	fetchEventsUrl := fmt.Sprintf("http://%s/fk-event-calendar-service/v1/eventCalendar/search?startTime=%d&tier=%s&pageNo=%d&pageSize=%d", ec.EventAPIEndpoint, startTime.UnixMilli(), "ALL_MP", 0, 100)
 	req, err := http.NewRequest(http.MethodGet, fetchEventsUrl, nil)
@@ -183,10 +179,9 @@ func filterIntervals(intervals []OutlierInterval) []OutlierInterval {
 }
 
 // CleanOutliersAndInterpolate - Linear Interpolation for the dataPoints in interval range.
-func (ec *EventMetricsTransformer) cleanOutliersAndInterpolate(dataPoints []DataPoint, intervals []OutlierInterval) []DataPoint {
+func (ec *EventMetricsTransformer) cleanOutliersAndInterpolate(dataPoints []metrics.DataPoint, intervals []OutlierInterval) []metrics.DataPoint {
 	newDataPoints := dataPoints
 	filteredIntervals := filterIntervals(intervals)
-	fmt.Println(filteredIntervals)
 	for _, interval := range filteredIntervals {
 		startIndex := -1
 		endIndex := 0
