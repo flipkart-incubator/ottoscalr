@@ -28,7 +28,7 @@ var _ = Describe("PolicyWatcher controller", func() {
 		})
 		It("Should mark other policies as non-degault and requeue all policy recommendations ", func() {
 			By("Seeding all policies")
-			ctx := context.Background()
+			ctx := context.TODO()
 
 			policy1 = ottoscaleriov1alpha1.Policy{
 				ObjectMeta: metav1.ObjectMeta{

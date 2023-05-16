@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sync/atomic"
@@ -17,18 +18,28 @@ func (fs *FakeScraper) GetAverageCPUUtilizationByWorkload(namespace,
 	workload string,
 	start time.Time,
 	end time.Time,
-	step time.Duration) ([]float64, error) {
-	return []float64{}, nil
+	step time.Duration) ([]metrics.DataPoint, error) {
+	return []metrics.DataPoint{}, nil
 }
 
 func (fs *FakeScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	workloadType,
 	workload string,
-	redLineUtilization float32,
+	redLineUtilization float64,
 	start time.Time,
 	end time.Time,
-	step time.Duration) ([]float64, error) {
-	return []float64{1.3}, nil
+	step time.Duration) ([]metrics.DataPoint, error) {
+	datapoint := metrics.DataPoint{Timestamp: time.Now(), Value: 1.3}
+	return []metrics.DataPoint{datapoint}, nil
+}
+func (fs *FakeScraper) GetACLByWorkload(namespace,
+	workload string) (time.Duration, error) {
+	return 5 * time.Minute, nil
+}
+
+func (fs *FakeScraper) GetPodReadyLatencyByWorkload(namespace,
+	workload string) (float64, error) {
+	return 0.0, nil
 }
 
 var _ = Describe("PolicyRecommendationMonitorManager and Monitor", func() {

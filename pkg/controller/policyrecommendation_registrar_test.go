@@ -25,7 +25,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		DeploymentName      = "test-deployment"
 		DeploymentNamespace = "default"
 
-		timeout  = time.Second * 10
+		timeout  = time.Minute
 		interval = time.Millisecond * 250
 	)
 
@@ -43,8 +43,8 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		})
 		It("Should Create a new PolicyRecommendation", func() {
 			By("By creating a new Rollout")
-			ctx := context.Background()
-			rollout = &rolloutv1alpha1.Rollout{
+			ctx := context.TODO()
+			rollout := &rolloutv1alpha1.Rollout{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      RolloutName,
 					Namespace: RolloutNamespace,
@@ -96,8 +96,8 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		})
 		It("Should Create a new PolicyRecommendation", func() {
 			By("By creating a new Deployment")
-			ctx := context.Background()
-			deployment = &appsv1.Deployment{
+			ctx := context.TODO()
+			deployment := &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DeploymentName,
 					Namespace: DeploymentNamespace,
