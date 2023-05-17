@@ -8,9 +8,11 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
 	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"testing"
@@ -21,10 +23,11 @@ import (
 )
 
 var (
-	cfg       *rest.Config
-	k8sClient client.Client
-	ctx       context.Context
-	cancel    context.CancelFunc
+	cfg           *rest.Config
+	k8sClient     client.Client
+	fakeK8SClient client.Client
+	ctx           context.Context
+	cancel        context.CancelFunc
 
 	logger logr.Logger
 
@@ -36,7 +39,10 @@ var (
 	fakeScraper  metrics.Scraper
 	recommender  *CpuUtilizationBasedRecommender
 	store        *policy.PolicyStore
+	policyAge    = 1 * time.Second
 )
+
+var safestPolicy, policy1, policy2 *ottoscaleriov1alpha1.Policy
 
 type FakeScraper struct{}
 
@@ -102,7 +108,36 @@ var _ = BeforeSuite(func() {
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
 		metricWindow, fakeScraper, metricStep, minTarget, maxTarget, logger)
 
-	//store = policy.NewPolicyStore(k8sClient)
+	safestPolicy = &ottoscaleriov1alpha1.Policy{
+		ObjectMeta: metav1.ObjectMeta{Name: "safest-policy"},
+		Spec: ottoscaleriov1alpha1.PolicySpec{
+			IsDefault:               false,
+			RiskIndex:               1,
+			MinReplicaPercentageCut: 80,
+			TargetUtilization:       10,
+		},
+	}
+	policy1 = &ottoscaleriov1alpha1.Policy{
+		ObjectMeta: metav1.ObjectMeta{Name: "policy-1"},
+		Spec: ottoscaleriov1alpha1.PolicySpec{
+			IsDefault:               true,
+			RiskIndex:               10,
+			MinReplicaPercentageCut: 100,
+			TargetUtilization:       15,
+		},
+	}
+	policy2 = &ottoscaleriov1alpha1.Policy{
+		ObjectMeta: metav1.ObjectMeta{Name: "policy-2"},
+		Spec: ottoscaleriov1alpha1.PolicySpec{
+			IsDefault:               false,
+			RiskIndex:               20,
+			MinReplicaPercentageCut: 100,
+			TargetUtilization:       20,
+		},
+	}
+
+	fakeK8SClient = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(safestPolicy, policy1, policy2).Build()
+	store = policy.NewPolicyStore(fakeK8SClient)
 	go func() {
 		defer GinkgoRecover()
 	}()
