@@ -25,7 +25,7 @@ type BreachAnalyzer struct {
 	metricStep time.Duration
 }
 
-func NewBreachAnalayzer(k8sClient client.Client, scraper metrics.Scraper, cpuRedline float64, metricStep time.Duration) (*BreachAnalyzer, error) {
+func NewBreachAnalyzer(k8sClient client.Client, scraper metrics.Scraper, cpuRedline float64, metricStep time.Duration) (*BreachAnalyzer, error) {
 	return &BreachAnalyzer{
 		store:      policy.NewPolicyStore(k8sClient),
 		scraper:    scraper,
@@ -44,6 +44,10 @@ func (pi *BreachAnalyzer) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Pol
 		return nil, err
 	}
 
+	if len(currentPolicyReco.Spec.Policy) == 0 {
+		logger.V(0).Info("Empty policy in policy reco. Falling back to no-op.")
+		return nil, nil
+	}
 	end := time.Now()
 	start := currentPolicyReco.Spec.GeneratedAt.Time
 	breached, err := pi.breachFn(ctx, start, end, wm.Kind, types.NamespacedName{
@@ -62,7 +66,8 @@ func (pi *BreachAnalyzer) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Pol
 		}
 		policy, err3 := pi.store.GetPreviousPolicyByName(currentPolicyReco.Spec.Policy)
 		if err3 != nil {
-			return nil, err3
+			logger.V(0).Error(err3, "Error fetching the previous policy. Falling back to no-op.")
+			return nil, nil
 		}
 		return PolicyFromCR(policy), nil
 	}

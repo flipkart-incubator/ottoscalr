@@ -44,7 +44,10 @@ var _ = Describe("PolicyIterators", func() {
 
 	Context("AgingPolicyIterator", func() {
 		BeforeEach(func() {
-			Expect(createDummyPolicyReco(DeploymentName, DeploymentNamespace)).Should(Succeed())
+			Expect(createPolicyReco(DeploymentName, DeploymentNamespace, "")).Should(Succeed())
+		})
+		AfterEach(func() {
+			Expect(deletePolicyReco(DeploymentName, DeploymentNamespace)).Should(Succeed())
 		})
 		It("Should age policies", func() {
 
@@ -107,7 +110,8 @@ var _ = Describe("PolicyIterators", func() {
 	})
 })
 
-func createDummyPolicyReco(name, namespace string) error {
+func createPolicyReco(name, namespace, policy string) error {
+	now := metav1.Now()
 	return fakeK8SClient.Create(ctx, &ottoscaleriov1alpha1.PolicyRecommendation{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -116,7 +120,17 @@ func createDummyPolicyReco(name, namespace string) error {
 		Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
 			WorkloadMeta:            ottoscaleriov1alpha1.WorkloadMeta{},
 			CurrentHPAConfiguration: ottoscaleriov1alpha1.HPAConfiguration{},
-			Policy:                  "",
+			Policy:                  policy,
+			GeneratedAt:             &now,
+			TransitionedAt:          &now,
+		},
+	})
+}
+func deletePolicyReco(name, namespace string) error {
+	return fakeK8SClient.Delete(ctx, &ottoscaleriov1alpha1.PolicyRecommendation{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
 		},
 	})
 }
