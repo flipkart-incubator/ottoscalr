@@ -93,9 +93,6 @@ spec:
                     type: string
                   namespace:
                     type: string
-                required:
-                - name
-                - namespace
                 type: object
             type: object
           status:
