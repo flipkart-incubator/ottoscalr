@@ -5,6 +5,7 @@ import (
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
+	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -34,6 +35,7 @@ var (
 	maxTarget    = 60
 	fakeScraper  metrics.Scraper
 	recommender  *CpuUtilizationBasedRecommender
+	store        *policy.PolicyStore
 )
 
 type FakeScraper struct{}
@@ -100,6 +102,7 @@ var _ = BeforeSuite(func() {
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
 		metricWindow, fakeScraper, metricStep, minTarget, maxTarget, logger)
 
+	//store = policy.NewPolicyStore(k8sClient)
 	go func() {
 		defer GinkgoRecover()
 	}()

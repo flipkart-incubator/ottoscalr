@@ -80,6 +80,7 @@ func (pi *AgingPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta) 
 		return nil, err
 	}
 
+	logger.V(0).Info("policy reco CR", "policyreco", policyreco)
 	// If the current policy reco is not set return the safest policy
 	if len(policyreco.Spec.Policy) == 0 {
 

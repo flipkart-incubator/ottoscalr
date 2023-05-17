@@ -18,14 +18,14 @@ type BreachAnalyzer struct {
 	breachFn func(ctx context.Context, start, end time.Time, workloadType string,
 		workload types.NamespacedName,
 		metricScraper metrics.Scraper,
-		cpuRedLine float32,
+		cpuRedLine float64,
 		metricStep time.Duration) (bool, error)
 	client     client.Client
-	cpuRedline float32
+	cpuRedline float64
 	metricStep time.Duration
 }
 
-func NewBreachAnalayzer(k8sClient client.Client, scraper metrics.Scraper, cpuRedline float32, metricStep time.Duration) (*BreachAnalyzer, error) {
+func NewBreachAnalayzer(k8sClient client.Client, scraper metrics.Scraper, cpuRedline float64, metricStep time.Duration) (*BreachAnalyzer, error) {
 	return &BreachAnalyzer{
 		store:      policy.NewPolicyStore(k8sClient),
 		scraper:    scraper,

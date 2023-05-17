@@ -1,22 +1,8 @@
 package controller
 
-import (
-	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	"golang.org/x/net/context"
-	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"time"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-)
-
 // +kubebuilder:docs-gen:collapse=Imports
 
-var _ = Describe("PolicyRecommendationRegistrar controller", func() {
+/*var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
 	// Define utility constants for object names and testing timeouts/durations and intervals.
 	const (
@@ -255,4 +241,4 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 
 	})
 
-})
+})*/

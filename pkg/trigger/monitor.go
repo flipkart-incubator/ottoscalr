@@ -172,7 +172,7 @@ func (m *Monitor) monitorBreaches() {
 func HasBreached(ctx context.Context, start, end time.Time, workloadType string,
 	workload types.NamespacedName,
 	metricScraper metrics.Scraper,
-	cpuRedLine float32,
+	cpuRedLine float64,
 	metricStep time.Duration) (bool, error) {
 	logger := log.FromContext(ctx)
 	dataPoints, err := metricScraper.GetCPUUtilizationBreachDataPoints(workload.Namespace,

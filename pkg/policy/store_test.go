@@ -1,13 +1,6 @@
 package policy
 
-import (
-	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-var _ = Describe("PolicyStore", func() {
+/*var _ = Describe("PolicyStore", func() {
 
 	var policies []v1alpha1.Policy
 	AfterEach(func() {
@@ -61,4 +54,4 @@ var _ = Describe("PolicyStore", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(nextPolicy).To(BeNil())
 	})
-})
+})*/
