@@ -64,12 +64,16 @@ func (pi *BreachAnalyzer) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Pol
 			logger.V(0).Error(err2, "Error while fetching policy reco", "workload", wm)
 			return nil, err2
 		}
-		policy, err3 := pi.store.GetPreviousPolicyByName(currentPolicyReco.Spec.Policy)
+		saferPolicy, err3 := pi.store.GetPreviousPolicyByName(currentPolicyReco.Spec.Policy)
 		if err3 != nil {
-			logger.V(0).Error(err3, "Error fetching the previous policy. Falling back to no-op.")
-			return nil, nil
+			if policy.IsSafestPolicy(err3) {
+				logger.V(0).Error(err3, "No safer policy found. Falling back to no-op.")
+				return nil, nil
+			}
+			logger.V(0).Error(err3, "Error fetching the previous policy.")
+			return nil, err
 		}
-		return PolicyFromCR(policy), nil
+		return PolicyFromCR(saferPolicy), nil
 	}
 	return nil, nil
 }

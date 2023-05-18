@@ -112,7 +112,7 @@ var _ = BeforeSuite(func() {
 	recommender = &reco.MockRecommender{}
 
 	err = NewPolicyRecommendationReconciler(k8sManager.GetClient(),
-		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(POLICY_RECO_WORKFLOW_CTRL_NAME),
+		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(PolicyRecoWorkflowCtrlName),
 		1, recommender, reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
 		reco.NewAgingPolicyIterator(k8sManager.GetClient(), policyAge)).
 		SetupWithManager(k8sManager)

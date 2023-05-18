@@ -2,7 +2,6 @@ package reco
 
 import (
 	"context"
-	"errors"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -80,7 +79,8 @@ func (pi *AgingPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta) 
 		return nil, err
 	}
 
-	logger.V(0).Info("policy reco CR", "policyreco", policyreco)
+	logger.V(0).Info("Workload Meta", "workload", wm)
+	logger.V(0).Info("Policy Reco CR", "policyreco", policyreco)
 	// If the current policy reco is not set return the safest policy
 	if len(policyreco.Spec.Policy) == 0 {
 
@@ -104,7 +104,7 @@ func (pi *AgingPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta) 
 
 	nextPolicy, err := pi.store.GetNextPolicyByName(policyreco.Spec.Policy)
 	if err != nil {
-		if IsLastPolicy(err) {
+		if policy.IsLastPolicy(err) {
 			return PolicyFromCR(currentAppliedPolicy), nil
 		}
 		return nil, err
@@ -115,10 +115,6 @@ func (pi *AgingPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta) 
 
 func (pi *AgingPolicyIterator) GetName() string {
 	return "Aging"
-}
-
-func IsLastPolicy(err error) bool {
-	return errors.Is(err, policy.NO_NEXT_POLICY_FOUND_ERR)
 }
 
 func PolicyFromCR(policy *v1alpha1.Policy) *Policy {

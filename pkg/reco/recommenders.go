@@ -93,6 +93,7 @@ func (r *MockRecommender) Recommend(ctx context.Context, wm WorkloadMeta) (*v1al
 
 func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *v1alpha1.HPAConfiguration, *Policy, error) {
 	ctx = log.IntoContext(ctx, rw.logger)
+	rw.logger.V(0).Info("Workload Meta", "workload", wm)
 	if rw.recommender == nil {
 		return nil, nil, nil, errors.New("No recommenders configured in the workflow.")
 	}

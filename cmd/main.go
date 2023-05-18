@@ -155,7 +155,7 @@ func main() {
 	}
 
 	if err = controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
-		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.POLICY_RECO_WORKFLOW_CTRL_NAME),
+		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
 		config.PolicyRecommendationController.MaxConcurrentReconciles, &reco.MockRecommender{
 			Min:       10,
 			Threshold: 60,

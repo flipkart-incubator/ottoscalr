@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const POLICY_WATCHER_CTRL = "PolicyWatcher"
+const PolicyWatcherCtrl = "PolicyWatcher"
 
 // PolicyWatcher reconciles a Policy object
 type PolicyWatcher struct {
@@ -97,6 +97,6 @@ func (r *PolicyWatcher) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ottoscaleriov1alpha1.Policy{}).
-		Named(POLICY_WATCHER_CTRL).
+		Named(PolicyWatcherCtrl).
 		Complete(r)
 }

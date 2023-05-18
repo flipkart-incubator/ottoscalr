@@ -44,21 +44,26 @@ var (
 
 var safestPolicy, policy1, policy2 *ottoscaleriov1alpha1.Policy
 
-type FakeScraper struct{}
+type FakeScraper struct {
+	CPUDataPoints    []metrics.DataPoint
+	BreachDataPoints []metrics.DataPoint
+	WorkloadACL      time.Duration
+}
+
+func NewFakeScraper(cpuDataPoints, breaches []metrics.DataPoint, acl time.Duration) *FakeScraper {
+	return &FakeScraper{
+		CPUDataPoints:    cpuDataPoints,
+		BreachDataPoints: breaches,
+		WorkloadACL:      acl,
+	}
+}
 
 func (fs *FakeScraper) GetAverageCPUUtilizationByWorkload(namespace,
 	workload string,
 	start time.Time,
 	end time.Time,
 	step time.Duration) ([]metrics.DataPoint, error) {
-	dataPoints := []metrics.DataPoint{
-		{Timestamp: time.Now().Add(-10 * time.Minute), Value: 60},
-		{Timestamp: time.Now().Add(-9 * time.Minute), Value: 80},
-		{Timestamp: time.Now().Add(-8 * time.Minute), Value: 100},
-		{Timestamp: time.Now().Add(-7 * time.Minute), Value: 50},
-		{Timestamp: time.Now().Add(-6 * time.Minute), Value: 30},
-	}
-	return dataPoints, nil
+	return fs.CPUDataPoints, nil
 }
 
 func (fs *FakeScraper) GetCPUUtilizationBreachDataPoints(namespace,
@@ -68,12 +73,11 @@ func (fs *FakeScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	start time.Time,
 	end time.Time,
 	step time.Duration) ([]metrics.DataPoint, error) {
-	datapoint := metrics.DataPoint{Timestamp: time.Now(), Value: 1.3}
-	return []metrics.DataPoint{datapoint}, nil
+	return fs.BreachDataPoints, nil
 }
 func (fs *FakeScraper) GetACLByWorkload(namespace,
 	workload string) (time.Duration, error) {
-	return 5 * time.Minute, nil
+	return fs.WorkloadACL, nil
 }
 func TestPolicies(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -103,7 +107,13 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
-	fakeScraper = &FakeScraper{}
+	fakeScraper = NewFakeScraper([]metrics.DataPoint{
+		{Timestamp: time.Now().Add(-10 * time.Minute), Value: 60},
+		{Timestamp: time.Now().Add(-9 * time.Minute), Value: 80},
+		{Timestamp: time.Now().Add(-8 * time.Minute), Value: 100},
+		{Timestamp: time.Now().Add(-7 * time.Minute), Value: 50},
+		{Timestamp: time.Now().Add(-6 * time.Minute), Value: 30},
+	}, []metrics.DataPoint{{Timestamp: time.Now(), Value: 1.3}}, 5*time.Minute)
 
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
 		metricWindow, fakeScraper, metricStep, minTarget, maxTarget, logger)

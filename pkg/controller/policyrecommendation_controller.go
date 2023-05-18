@@ -34,14 +34,14 @@ import (
 )
 
 const (
-	POLICY_RECO_WORKFLOW_CTRL_NAME = "RecoWorkflowController"
-	EVENT_TYPE_NORMAL              = "Normal"
-	EVENT_TYPE_WARNING             = "Warning"
+	PolicyRecoWorkflowCtrlName = "RecoWorkflowController"
+	eventTypeNormal            = "Normal"
+	eventTypeWarning           = "Warning"
 )
 
 var (
-	FALSE_BOOL = false
-	TRUE_BOOL  = true
+	falseBool = false
+	trueBool  = true
 )
 
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
@@ -76,7 +76,7 @@ func NewPolicyRecommendationReconciler(client client.Client,
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
 
 func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := ctrl.LoggerFrom(ctx).WithName(POLICY_RECO_WORKFLOW_CTRL_NAME)
+	logger := ctrl.LoggerFrom(ctx).WithName(PolicyRecoWorkflowCtrlName)
 
 	policyreco := v1alpha1.PolicyRecommendation{}
 	if err := r.Get(ctx, req.NamespacedName, &policyreco); err != nil {
@@ -88,7 +88,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	logger.V(2).Info("PolicyRecomemndation retrieved", "policyreco", policyreco)
 
-	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecoQueuedForExecution", "This workload has been queued for a fresh HPA recommendation.")
+	r.Recorder.Event(&policyreco, eventTypeNormal, "HPARecoQueuedForExecution", "This workload has been queued for a fresh HPA recommendation.")
 
 	hpaConfigToBeApplied, targetHPAReco, policy, err := r.RecoWorkflow.Execute(ctx, reco.WorkloadMeta{
 		TypeMeta:  policyreco.Spec.WorkloadMeta.TypeMeta,
@@ -114,7 +114,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 			Namespace: policyreco.Namespace,
 		},
 		Spec: v1alpha1.PolicyRecommendationSpec{
-			QueuedForExecution:      &FALSE_BOOL,
+			QueuedForExecution:      &falseBool,
 			TargetHPAConfiguration:  *targetHPAReco,
 			Policy:                  policyName,
 			CurrentHPAConfiguration: *hpaConfigToBeApplied,
@@ -123,7 +123,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		},
 	}
 	logger.V(0).Info("Policy Patch", "PolicyReco", *policyRecoPatch)
-	if err := r.Patch(ctx, policyRecoPatch, client.Apply, client.ForceOwnership, client.FieldOwner(POLICY_RECO_WORKFLOW_CTRL_NAME)); err != nil {
+	if err := r.Patch(ctx, policyRecoPatch, client.Apply, client.ForceOwnership, client.FieldOwner(PolicyRecoWorkflowCtrlName)); err != nil {
 		logger.Error(err, "Error patching the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -142,7 +142,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	r.Recorder.Event(&policyreco, EVENT_TYPE_NORMAL, "HPARecommendationGenerated", fmt.Sprintf("The HPA recommendation has been generated successfully. The current policy this workload is at %s.", policyName))
+	r.Recorder.Event(&policyreco, eventTypeNormal, "HPARecommendationGenerated", fmt.Sprintf("The HPA recommendation has been generated successfully. The current policy this workload is at %s.", policyName))
 	logger.V(1).Info("Successfully generated HPA Recommendation.")
 	return ctrl.Result{}, nil
 }
@@ -157,7 +157,7 @@ func retrieveTransitionTime(hpaConfigToBeApplied *v1alpha1.HPAConfiguration, pol
 func getSubresourcePatchOptions() *client.SubResourcePatchOptions {
 	patchOpts := client.PatchOptions{}
 	client.ForceOwnership.ApplyToPatch(&patchOpts)
-	client.FieldOwner(POLICY_RECO_WORKFLOW_CTRL_NAME).ApplyToPatch(&patchOpts)
+	client.FieldOwner(PolicyRecoWorkflowCtrlName).ApplyToPatch(&patchOpts)
 	return &client.SubResourcePatchOptions{
 		PatchOptions: patchOpts,
 	}
@@ -206,6 +206,6 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		For(&v1alpha1.PolicyRecommendation{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		WithEventFilter(compoundPredicate).
-		Named(POLICY_RECO_WORKFLOW_CTRL_NAME).
+		Named(PolicyRecoWorkflowCtrlName).
 		Complete(r)
 }

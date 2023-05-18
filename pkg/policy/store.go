@@ -31,8 +31,8 @@ func NewPolicyStore(k8sClient client.Client) *PolicyStore {
 	}
 }
 
-var NO_NEXT_POLICY_FOUND_ERR = errors.New("no next policy found")
-var NO_PREV_POLICY_FOUND_ERR = errors.New("no previous policy found")
+var NoNextPolicyFoundErr = errors.New("no next policy found")
+var NoPrevPolicyFoundErr = errors.New("no previous policy found")
 
 func (ps *PolicyStore) GetSafestPolicy() (*v1alpha1.Policy, error) {
 	policies := &v1alpha1.PolicyList{}
@@ -72,7 +72,7 @@ func (ps *PolicyStore) GetNextPolicy(currentPolicy *v1alpha1.Policy) (*v1alpha1.
 		}
 	}
 
-	return nil, NO_NEXT_POLICY_FOUND_ERR
+	return nil, NoNextPolicyFoundErr
 }
 
 func (ps *PolicyStore) GetNextPolicyByName(name string) (*v1alpha1.Policy, error) {
@@ -97,7 +97,7 @@ func (ps *PolicyStore) GetNextPolicyByName(name string) (*v1alpha1.Policy, error
 		}
 	}
 
-	return nil, NO_NEXT_POLICY_FOUND_ERR
+	return nil, NoNextPolicyFoundErr
 }
 
 func (ps *PolicyStore) GetPreviousPolicyByName(name string) (*v1alpha1.Policy, error) {
@@ -122,7 +122,7 @@ func (ps *PolicyStore) GetPreviousPolicyByName(name string) (*v1alpha1.Policy, e
 		}
 	}
 
-	return nil, NO_PREV_POLICY_FOUND_ERR
+	return nil, NoPrevPolicyFoundErr
 }
 
 func (ps *PolicyStore) GetSortedPolicies() (*v1alpha1.PolicyList, error) {
@@ -173,4 +173,12 @@ func (ps *PolicyStore) GetDefaultPolicy() (*v1alpha1.Policy, error) {
 
 func isDefault(policy v1alpha1.Policy) bool {
 	return policy.Spec.IsDefault
+}
+
+func IsLastPolicy(err error) bool {
+	return errors.Is(err, NoNextPolicyFoundErr)
+}
+
+func IsSafestPolicy(err error) bool {
+	return errors.Is(err, NoNextPolicyFoundErr)
 }

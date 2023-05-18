@@ -108,7 +108,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 					Policy:             safestPolicy.Name,
 					GeneratedAt:        &now,
 					TransitionedAt:     &now,
-					QueuedForExecution: &FALSE_BOOL,
+					QueuedForExecution: &falseBool,
 				},
 			}
 			Expect(k8sClient.Create(ctx, policyreco)).Should(Succeed())
@@ -272,7 +272,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 					Policy:             safestPolicy.Name,
 					GeneratedAt:        &now,
 					TransitionedAt:     &now,
-					QueuedForExecution: &TRUE_BOOL,
+					QueuedForExecution: &trueBool,
 				},
 			}
 			Expect(k8sClient.Create(ctx, policyreco)).Should(Succeed())
@@ -375,7 +375,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 					Policy:             safestPolicy.Name,
 					GeneratedAt:        &now,
 					TransitionedAt:     &now,
-					QueuedForExecution: &TRUE_BOOL,
+					QueuedForExecution: &trueBool,
 				},
 			}
 			Expect(k8sClient.Create(ctx, policyreco)).Should(Succeed())
@@ -556,7 +556,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 					Policy:             safestPolicy.Name,
 					GeneratedAt:        &now,
 					TransitionedAt:     &now,
-					QueuedForExecution: &TRUE_BOOL,
+					QueuedForExecution: &trueBool,
 				},
 			}
 			Expect(k8sClient.Create(ctx, policyreco)).Should(Succeed())
@@ -660,7 +660,7 @@ func queueReco(name, namespace string) error {
 			QueuedForExecutionAt: &now,
 		},
 	}
-	err := k8sClient.Patch(ctx, patchPolicyReco, client.Apply, client.ForceOwnership, client.FieldOwner(POLICY_RECO_WORKFLOW_CTRL_NAME))
+	err := k8sClient.Patch(ctx, patchPolicyReco, client.Apply, client.ForceOwnership, client.FieldOwner(PolicyRecoWorkflowCtrlName))
 	policyString, _ := json.MarshalIndent(patchPolicyReco, "", "   ")
 	fmt.Fprintf(GinkgoWriter, "Policy patch after queuing %s \n", policyString)
 	return err

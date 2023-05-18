@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-const POLICY_RECO_REGISTRAR_CTRL_NAME = "PolicyRecommendationRegistrar"
+const PolicyRecoRegistrarCtrlName = "PolicyRecommendationRegistrar"
 
 // PolicyRecommendationRegistrar reconciles a Deployment or ArgoRollout
 // object to ensure a PolicyRecommendation exists.
@@ -61,7 +61,7 @@ func NewPolicyRecommendationRegistrar(client client.Client,
 func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	request ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger = logger.WithValues("request", request).WithName(POLICY_RECO_REGISTRAR_CTRL_NAME)
+	logger = logger.WithValues("request", request).WithName(PolicyRecoRegistrarCtrlName)
 
 	// Check if Rollout exists
 	rollout := argov1alpha1.Rollout{}
@@ -133,7 +133,7 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 				TypeMeta:  metav1.TypeMeta{Kind: gvk.Kind, APIVersion: gvk.GroupVersion().String()}},
 			Policy:               safestPolicy.Name,
 			TransitionedAt:       &now,
-			QueuedForExecution:   &TRUE_BOOL,
+			QueuedForExecution:   &trueBool,
 			QueuedForExecutionAt: &now,
 		},
 	}
@@ -211,7 +211,7 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		Named(POLICY_RECO_REGISTRAR_CTRL_NAME).
+		Named(PolicyRecoRegistrarCtrlName).
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
