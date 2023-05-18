@@ -1,6 +1,13 @@
 package policy
 
-/*var _ = Describe("PolicyStore", func() {
+import (
+	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+var _ = Describe("PolicyStore", func() {
 
 	var policies []v1alpha1.Policy
 	AfterEach(func() {
@@ -44,14 +51,14 @@ package policy
 		Expect(safestPolicy.Name).To(Equal("policy1"))
 
 		By("getting the next policy")
-		nextPolicy, err := store.GetNextPolicy(&policies[0])
+		nextPolicy, err := store.GetNextPolicyByName(policies[0].Name)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(nextPolicy).NotTo(BeNil())
 		Expect(nextPolicy.Name).To(Equal("policy2"))
 
 		By("getting the next policy when there is no next policy")
-		nextPolicy, err = store.GetNextPolicy(&policies[1])
+		nextPolicy, err = store.GetNextPolicyByName(policies[1].Name)
 		Expect(err).To(HaveOccurred())
 		Expect(nextPolicy).To(BeNil())
 	})
-})*/
+})
