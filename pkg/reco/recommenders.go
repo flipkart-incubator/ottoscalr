@@ -43,12 +43,12 @@ func (b *RecoWorkflowBuilder) WithRecommender(r Recommender) *RecoWorkflowBuilde
 	return b
 }
 
-func (b *RecoWorkflowBuilder) WithPolicyIterator(name string, p PolicyIterator) *RecoWorkflowBuilder {
+func (b *RecoWorkflowBuilder) WithPolicyIterator(p PolicyIterator) *RecoWorkflowBuilder {
 	if b.policyIterators == nil {
 		b.policyIterators = make(map[string]PolicyIterator)
-		b.policyIterators[name] = p
-	} else if _, ok := b.policyIterators[name]; !ok {
-		b.policyIterators[name] = p
+		b.policyIterators[p.GetName()] = p
+	} else if _, ok := b.policyIterators[p.GetName()]; !ok {
+		b.policyIterators[p.GetName()] = p
 	}
 	return b
 }
