@@ -151,7 +151,7 @@ func main() {
 	agingPolicyTTL, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAgeSeconds)
 	if err != nil {
 		logger.Error(err, "Failed to parse policyExpiryAge. Defaulting to 60s")
-		agingPolicyTTL = 60 * time.Second
+		agingPolicyTTL = 48 * time.Hour
 	}
 
 	if err = controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
