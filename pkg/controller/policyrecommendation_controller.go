@@ -60,7 +60,7 @@ func NewPolicyRecommendationReconciler(client client.Client,
 	recoWfBuilder := reco.NewRecommendationWorkflowBuilder().
 		WithRecommender(recommender)
 	for _, pi := range policyIterators {
-		recoWfBuilder = recoWfBuilder.WithPolicyIterator(pi.GetName(), pi)
+		recoWfBuilder = recoWfBuilder.WithPolicyIterator(pi)
 	}
 	return &PolicyRecommendationReconciler{
 		Client:                  client,
