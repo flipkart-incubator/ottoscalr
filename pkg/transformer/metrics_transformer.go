@@ -2,14 +2,9 @@ package transformer
 
 import (
 	"fmt"
+	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
-	"io/ioutil"
-	"net/http"
 	"time"
-
-	"encoding/json"
-
-	"github.com/hashicorp/go-retryablehttp"
 )
 
 type OutlierInterval struct {
@@ -17,135 +12,37 @@ type OutlierInterval struct {
 	EndTime   time.Time
 }
 
-type ALLEvents struct {
-	HasMore bool            `json:"hasMore,omitempty"`
-	Content []EventMetadata `json:"content,omitempty"`
+type OutlierInterpolatorTransformer struct {
+	EventIntegration integration.EventIntegration
 }
 
-type EventMetadata struct {
-	EventId          string           `json:"eventId,omitempty"`
-	UserId           string           `json:"userId,omitempty"`
-	SegmentInfoList  []SegmentInfoDTO `json:"segmentInfoList,omitempty"`
-	EventName        string           `json:"eventName,omitempty"`
-	Version          int64            `json:"version,omitempty"`
-	EventTier        string           `json:"eventTier,omitempty"`
-	Type             string           `json:"type,omitempty"`
-	EventFroze       bool             `json:"eventFroze,omitempty"`
-	EarlyAccess      EarlyAccessDTO   `json:"earlyAccess,omitempty"`
-	Prebook          PrebookDTO       `json:"prebook,omitempty"`
-	Lifecycle        LifecycleDTO     `json:"lifecycle,omitempty"`
-	EaSlots          []LifecycleDTO   `json:"eaSlots,omitempty"`
-	EventStatus      string           `json:"eventStatus,omitempty"`
-	ApplicableFees   []FeeDetailDTO   `json:"applicableFees,omitempty"`
-	DiscountingDepth string           `json:"discountingDepth,omitempty"`
-}
+func NewOutlierInterpolatorTransformer(eventIntegration integration.EventIntegration) (*OutlierInterpolatorTransformer, error) {
 
-type EarlyAccessDTO struct {
-	PointTimeMarkers []PointTimeMarkerDTO `json:"pointTimeMarkers,omitempty"`
-	DseId            string               `json:"dseId,omitempty"`
-	Description      string               `json:"description,omitempty"`
-	StartTime        int64                `json:"startTime,omitempty"`
-	EndTime          int64                `json:"endTime,omitempty"`
-	Status           string               `json:"status,omitempty"`
-}
-
-type PointTimeMarkerDTO struct {
-	Id          string          `json:"id,omitempty"`
-	EaSlots     []LifecycleDTO  `json:"eaSlots,omitempty"`
-	TimeAnchors []TimeAnchorDTO `json:"timeAnchors,omitempty"`
-}
-
-type TimeAnchorDTO struct {
-	Id        string `json:"id,omitempty"`
-	StartTime int64  `json:"startTime,omitempty"`
-}
-
-type SegmentInfoDTO struct {
-	MarketPlace   string `json:"marketPlace,omitempty"`
-	BusinessUnit  string `json:"businessUnit,omitempty"`
-	SuperCategory string `json:"superCategory,omitempty"`
-}
-
-type LifecycleDTO struct {
-	StartTime int64 `json:"startTime,omitempty"`
-	EndTime   int64 `json:"endTime,omitempty"`
-}
-
-type FeeDetailDTO struct {
-	FeeType   string  `json:"feeType,omitempty"`
-	FeeTag    string  `json:"feeTag,omitempty"`
-	FeeAmount float64 `json:"feeAmount,omitempty"`
-}
-
-type PrebookDTO struct {
-	PrebookId        string       `json:"prebookId,omitempty"`
-	PrebookLifecycle LifecycleDTO `json:"prebookLifecycle,omitempty"`
-	Name             string       `json:"name,omitempty"`
-}
-
-type EventMetricsTransformer struct {
-	Client           *http.Client
-	EventAPIEndpoint string
-}
-
-func NewEventMetricsTransformer(eventAPIEndpoint string) (*EventMetricsTransformer, error) {
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 10
-
-	client := retryClient.StandardClient()
-
-	return &EventMetricsTransformer{
-		Client:           client,
-		EventAPIEndpoint: eventAPIEndpoint,
+	return &OutlierInterpolatorTransformer{
+		EventIntegration: eventIntegration,
 	}, nil
 }
 
-func (ec *EventMetricsTransformer) GetOutlierIntervalsAndInterpolate(startTime time.Time, dataPoints []metrics.DataPoint) ([]metrics.DataPoint, error) {
-	var intervals []OutlierInterval
-	fetchEventsUrl := fmt.Sprintf("http://%s/fk-event-calendar-service/v1/eventCalendar/search?startTime=%d&tier=%s&pageNo=%d&pageSize=%d", ec.EventAPIEndpoint, startTime.UnixMilli(), "ALL_MP", 0, 100)
-	req, err := http.NewRequest(http.MethodGet, fetchEventsUrl, nil)
+func (ot *OutlierInterpolatorTransformer) Transform(startTime time.Time, endTime time.Time, dataPoints []metrics.DataPoint) ([]metrics.DataPoint, error) {
+	eventDetails, err := ot.EventIntegration.GetDesiredEvents(startTime, endTime)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request for fetching past events list: %v", err)
+		return nil, fmt.Errorf("error in getting events from event calendar: %v", err)
 	}
-	req.Header.Add("X-Flipkart-Client", "sparrow")
-	req.Header.Add("X-Request-Id", "123")
-	req.Header.Add("accept", "application/json")
-	resp, err := ec.Client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error calling event api: %v", err)
-	}
-	var allEvents ALLEvents
-	responseReader, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body from event api: %v", err)
-	}
-	err = json.Unmarshal(responseReader, &allEvents)
-	if err != nil {
-		return nil, fmt.Errorf("error while unmarshaling event api json response: %v", err)
-	}
-	for _, events := range allEvents.Content {
-		start := time.Unix(0, events.Lifecycle.StartTime*int64(time.Millisecond))
-		end := time.Unix(0, events.Lifecycle.EndTime*int64(time.Millisecond))
-		start = handleEaSlots(events, start)
-		interval := OutlierInterval{StartTime: start, EndTime: end}
-		intervals = append(intervals, interval)
-	}
-	newDataPoints := ec.cleanOutliersAndInterpolate(dataPoints, intervals)
+	intervals := getOutlierIntervals(eventDetails)
+	newDataPoints := ot.cleanOutliersAndInterpolate(dataPoints, intervals)
 	return newDataPoints, nil
 }
 
-// Handling Early Access Slots
-func handleEaSlots(eventMetaData EventMetadata, start time.Time) time.Time {
-	updatedStart := start
-	for _, ea := range eventMetaData.EaSlots {
-		eaStartTimeUnix := ea.StartTime
-		eaTm := time.Unix(0, eaStartTimeUnix*int64(time.Millisecond))
-
-		if eaTm.Before(start) {
-			updatedStart = eaTm
+func getOutlierIntervals(eventDetails []integration.EventDetails) []OutlierInterval {
+	var intervals []OutlierInterval
+	for _, event := range eventDetails {
+		interval := OutlierInterval{
+			StartTime: event.StartTime,
+			EndTime:   event.EndTime,
 		}
+		intervals = append(intervals, interval)
 	}
-	return updatedStart
+	return intervals
 }
 
 // Handling Overlapping and Unnecessary Outlier Intervals
@@ -179,7 +76,7 @@ func filterIntervals(intervals []OutlierInterval) []OutlierInterval {
 }
 
 // CleanOutliersAndInterpolate - Linear Interpolation for the dataPoints in interval range.
-func (ec *EventMetricsTransformer) cleanOutliersAndInterpolate(dataPoints []metrics.DataPoint, intervals []OutlierInterval) []metrics.DataPoint {
+func (ot *OutlierInterpolatorTransformer) cleanOutliersAndInterpolate(dataPoints []metrics.DataPoint, intervals []OutlierInterval) []metrics.DataPoint {
 	newDataPoints := dataPoints
 	filteredIntervals := filterIntervals(intervals)
 	for _, interval := range filteredIntervals {

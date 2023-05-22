@@ -71,8 +71,8 @@ func (fs *FakeScraper) GetACLByWorkload(namespace,
 	return 5 * time.Minute, nil
 }
 
-func (fm *FakeMetricsTransformer) GetOutlierIntervalsAndInterpolate(
-	startTime time.Time, dataPoints []metrics.DataPoint) ([]metrics.DataPoint, error) {
+func (fm *FakeMetricsTransformer) Transform(
+	startTime time.Time, endTime time.Time, dataPoints []metrics.DataPoint) ([]metrics.DataPoint, error) {
 	return dataPoints, nil
 }
 

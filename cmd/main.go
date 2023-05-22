@@ -20,6 +20,7 @@ import (
 	"flag"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
+	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
@@ -97,7 +98,7 @@ type Config struct {
 	MetricIngestionTime      float64 `yaml:"metricIngestionTime"`
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
-	MetricsTransformer       struct {
+	Integration              struct {
 		EventCalendarAPIEndpoint string `yaml:"eventCalendarAPIEndpoint"`
 	} `yaml:"metricsTransformer"`
 }
@@ -170,16 +171,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	eventIntegration, err := integration.NewEventCalendarDataFetcher(config.Integration.EventCalendarAPIEndpoint)
+
 	var metricsTransformer []metrics.MetricsTransformer
 
 	if *config.EnableMetricsTransformer == true {
-		eventMetricsTransformer, err := transformer.NewEventMetricsTransformer(config.MetricsTransformer.EventCalendarAPIEndpoint)
+		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegration)
 		if err != nil {
 			setupLog.Error(err, "unable to start metrics transformer")
 			os.Exit(1)
 		}
 
-		metricsTransformer = append(metricsTransformer, eventMetricsTransformer)
+		metricsTransformer = append(metricsTransformer, outlierInterpolatorTransformer)
 	}
 
 	_ = reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),

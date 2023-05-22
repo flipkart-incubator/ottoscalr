@@ -71,7 +71,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(workloadSpec v1alpha1.Workloa
 	}
 	if c.metricsTransformer != nil {
 		for _, transformers := range c.metricsTransformer {
-			dataPoints, err = transformers.GetOutlierIntervalsAndInterpolate(start, dataPoints)
+			dataPoints, err = transformers.Transform(start, end, dataPoints)
 			if err != nil {
 				c.logger.Error(err, "Error while getting outlier interval from event api")
 				return nil, nil

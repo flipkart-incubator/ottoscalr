@@ -3,6 +3,6 @@ package metrics
 import "time"
 
 type MetricsTransformer interface {
-	GetOutlierIntervalsAndInterpolate(
-		startTime time.Time, dataPoints []DataPoint) ([]DataPoint, error)
+	Transform(
+		startTime time.Time, endTime time.Time, dataPoints []DataPoint) ([]DataPoint, error)
 }

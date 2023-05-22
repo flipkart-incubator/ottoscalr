@@ -1,13 +1,8 @@
 package transformer
 
 import (
-	"encoding/json"
-	"fmt"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"math"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -48,14 +43,14 @@ var _ = Describe("cleanOutliersAndInterpolate", func() {
 		intervals := []OutlierInterval{
 			{StartTime: time.Now().Add(-20 * time.Minute), EndTime: time.Now().Add(-15 * time.Minute)},
 		}
-		newDataPoints := eventMetricsTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
+		newDataPoints := outlierInterpolatorTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
 		Expect(math.Floor(newDataPoints[11].Value*100) / 100).To(Equal(63.33))
 
 		//Interval from start
 		intervals = []OutlierInterval{
 			{StartTime: time.Now().Add(-31 * time.Minute), EndTime: time.Now().Add(-25 * time.Minute)},
 		}
-		newDataPoints = eventMetricsTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
+		newDataPoints = outlierInterpolatorTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
 		Expect(math.Floor(newDataPoints[0].Value*100) / 100).To(Equal(0.00))
 		Expect(math.Floor(newDataPoints[2].Value*100) / 100).To(Equal(26.66))
 
@@ -63,7 +58,7 @@ var _ = Describe("cleanOutliersAndInterpolate", func() {
 		intervals = []OutlierInterval{
 			{StartTime: time.Now().Add(-9 * time.Minute), EndTime: time.Now().Add(2 * time.Minute)},
 		}
-		newDataPoints = eventMetricsTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
+		newDataPoints = outlierInterpolatorTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
 		Expect(math.Floor(newDataPoints[24].Value*100) / 100).To(Equal(0.00))
 		Expect(math.Floor(newDataPoints[22].Value*100) / 100).To(Equal(53.33))
 
@@ -72,7 +67,7 @@ var _ = Describe("cleanOutliersAndInterpolate", func() {
 			{StartTime: time.Now().Add(-20 * time.Minute), EndTime: time.Now().Add(-15 * time.Minute)},
 			{StartTime: time.Now().Add(-18 * time.Minute), EndTime: time.Now().Add(-10 * time.Minute)},
 		}
-		newData := eventMetricsTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
+		newData := outlierInterpolatorTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
 		Expect(math.Floor(newData[15].Value*100) / 100).To(Equal(69.09))
 		Expect(math.Floor(newData[12].Value*100) / 100).To(Equal(63.63))
 	})
@@ -101,34 +96,8 @@ var _ = Describe("filterIntervals", func() {
 	})
 })
 
-var _ = Describe("GetOutlierIntervalsAndInterpolate", func() {
-	It("Should return the outlier intervals by fetching the event metadata and parsing it", func() {
-		time1 := time.Now().Add(-20 * time.Minute)
-		time2 := time.Now().Add(-14 * time.Minute)
-		//time3 := time.Now().Add(-21 * time.Minute)
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Define the mock endpoint logic
-			// Handle unknown endpoints
-			response := ALLEvents{
-
-				HasMore: true,
-				Content: []EventMetadata{
-					{
-						Lifecycle: LifecycleDTO{StartTime: time1.UnixMilli(), EndTime: time2.UnixMilli()},
-						//EaSlots:   []LifecycleDTO{{StartTime: time3.UnixMilli(), EndTime: time1.UnixMilli()}},
-					},
-				},
-			}
-			jsonResponse, err := json.Marshal(response)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				Expect(err).NotTo(HaveOccurred())
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprintf(w, "%s", string(jsonResponse))
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
+var _ = Describe("Transform", func() {
+	It("Should transform the given dataPoints", func() {
 		dataPoints := []metrics.DataPoint{
 			{Timestamp: time.Now().Add(-30 * time.Minute), Value: 60},
 			{Timestamp: time.Now().Add(-29 * time.Minute), Value: 80},
@@ -156,9 +125,9 @@ var _ = Describe("GetOutlierIntervalsAndInterpolate", func() {
 			{Timestamp: time.Now().Add(-7 * time.Minute), Value: 50},
 			{Timestamp: time.Now().Add(-6 * time.Minute), Value: 30},
 		}
-		eventMetricsTransformer.EventAPIEndpoint = strings.Split(server.URL, "//")[1]
 		start := time.Now().Add(-50 * time.Minute)
-		newDataPoints, err := eventMetricsTransformer.GetOutlierIntervalsAndInterpolate(start, dataPoints)
+		end := time.Now()
+		newDataPoints, err := outlierInterpolatorTransformer.Transform(start, end, dataPoints)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(math.Floor(newDataPoints[12].Value*100) / 100).To(Equal(51.42))
 	})

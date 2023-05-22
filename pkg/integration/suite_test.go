@@ -14,15 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package transformer
+package integration
 
 import (
-	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
-	"testing"
-	"time"
-
+	"github.com/hashicorp/go-retryablehttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"testing"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -33,30 +31,14 @@ func TestMetrics(t *testing.T) {
 	RunSpecs(t, "Metrics Suite")
 }
 
-type FakeEventIntegration struct{}
-
 var (
-	outlierInterpolatorTransformer *OutlierInterpolatorTransformer
-	fakeEventIntegration           integration.EventIntegration
+	eventIntegration *EventCalendarDataFetcher
 )
-
-func (fe *FakeEventIntegration) GetDesiredEvents(startTime time.Time,
-	endTime time.Time) ([]integration.EventDetails, error) {
-	time1 := time.Now().Add(-21 * time.Minute)
-	time2 := time.Now().Add(-15 * time.Minute)
-	return []integration.EventDetails{
-		{
-			EventName: "event1",
-			EventId:   "1234",
-			StartTime: time1,
-			EndTime:   time2,
-		},
-	}, nil
-}
 
 var _ = BeforeSuite(func() {
 
-	fakeEventIntegration = &FakeEventIntegration{}
-
-	outlierInterpolatorTransformer, _ = NewOutlierInterpolatorTransformer(fakeEventIntegration)
+	eventIntegration = &EventCalendarDataFetcher{
+		Client:           retryablehttp.NewClient().StandardClient(),
+		EventAPIEndpoint: "",
+	}
 })
