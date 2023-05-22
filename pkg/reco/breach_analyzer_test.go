@@ -36,7 +36,7 @@ var _ = Describe("BreachAnalyzer policy iterator", func() {
 			Expect(createPolicyReco(DeploymentName, DeploymentNamespace, "policy-2")).Should(Succeed())
 			var cpuUtil, breaches []metrics.DataPoint
 			acl := 5 * time.Minute
-			fakeP8sScraper = NewFakeScraper(cpuUtil, breaches, acl)
+			fakeP8sScraper = newFakeScraper(cpuUtil, breaches, acl)
 			Expect(fakeP8sScraper).NotTo(BeNil())
 			var err error
 			breachAnalyzer, err = NewBreachAnalyzer(fakeK8SClient, fakeP8sScraper, cpuRedline, metricStep)

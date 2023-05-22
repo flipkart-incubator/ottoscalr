@@ -56,19 +56,23 @@ type PolicyRecommendationReconciler struct {
 
 func NewPolicyRecommendationReconciler(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder,
-	maxConcurrentReconciles int, recommender reco.Recommender, policyIterators ...reco.PolicyIterator) *PolicyRecommendationReconciler {
+	maxConcurrentReconciles int, recommender reco.Recommender, policyIterators ...reco.PolicyIterator) (*PolicyRecommendationReconciler, error) {
 	recoWfBuilder := reco.NewRecommendationWorkflowBuilder().
 		WithRecommender(recommender)
 	for _, pi := range policyIterators {
 		recoWfBuilder = recoWfBuilder.WithPolicyIterator(pi)
+	}
+	recoWorkflow, err := recoWfBuilder.Build()
+	if err != nil {
+		return nil, err
 	}
 	return &PolicyRecommendationReconciler{
 		Client:                  client,
 		Scheme:                  scheme,
 		MaxConcurrentReconciles: maxConcurrentReconciles,
 		Recorder:                recorder,
-		RecoWorkflow:            recoWfBuilder.Build(),
-	}
+		RecoWorkflow:            recoWorkflow,
+	}, nil
 }
 
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations,verbs=get;list;watch;create;update;patch;delete

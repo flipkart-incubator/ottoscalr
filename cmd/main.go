@@ -174,9 +174,15 @@ func main() {
 		config.CpuUtilizationBasedRecommender.MaxTarget,
 		logger)
 
-	if err = controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
+	policyRecoReconciler, err := controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
-		config.PolicyRecommendationController.MaxConcurrentReconciles, cpuUtilizationBasedRecommender, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL)).
+		config.PolicyRecommendationController.MaxConcurrentReconciles, cpuUtilizationBasedRecommender, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL))
+	if err != nil {
+		setupLog.Error(err, "Unable to initialize policy reco reconciler")
+		os.Exit(1)
+	}
+
+	if err = policyRecoReconciler.
 		SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)

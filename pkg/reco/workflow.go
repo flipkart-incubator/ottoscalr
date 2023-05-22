@@ -61,16 +61,19 @@ func (b *RecoWorkflowBuilder) WithLogger(log logr.Logger) *RecoWorkflowBuilder {
 	return b
 }
 
-func (b *RecoWorkflowBuilder) Build() RecommendationWorkflow {
+func (b *RecoWorkflowBuilder) Build() (RecommendationWorkflow, error) {
 	var zeroValLogger logr.Logger
 	if b.logger == zeroValLogger {
 		b.logger = zap.New()
+	}
+	if b.recommender == nil && b.policyIterators == nil {
+		return nil, errors.New("Both recommender and policy iterators can't be nil")
 	}
 	return &RecommendationWorkflowImpl{
 		recommender:     b.recommender,
 		policyIterators: b.policyIterators,
 		logger:          b.logger,
-	}
+	}, nil
 }
 
 func NewRecommendationWorkflowBuilder() *RecoWorkflowBuilder {

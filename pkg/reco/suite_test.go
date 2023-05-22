@@ -31,15 +31,18 @@ var (
 
 	logger logr.Logger
 
-	redLineUtil  = 0.85
-	metricWindow = 1 * time.Hour
-	metricStep   = 5 * time.Minute
-	minTarget    = 10
-	maxTarget    = 60
-	fakeScraper  metrics.Scraper
-	recommender  *CpuUtilizationBasedRecommender
-	store        *policy.PolicyStore
-	policyAge    = 1 * time.Second
+	redLineUtil        = 0.85
+	metricWindow       = 1 * time.Hour
+	metricStep         = 5 * time.Minute
+	minTarget          = 10
+	maxTarget          = 60
+	fakeScraper        metrics.Scraper
+	recommender        *CpuUtilizationBasedRecommender
+	store              *policy.PolicyStore
+	policyAge          = 1 * time.Second
+	mockRecommender    *Recommender
+	mockPolicyIterator *PolicyIterator
+	mockPolicy         *Policy
 )
 
 var safestPolicy, policy1, policy2 *ottoscaleriov1alpha1.Policy
@@ -50,12 +53,45 @@ type FakeScraper struct {
 	WorkloadACL      time.Duration
 }
 
-func NewFakeScraper(cpuDataPoints, breaches []metrics.DataPoint, acl time.Duration) *FakeScraper {
+func newFakeScraper(cpuDataPoints, breaches []metrics.DataPoint, acl time.Duration) *FakeScraper {
 	return &FakeScraper{
 		CPUDataPoints:    cpuDataPoints,
 		BreachDataPoints: breaches,
 		WorkloadACL:      acl,
 	}
+}
+
+type MockRecommender struct {
+	Min       int
+	Threshold int
+	Max       int
+}
+
+func (r *MockRecommender) Recommend(ctx context.Context, wm WorkloadMeta) (*ottoscaleriov1alpha1.HPAConfiguration, error) {
+	return &ottoscaleriov1alpha1.HPAConfiguration{
+		Min:               r.Min,
+		Max:               r.Max,
+		TargetMetricValue: r.Threshold,
+	}, nil
+}
+
+type MockNoOpPI struct{}
+type MockPI struct{}
+
+func (pi *MockNoOpPI) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Policy, error) {
+	return nil, nil
+}
+
+func (pi *MockNoOpPI) GetName() string {
+	return "no-op"
+}
+
+func (pi *MockPI) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Policy, error) {
+	return mockPolicy, nil
+}
+
+func (pi *MockPI) GetName() string {
+	return "mockPI"
 }
 
 func (fs *FakeScraper) GetAverageCPUUtilizationByWorkload(namespace,
@@ -107,7 +143,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
-	fakeScraper = NewFakeScraper([]metrics.DataPoint{
+	fakeScraper = newFakeScraper([]metrics.DataPoint{
 		{Timestamp: time.Now().Add(-10 * time.Minute), Value: 60},
 		{Timestamp: time.Now().Add(-9 * time.Minute), Value: 80},
 		{Timestamp: time.Now().Add(-8 * time.Minute), Value: 100},
