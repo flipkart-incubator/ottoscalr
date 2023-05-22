@@ -108,7 +108,7 @@ func main() {
 	ctrl.SetLogger(logger)
 
 	config := Config{}
-	viper.SetConfigFile("./local-config.yaml")
+	viper.SetConfigFile("/etc/ottoscalr/config/ottoscalr_config.yaml")
 
 	err := viper.ReadInConfig()
 	if err != nil {
