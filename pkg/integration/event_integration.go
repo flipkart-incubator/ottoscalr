@@ -94,7 +94,7 @@ func NewEventCalendarDataFetcher(eventAPIEndpoint string) (*EventCalendarDataFet
 
 func (ec *EventCalendarDataFetcher) GetDesiredEvents(startTime time.Time, endTime time.Time) ([]EventDetails, error) {
 	var eventDetails []EventDetails
-	fetchEventsUrl := fmt.Sprintf("http://%s/fk-event-calendar-service/v1/eventCalendar/search?startTime=%d&tier=%s&pageNo=%d&pageSize=%d", ec.EventAPIEndpoint, startTime.UnixMilli(), "ALL_MP", 0, 100)
+	fetchEventsUrl := fmt.Sprintf("%s?startTime=%d&tier=%s&pageNo=%d&pageSize=%d", ec.EventAPIEndpoint, startTime.UnixMilli(), "ALL_MP", 0, 100)
 	req, err := http.NewRequest(http.MethodGet, fetchEventsUrl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request for fetching past events list: %v", err)

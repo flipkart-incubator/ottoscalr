@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -48,7 +47,7 @@ var _ = Describe("GetDesiredEvents", func() {
 		}))
 		defer server.Close()
 
-		eventIntegration.EventAPIEndpoint = strings.Split(server.URL, "//")[1]
+		eventIntegration.EventAPIEndpoint = server.URL
 
 		events, err := eventIntegration.GetDesiredEvents(time1, time2)
 		Expect(err).NotTo(HaveOccurred())
