@@ -1,6 +1,7 @@
 package reco
 
 import (
+	"context"
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	. "github.com/onsi/ginkgo/v2"
@@ -380,7 +381,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 					APIVersion: "apps/v1",
 				},
 			}
-			hpaConfig, err := recommender.Recommend(workloadSpec)
+			hpaConfig, err := recommender.Recommend(context.TODO(), workloadSpec)
 
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(hpaConfig.TargetMetricValue).To(Equal(52))

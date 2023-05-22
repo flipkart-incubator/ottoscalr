@@ -52,7 +52,7 @@ var (
 	cancel    context.CancelFunc
 
 	queuedAllRecos = false
-	recommender    *reco.MockRecommender
+	recommender    *MockRecommender
 )
 
 const policyAge = 1 * time.Second
@@ -109,7 +109,7 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	recommender = &reco.MockRecommender{}
+	recommender = &MockRecommender{}
 
 	err = NewPolicyRecommendationReconciler(k8sManager.GetClient(),
 		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(PolicyRecoWorkflowCtrlName),
@@ -241,4 +241,18 @@ func (ps *FakePolicyStore) GetPolicyByName(name string) (*ottoscaleriov1alpha1.P
 	error) {
 	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
 		Name: name}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
+}
+
+type MockRecommender struct {
+	Min       int
+	Threshold int
+	Max       int
+}
+
+func (r *MockRecommender) Recommend(ctx context.Context, wm reco.WorkloadMeta) (*ottoscaleriov1alpha1.HPAConfiguration, error) {
+	return &ottoscaleriov1alpha1.HPAConfiguration{
+		Min:               r.Min,
+		Max:               r.Max,
+		TargetMetricValue: r.Threshold,
+	}, nil
 }

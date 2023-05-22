@@ -99,13 +99,25 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, err
 	}
 
+	if hpaConfigToBeApplied == nil {
+		logger.V(0).Error(nil, "HPA config to be applied is empty. Skipping and moving on.")
+	}
+
+	if targetHPAReco == nil {
+		logger.V(0).Error(nil, "Recommended config is empty. Requeuing")
+		return ctrl.Result{
+			RequeueAfter: 5 * time.Second,
+		}, nil
+
+	}
+
 	var policyName string
 
 	if policy != nil {
 		policyName = policy.Name
 	}
 
-	transitionedAt := retrieveTransitionTime(hpaConfigToBeApplied, policyreco)
+	transitionedAt := retrieveTransitionTime(hpaConfigToBeApplied, &policyreco)
 	now := metav1.Now()
 	policyRecoPatch := &v1alpha1.PolicyRecommendation{
 		TypeMeta: policyreco.TypeMeta,
@@ -147,7 +159,10 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	return ctrl.Result{}, nil
 }
 
-func retrieveTransitionTime(hpaConfigToBeApplied *v1alpha1.HPAConfiguration, policyreco v1alpha1.PolicyRecommendation) metav1.Time {
+func retrieveTransitionTime(hpaConfigToBeApplied *v1alpha1.HPAConfiguration, policyreco *v1alpha1.PolicyRecommendation) metav1.Time {
+	if hpaConfigToBeApplied == nil || policyreco == nil {
+		return metav1.Now()
+	}
 	if !hpaConfigToBeApplied.DeepEquals(policyreco.Spec.CurrentHPAConfiguration) {
 		return metav1.Now()
 	}

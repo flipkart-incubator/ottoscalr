@@ -77,20 +77,6 @@ func NewRecommendationWorkflowBuilder() *RecoWorkflowBuilder {
 	return &RecoWorkflowBuilder{}
 }
 
-type MockRecommender struct {
-	Min       int
-	Threshold int
-	Max       int
-}
-
-func (r *MockRecommender) Recommend(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
-	return &v1alpha1.HPAConfiguration{
-		Min:               r.Min,
-		Max:               r.Max,
-		TargetMetricValue: r.Threshold,
-	}, nil
-}
-
 func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *v1alpha1.HPAConfiguration, *Policy, error) {
 	ctx = log.IntoContext(ctx, rw.logger)
 	rw.logger.V(0).Info("Workload Meta", "workload", wm)
@@ -136,6 +122,9 @@ func generateNextRecoConfig(config *v1alpha1.HPAConfiguration, policy *Policy, w
 }
 
 func createRecoConfigFromPolicy(policy *Policy, recoConfig *v1alpha1.HPAConfiguration, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
+	if policy == nil || recoConfig == nil {
+		return nil, errors.New("Policy or reco config supplied is nil")
+	}
 	return &v1alpha1.HPAConfiguration{
 		Min:               recoConfig.Max - int(math.Ceil(float64(policy.MinReplicaPercentageCut*(recoConfig.Max-recoConfig.Min)/100))),
 		Max:               recoConfig.Max,

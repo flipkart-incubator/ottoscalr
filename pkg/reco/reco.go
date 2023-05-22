@@ -47,7 +47,7 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 	}
 }
 
-func (c *CpuUtilizationBasedRecommender) Recommend(workloadMeta WorkloadMeta) (*v1alpha1.HPAConfiguration,
+func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workloadMeta WorkloadMeta) (*v1alpha1.HPAConfiguration,
 	error) {
 
 	end := time.Now()

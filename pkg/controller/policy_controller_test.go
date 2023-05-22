@@ -26,7 +26,7 @@ var _ = Describe("PolicyWatcher controller", func() {
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy3)).Should(Succeed())
 		})
-		It("Should mark other policies as non-degault and requeue all policy recommendations ", func() {
+		It("Should mark other policies as non-default and requeue all policy recommendations ", func() {
 			By("Seeding all policies")
 			ctx := context.TODO()
 

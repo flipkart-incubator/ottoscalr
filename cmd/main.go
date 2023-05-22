@@ -154,18 +154,6 @@ func main() {
 		agingPolicyTTL = 48 * time.Hour
 	}
 
-	if err = controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
-		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
-		config.PolicyRecommendationController.MaxConcurrentReconciles, &reco.MockRecommender{
-			Min:       10,
-			Threshold: 60,
-			Max:       60,
-		}, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL)).
-		SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
-		os.Exit(1)
-	}
-
 	scraper, err := metrics.NewPrometheusScraper(config.MetricsScraper.PrometheusUrl,
 		time.Duration(config.MetricsScraper.QueryTimeoutSec)*time.Second,
 		time.Duration(config.MetricsScraper.QuerySplitIntervalHr)*time.Hour,
@@ -177,7 +165,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	_ = reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
+	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
 		scraper,
@@ -186,6 +174,13 @@ func main() {
 		config.CpuUtilizationBasedRecommender.MaxTarget,
 		logger)
 
+	if err = controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
+		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
+		config.PolicyRecommendationController.MaxConcurrentReconciles, cpuUtilizationBasedRecommender, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL)).
+		SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
+		os.Exit(1)
+	}
 	triggerHandler := trigger.NewK8sTriggerHandler(mgr.GetClient(), logger)
 	triggerHandler.Start()
 
