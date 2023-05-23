@@ -78,3 +78,5 @@ affinity: {}
 volumeMounts:
   - mountPath: /etc/ottoscalr/config
     name: ottoscalr-config
+
+prometheusUrl: "http://localhost:9090"

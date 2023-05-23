@@ -4,7 +4,7 @@ healthProbBindAddress: ":8081"
 enableLeaderElection: false
 leaderElectionID: "85d48caf.fcp.ottoscalr.io"
 metricsScraper:
-  prometheusUrl: "http://localhost:9090"
+  prometheusUrl: {{ .Values.prometheusUrl }}
   queryTimeoutSec: 30
   querySplitIntervalHr: 24
 breachMonitor:
