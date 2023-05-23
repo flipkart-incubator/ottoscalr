@@ -175,6 +175,7 @@ func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Con
 
 // SetupWithManager sets up the controller with the Manager.
 func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manager) error {
+	// TODO: Filter out system and blacklisted namespaces
 	createPredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return true

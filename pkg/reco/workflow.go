@@ -140,6 +140,10 @@ func shouldApplyReco(config *v1alpha1.HPAConfiguration, policy *Policy) bool {
 	if policy == nil {
 		return true
 	}
+	if config == nil {
+		return false
+	}
+
 	// Returns true if the reco is safer than the policy
 	if policy.MinReplicaPercentageCut == 100 && config.TargetMetricValue < policy.TargetUtilization {
 		return true

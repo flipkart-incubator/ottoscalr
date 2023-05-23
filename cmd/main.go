@@ -109,7 +109,11 @@ func main() {
 	ctrl.SetLogger(logger)
 
 	config := Config{}
-	viper.SetConfigFile("./local-config.yaml")
+	configPath := os.Getenv("OTTOSCALR_CONFIG")
+	if len(configPath) == 0 {
+		configPath = "./local-config.yaml"
+	}
+	viper.SetConfigFile(configPath)
 
 	err := viper.ReadInConfig()
 	if err != nil {
