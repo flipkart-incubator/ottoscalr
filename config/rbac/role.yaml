@@ -74,18 +74,6 @@ rules:
   - patch
   - update
 - apiGroups:
-  - v1
-  resources:
-  - events
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
   - your-group.io
   resources:
   - policyrecommendations
