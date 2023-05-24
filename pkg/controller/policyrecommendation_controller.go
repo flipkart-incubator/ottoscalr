@@ -82,6 +82,9 @@ func NewPolicyRecommendationReconciler(client client.Client,
 func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := ctrl.LoggerFrom(ctx).WithName(PolicyRecoWorkflowCtrlName)
 
+	// Keeping this here to consider the generatedAt timestamp to be the beginning of the reconcile op
+	generatedAt := metav1.Now()
+
 	policyreco := v1alpha1.PolicyRecommendation{}
 	if err := r.Get(ctx, req.NamespacedName, &policyreco); err != nil {
 		// we'll ignore not-found errors, since they can't be fixed by an immediate
@@ -103,16 +106,18 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, err
 	}
 
-	if hpaConfigToBeApplied == nil {
-		logger.V(0).Error(nil, "HPA config to be applied is empty. Skipping and moving on.")
-	}
-
 	if targetHPAReco == nil {
 		logger.V(0).Error(nil, "Recommended config is empty. Requeuing")
 		return ctrl.Result{
 			RequeueAfter: 5 * time.Second,
 		}, nil
+	}
 
+	if hpaConfigToBeApplied == nil {
+		logger.V(0).Error(nil, "HPA config to be applied is empty. Requeuing")
+		return ctrl.Result{
+			RequeueAfter: 5 * time.Second,
+		}, nil
 	}
 
 	var policyName string
@@ -121,8 +126,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		policyName = policy.Name
 	}
 
-	transitionedAt := retrieveTransitionTime(hpaConfigToBeApplied, &policyreco)
-	now := metav1.Now()
+	transitionedAt := retrieveTransitionTime(hpaConfigToBeApplied, &policyreco, generatedAt)
 	policyRecoPatch := &v1alpha1.PolicyRecommendation{
 		TypeMeta: policyreco.TypeMeta,
 		ObjectMeta: metav1.ObjectMeta{
@@ -135,7 +139,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 			Policy:                  policyName,
 			CurrentHPAConfiguration: *hpaConfigToBeApplied,
 			TransitionedAt:          &transitionedAt,
-			GeneratedAt:             &now,
+			GeneratedAt:             &generatedAt,
 		},
 	}
 	logger.V(0).Info("Policy Patch", "PolicyReco", *policyRecoPatch)
@@ -163,12 +167,14 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	return ctrl.Result{}, nil
 }
 
-func retrieveTransitionTime(hpaConfigToBeApplied *v1alpha1.HPAConfiguration, policyreco *v1alpha1.PolicyRecommendation) metav1.Time {
-	if hpaConfigToBeApplied == nil || policyreco == nil {
-		return metav1.Now()
+func retrieveTransitionTime(hpaConfigToBeApplied *v1alpha1.HPAConfiguration, policyreco *v1alpha1.PolicyRecommendation, generatedAt metav1.Time) metav1.Time {
+	if hpaConfigToBeApplied == nil && policyreco != nil {
+		return *policyreco.Spec.TransitionedAt
+	} else if hpaConfigToBeApplied == nil || policyreco == nil {
+		return generatedAt
 	}
 	if !hpaConfigToBeApplied.DeepEquals(policyreco.Spec.CurrentHPAConfiguration) {
-		return metav1.Now()
+		return generatedAt
 	}
 	return *policyreco.Spec.TransitionedAt
 }
