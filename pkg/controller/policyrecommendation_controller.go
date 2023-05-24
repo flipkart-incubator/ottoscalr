@@ -78,6 +78,7 @@ func NewPolicyRecommendationReconciler(client client.Client,
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
+//+kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
 
 func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := ctrl.LoggerFrom(ctx).WithName(PolicyRecoWorkflowCtrlName)
