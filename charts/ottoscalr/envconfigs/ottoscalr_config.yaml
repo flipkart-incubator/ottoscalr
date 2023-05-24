@@ -1,0 +1,26 @@
+port: 9443
+metricBindAddress: ":8080"
+healthProbBindAddress: ":8081"
+enableLeaderElection: false
+leaderElectionID: "85d48caf.fcp.ottoscalr.io"
+metricsScraper:
+  prometheusUrl: {{ .Values.prometheusUrl }}
+  queryTimeoutSec: 30
+  querySplitIntervalHr: 24
+breachMonitor:
+  pollingIntervalSec: 300
+  cpuRedLine: 0.85
+  stepSec: 30
+periodicTrigger:
+  pollingIntervalMin: 360
+policyRecommendationController:
+  maxConcurrentReconciles: 1
+policyRecommendationRegistrar:
+  requeueDelayMs: 500
+cpuUtilizationBasedRecommender:
+  metricWindowInDays: 28
+  stepSec: 30
+  minTarget: 10
+  maxTarget: 60
+metricIngestionTime: 15.0
+metricProbeTime: 15.0
