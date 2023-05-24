@@ -22,3 +22,5 @@ cpuUtilizationBasedRecommender:
   stepSec: 30
   minTarget: 10
   maxTarget: 60
+metricIngestionTime: 15.0
+metricProbeTime: 15.0

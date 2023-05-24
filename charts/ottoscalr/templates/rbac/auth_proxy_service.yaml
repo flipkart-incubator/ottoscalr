@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/part-of: ottoscalr
     {{- include "ottoscalr.labels" . | nindent 4 }}
   name: ottoscalr-manager-metrics-service
-  namespace: system
+  namespace: {{ .Release.Namespace }}
 spec:
   ports:
   - name: https

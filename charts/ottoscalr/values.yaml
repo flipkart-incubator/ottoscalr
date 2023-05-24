@@ -8,7 +8,7 @@ image:
   repository: jfrog.fkinternal.com/alm/ottoscalr-ctrl
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.0.1"
+  tag: "v0.0.5"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -79,4 +79,5 @@ volumeMounts:
   - mountPath: /etc/ottoscalr/config
     name: ottoscalr-config
 
-prometheusUrl: "http://localhost:9090"
+prometheusUrl: "http://10.24.49.137"
+ottoscalrConfigPath: "/etc/ottoscalr/config/ottoscalr_config.yaml"

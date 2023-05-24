@@ -10,6 +10,7 @@ metadata:
     app.kubernetes.io/part-of: ottoscalr
     {{- include "ottoscalr.labels" . | nindent 4 }}
   name: leader-election-role
+  namespace: {{ .Release.Namespace }}
 rules:
 - apiGroups:
   - ""
