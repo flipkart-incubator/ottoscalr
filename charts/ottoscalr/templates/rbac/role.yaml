@@ -6,6 +6,18 @@ metadata:
   name: manager-role
 rules:
   - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
       - apps
     resources:
       - deployments
@@ -73,18 +85,6 @@ rules:
       - get
       - patch
       - update
-  - apiGroups:
-      - v1
-    resources:
-      - events
-    verbs:
-      - create
-      - delete
-      - get
-      - list
-      - patch
-      - update
-      - watch
   - apiGroups:
       - your-group.io
     resources:
