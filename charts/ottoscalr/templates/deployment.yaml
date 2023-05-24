@@ -51,16 +51,19 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            - name: healthcheck
+              containerPort: 8081
+              protocol: TCP
           livenessProbe:
             httpGet:
               path: /healthz
-              port: 8081
+              port: healthcheck
             initialDelaySeconds: 25
             periodSeconds: 20
           readinessProbe:
             httpGet:
               path: /readyz
-              port: 8081
+              port: healthcheck
             initialDelaySeconds: 20
             periodSeconds: 10
           resources:
