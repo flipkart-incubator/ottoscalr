@@ -201,8 +201,7 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldObjSpec := e.ObjectOld.(*v1alpha1.PolicyRecommendation).Spec
 			newObjSpec := e.ObjectNew.(*v1alpha1.PolicyRecommendation).Spec
-			// If it hasn't been touched by the registrar don't reconcile
-			if len(newObjSpec.Policy) == 0 || newObjSpec.QueuedForExecutionAt.IsZero() {
+			if newObjSpec.QueuedForExecutionAt.IsZero() {
 				return false
 			}
 			switch {

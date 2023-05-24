@@ -640,9 +640,111 @@ var _ = Describe("PolicyrecommendationController", func() {
 			Expect(updatedPolicy.Spec.GeneratedAt.Time).Should(BeTemporally(">", updatedPolicy.Spec.TransitionedAt.Time))
 		})
 	})
+
+	Context("Test predicates", func() {
+		policyreco := &v1alpha1.PolicyRecommendation{}
+		createdPolicy := &v1alpha1.PolicyRecommendation{}
+		var safestPolicy *v1alpha1.Policy
+		ctx := context.Background()
+		now := metav1.Now()
+
+		BeforeEach(func() {
+			safestPolicy = &v1alpha1.Policy{
+				ObjectMeta: metav1.ObjectMeta{Name: "safest-policy"},
+				Spec: v1alpha1.PolicySpec{
+					IsDefault:               false,
+					RiskIndex:               1,
+					MinReplicaPercentageCut: 80,
+					TargetUtilization:       10,
+				},
+			}
+			Expect(k8sClient.Create(ctx, safestPolicy)).Should(Succeed())
+
+		})
+		AfterEach(func() {
+			Expect(k8sClient.Delete(ctx, safestPolicy)).Should(Succeed())
+		})
+
+		It("Should create basic policyreco with 'true' QueueForExecution", func() {
+			policyreco = &v1alpha1.PolicyRecommendation{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      PolicyRecoName,
+					Namespace: PolicyRecoNamespace,
+				},
+				Spec: v1alpha1.PolicyRecommendationSpec{
+					WorkloadMeta: v1alpha1.WorkloadMeta{
+						Name:      PolicyRecoName,
+						Namespace: PolicyRecoNamespace,
+					},
+					Policy:               "",
+					GeneratedAt:          &now,
+					TransitionedAt:       &now,
+					QueuedForExecution:   &trueBool,
+					QueuedForExecutionAt: &now,
+				},
+			}
+			Expect(k8sClient.Create(ctx, policyreco)).Should(Succeed())
+			DeferCleanup(func() {
+				Expect(k8sClient.Delete(ctx, policyreco)).Should(Succeed())
+			})
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: PolicyRecoNamespace,
+					Name:      PolicyRecoName,
+				}, createdPolicy)
+				if err != nil {
+					fmt.Fprintf(GinkgoWriter, "error while fetching the created policy. %s", err.Error())
+					return true
+				}
+				return *createdPolicy.Spec.QueuedForExecution
+			}).Should(Equal(false))
+		})
+
+		It("Should create basic policyreco and then update", func() {
+			policyreco = &v1alpha1.PolicyRecommendation{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      PolicyRecoName,
+					Namespace: PolicyRecoNamespace,
+				},
+				Spec: v1alpha1.PolicyRecommendationSpec{
+					WorkloadMeta: v1alpha1.WorkloadMeta{
+						Name:      PolicyRecoName,
+						Namespace: PolicyRecoNamespace,
+					},
+					Policy:               "",
+					GeneratedAt:          &now,
+					TransitionedAt:       &now,
+					QueuedForExecution:   &falseBool,
+					QueuedForExecutionAt: &now,
+				},
+			}
+			Expect(k8sClient.Create(ctx, policyreco)).Should(Succeed())
+			DeferCleanup(func() {
+				Expect(k8sClient.Delete(ctx, policyreco)).Should(Succeed())
+			})
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: PolicyRecoNamespace,
+				Name:      PolicyRecoName,
+			}, createdPolicy)).Should(Succeed())
+			Expect(*createdPolicy.Spec.QueuedForExecution).Should(BeFalse())
+			createdPolicy.Spec.QueuedForExecution = &trueBool
+			Expect(k8sClient.Update(ctx, createdPolicy)).Should(Succeed())
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: PolicyRecoNamespace,
+					Name:      PolicyRecoName,
+				}, createdPolicy)
+				if err != nil {
+					fmt.Fprintf(GinkgoWriter, "error while fetching the created policy. %s", err.Error())
+					return true
+				}
+				return *createdPolicy.Spec.QueuedForExecution
+			}).Should(BeFalse())
+		})
+	})
 })
 
-func queueReco(name, namespace string) error {
+func queueRecoByPatching(name, namespace string) error {
 	now := metav1.Now()
 	fmt.Fprintf(GinkgoWriter, "Queuing reco at %s \n", now.String())
 	TRUE := true
