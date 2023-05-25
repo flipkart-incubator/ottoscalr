@@ -791,11 +791,11 @@ var _ = Describe("PolicyrecommendationController", func() {
 				return updatedPolicy.Spec.GeneratedAt.Time.After(updatedPolicy.Spec.QueuedForExecutionAt.Time)
 			}).Should(BeTrue())
 
-			//fmt.Fprintf(GinkgoWriter, "Time : %s\n", time.Now())
-			//fmt.Fprintf(GinkgoWriter, "QFE AT: %s\n", updatedPolicy.Spec.QueuedForExecutionAt)
-			//fmt.Fprintf(GinkgoWriter, "Updated policy : %v\n", updatedPolicy)
-			//Eventually(updatedPolicy.Spec.GeneratedAt.After(updatedPolicy.Spec.QueuedForExecutionAt.Time)).Should(BeTrue())
 		})
+	})
+
+	Context("Rollout testcases", func() {
+		//	TODO(bharathguvvala): Add rollout specific test cases
 	})
 })
 
