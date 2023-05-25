@@ -59,7 +59,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		end,
 		c.metricStep)
 	if err != nil {
-		c.logger.Error(err, "Error while scraping GetCPUUtilizationBreachDataPoints.")
+		c.logger.Error(err, "Error while scraping GetAverageCPUUtilizationByWorkload.")
 		return nil, nil
 	}
 

@@ -60,7 +60,7 @@ func init() {
 type Config struct {
 	Port                   int    `yaml:"port"`
 	MetricBindAddress      string `yaml:"metricBindAddress"`
-	HealthProbeBindAddress string `yaml:"healthProbBindAddress"`
+	HealthProbeBindAddress string `yaml:"healthProbeBindAddress"`
 	EnableLeaderElection   bool   `yaml:"enableLeaderElection"`
 	LeaderElectionID       string `yaml:"leaderElectionID"`
 	MetricsScraper         struct {
