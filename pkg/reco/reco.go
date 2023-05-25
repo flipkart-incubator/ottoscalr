@@ -55,7 +55,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(workloadSpec v1alpha1.Workloa
 	error) {
 
 	end := time.Now()
-	start := end.Add(c.metricWindow)
+	start := end.Add(-c.metricWindow)
 
 	dataPoints, err := c.scraper.GetAverageCPUUtilizationByWorkload(workloadSpec.Namespace,
 		workloadSpec.Name,
