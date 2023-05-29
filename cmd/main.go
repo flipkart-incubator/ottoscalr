@@ -115,6 +115,7 @@ func main() {
 	}
 	viper.SetConfigFile(configPath)
 
+
 	err := viper.ReadInConfig()
 	if err != nil {
 		setupLog.Error(err, "Unable to read config file")

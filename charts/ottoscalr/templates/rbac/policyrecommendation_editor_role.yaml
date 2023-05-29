@@ -1,0 +1,31 @@
+# permissions for end users to edit policyrecommendations.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: policyrecommendation-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: ottoscalr
+    app.kubernetes.io/part-of: ottoscalr
+    {{- include "ottoscalr.labels" . | nindent 4 }}
+  name: policyrecommendation-editor-role
+rules:
+- apiGroups:
+  - ottoscaler.io
+  resources:
+  - policyrecommendations
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ottoscaler.io
+  resources:
+  - policyrecommendations/status
+  verbs:
+  - get

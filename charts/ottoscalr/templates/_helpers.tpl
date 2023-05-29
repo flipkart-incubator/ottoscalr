@@ -35,7 +35,6 @@ Common labels
 */}}
 {{- define "ottoscalr.labels" -}}
 helm.sh/chart: {{ include "ottoscalr.chart" . }}
-{{ include "ottoscalr.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}

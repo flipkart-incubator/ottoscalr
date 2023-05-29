@@ -51,7 +51,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	error) {
 
 	end := time.Now()
-	start := end.Add(c.metricWindow)
+	start := end.Add(-c.metricWindow)
 
 	dataPoints, err := c.scraper.GetAverageCPUUtilizationByWorkload(workloadMeta.Namespace,
 		workloadMeta.Name,

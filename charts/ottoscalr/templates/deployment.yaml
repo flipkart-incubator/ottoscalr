@@ -1,13 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "ottoscalr.fullname" . }}
+  name: ottoscalr-manager
+  namespace: {{ .Release.Namespace }}
   labels:
+    app.kubernetes.io/name: deployment
+    app.kubernetes.io/instance: ottoscalr-manager
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/created-by: ottoscalr
+    app.kubernetes.io/part-of: ottoscalr
     {{- include "ottoscalr.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
-  {{- end }}
   selector:
     matchLabels:
       {{- include "ottoscalr.selectorLabels" . | nindent 6 }}
@@ -15,6 +19,7 @@ spec:
     metadata:
       {{- with .Values.podAnnotations }}
       annotations:
+        kubectl.kubernetes.io/default-container: manager
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
@@ -25,28 +30,46 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "ottoscalr.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 10
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      volumes:
+        - name: ottoscalr-config
+          configMap:
+            name: ottoscalr-config
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: OTTOSCALR_CONFIG
+              value: {{ .Values.ottoscalrConfigPath }}
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 8080
+              protocol: TCP
+            - name: healthcheck
+              containerPort: 8081
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /
-              port: http
+              path: /healthz
+              port: healthcheck
+            initialDelaySeconds: 25
+            periodSeconds: 20
           readinessProbe:
             httpGet:
-              path: /
-              port: http
+              path: /readyz
+              port: healthcheck
+            initialDelaySeconds: 20
+            periodSeconds: 10
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- toYaml .Values.volumeMounts | nindent 12 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

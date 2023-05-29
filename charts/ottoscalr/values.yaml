@@ -8,7 +8,9 @@ image:
   repository: jfrog.fkinternal.com/alm/ottoscalr-ctrl
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.0.1"
+
+  tag: "v0.0.5"
+
 
 imagePullSecrets: []
 nameOverride: ""
@@ -28,13 +30,13 @@ podAnnotations: {}
 podSecurityContext: {}
   # fsGroup: 2000
 
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - "ALL"
+
 
 service:
   type: ClusterIP
@@ -56,17 +58,13 @@ ingress:
   #    hosts:
   #      - chart-example.local
 
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
+resources:
+   limits:
+     cpu: 100m
+     memory: 128Mi
+   requests:
+     cpu: 100m
+     memory: 128Mi
 
 autoscaling:
   enabled: false
@@ -80,3 +78,11 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+
+volumeMounts:
+  - mountPath: /etc/ottoscalr/config
+    name: ottoscalr-config
+
+prometheusUrl: "http://10.24.49.137"
+ottoscalrConfigPath: "/etc/ottoscalr/config/ottoscalr_config.yaml"
