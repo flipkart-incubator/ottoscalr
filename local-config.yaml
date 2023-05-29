@@ -1,6 +1,6 @@
 port: 9443
 metricBindAddress: ":8080"
-healthProbBindAddress: ":8081"
+healthProbeBindAddress: ":8081"
 enableLeaderElection: false
 leaderElectionID: "85d48caf.fcp.ottoscalr.io"
 metricsScraper:

@@ -59,7 +59,8 @@ test: prometheus manifests generate fmt vet envtest ## Run tests with Prometheus
 	@echo "Starting Prometheus for testing..."
 	@$(PROMETHEUS) --config.file=pkg/testconfig/prometheus.yml & \
 	trap 'killall prometheus; rm -rf data' EXIT; \
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" ginkgo run -p 1 ./... --coverprofile cover.out -test.v --procs 1 --vv --output-interceptor-mode=none
+#	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -p=1 ./...  -coverprofile cover.out -test.v --ginkgo.vv
 
 ##@ Build
 
@@ -76,7 +77,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: test ## Build docker image with the manager.
-	docker build -t ${IMG} .
+	docker build -t ${IMG} . --build-arg TARGETOS=${TARGETOS} --build-arg TARGETARCH=${TARGETARCH}
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

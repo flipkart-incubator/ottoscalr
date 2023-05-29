@@ -8,7 +8,9 @@ image:
   repository: jfrog.fkinternal.com/alm/ottoscalr-ctrl
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
+
   tag: "v0.0.5"
+
 
 imagePullSecrets: []
 nameOverride: ""
@@ -28,11 +30,13 @@ podAnnotations: {}
 podSecurityContext: {}
   # fsGroup: 2000
 
+
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop:
       - "ALL"
+
 
 service:
   type: ClusterIP
@@ -74,6 +78,7 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
 
 volumeMounts:
   - mountPath: /etc/ottoscalr/config

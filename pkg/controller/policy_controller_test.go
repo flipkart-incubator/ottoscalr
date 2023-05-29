@@ -19,39 +19,41 @@ var _ = Describe("PolicyWatcher controller", func() {
 	BeforeEach(func() {
 		queuedAllRecos = false
 	})
-
+	var policy1, policy2, policy3 ottoscaleriov1alpha1.Policy
 	Context("When updating default policy", func() {
-		It("Should mark other policies as non-degault and requeue all policy recommendations ", func() {
+		AfterEach(func() {
+			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, &policy3)).Should(Succeed())
+		})
+		It("Should mark other policies as non-default and requeue all policy recommendations ", func() {
 			By("Seeding all policies")
 			ctx := context.TODO()
 
-			policy1 := ottoscaleriov1alpha1.Policy{
+			policy1 = ottoscaleriov1alpha1.Policy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "policy1",
 					Namespace: "default",
 				},
 				Spec: ottoscaleriov1alpha1.PolicySpec{
-					ID:        "policy1",
 					IsDefault: true,
 				},
 			}
-			policy2 := ottoscaleriov1alpha1.Policy{
+			policy2 = ottoscaleriov1alpha1.Policy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "policy2",
 					Namespace: "default",
 				},
 				Spec: ottoscaleriov1alpha1.PolicySpec{
-					ID:        "policy2",
 					IsDefault: false,
 				},
 			}
-			policy3 := ottoscaleriov1alpha1.Policy{
+			policy3 = ottoscaleriov1alpha1.Policy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "policy3",
 					Namespace: "default",
 				},
 				Spec: ottoscaleriov1alpha1.PolicySpec{
-					ID:        "policy3",
 					IsDefault: false,
 				},
 			}
