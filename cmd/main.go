@@ -27,6 +27,7 @@ import (
 	"github.com/spf13/viper"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -85,7 +86,8 @@ type Config struct {
 	} `yaml:"policyRecommendationController"`
 
 	PolicyRecommendationRegistrar struct {
-		RequeueDelayMs int `yaml:"requeueDelayMs"`
+		RequeueDelayMs     int    `yaml:"requeueDelayMs"`
+		ExcludedNamespaces string `yaml:"excludedNamespaces"`
 	} `yaml:"policyRecommendationRegistrar"`
 
 	CpuUtilizationBasedRecommender struct {
@@ -114,7 +116,6 @@ func main() {
 		configPath = "./local-config.yaml"
 	}
 	viper.SetConfigFile(configPath)
-
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -203,12 +204,14 @@ func main() {
 		config.BreachMonitor.CpuRedLine,
 		logger)
 
+	excludedNamespaces := parseExcludedNamespaces(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
+
 	policyStore := policy.NewPolicyStore(mgr.GetClient())
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
 		mgr.GetScheme(),
 		config.PolicyRecommendationRegistrar.RequeueDelayMs,
 		monitorManager,
-		policyStore).SetupWithManager(mgr); err != nil {
+		policyStore, excludedNamespaces).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",
 			"controller", "PolicyRecommendationRegistration")
 		os.Exit(1)
@@ -245,4 +248,13 @@ func main() {
 		monitorManager.Shutdown()
 		os.Exit(0)
 	}()
+}
+
+func parseExcludedNamespaces(namespaces string) []string {
+	splitNamespaces := strings.Split(namespaces, ",")
+	var excludedNamespaces []string
+	for _, namespace := range splitNamespaces {
+		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(namespace))
+	}
+	return excludedNamespaces
 }
