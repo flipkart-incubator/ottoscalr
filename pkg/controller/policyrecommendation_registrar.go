@@ -208,18 +208,18 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 		},
 	}
 
-	includeNamespacePredicate := predicate.Funcs{
+	namespaceFilter := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return controller.isIncludedNamespace(e.Object.GetNamespace())
+			return controller.isWhitelistedNamespace(e.Object.GetNamespace())
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return controller.isIncludedNamespace(e.ObjectNew.GetNamespace())
+			return controller.isWhitelistedNamespace(e.ObjectNew.GetNamespace())
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			return controller.isIncludedNamespace(e.Object.GetNamespace())
+			return controller.isWhitelistedNamespace(e.Object.GetNamespace())
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
-			return controller.isIncludedNamespace(e.Object.GetNamespace())
+			return controller.isWhitelistedNamespace(e.Object.GetNamespace())
 		},
 	}
 
@@ -256,11 +256,11 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 			},
 			builder.WithPredicates(deletePredicate),
 		).
-		WithEventFilter(includeNamespacePredicate).
+		WithEventFilter(namespaceFilter).
 		Complete(controller)
 }
 
-func (controller *PolicyRecommendationRegistrar) isIncludedNamespace(namespace string) bool {
+func (controller *PolicyRecommendationRegistrar) isWhitelistedNamespace(namespace string) bool {
 	for _, ns := range controller.ExcludedNamespaces {
 		if namespace == ns {
 			return false
