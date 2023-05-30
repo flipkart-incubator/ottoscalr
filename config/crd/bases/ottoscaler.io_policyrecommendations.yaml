@@ -36,49 +36,24 @@ spec:
           spec:
             description: PolicyRecommendationSpec defines the desired state of PolicyRecommendation
             properties:
+              currentHPAConfig:
+                properties:
+                  max:
+                    type: integer
+                  min:
+                    type: integer
+                  targetMetricValue:
+                    type: integer
+                required:
+                - max
+                - min
+                - targetMetricValue
+                type: object
               generatedAt:
                 format: date-time
                 type: string
               policy:
-                description: Policy is the Schema for the policies API
-                properties:
-                  apiVersion:
-                    description: 'APIVersion defines the versioned schema of this
-                      representation of an object. Servers should convert recognized
-                      schemas to the latest internal value, and may reject unrecognized
-                      values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
-                    type: string
-                  kind:
-                    description: 'Kind is a string value representing the REST resource
-                      this object represents. Servers may infer this from the endpoint
-                      the client submits requests to. Cannot be updated. In CamelCase.
-                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
-                    type: string
-                  metadata:
-                    type: object
-                  spec:
-                    description: PolicySpec defines the desired state of Policy
-                    properties:
-                      id:
-                        type: string
-                      isDefault:
-                        type: boolean
-                      min:
-                        type: integer
-                      riskIndex:
-                        type: string
-                      targetUtilization:
-                        type: integer
-                    required:
-                    - id
-                    - min
-                    - riskIndex
-                    - targetUtilization
-                    type: object
-                  status:
-                    description: PolicyStatus defines the observed state of Policy
-                    type: object
-                type: object
+                type: string
               queuedForExecution:
                 type: boolean
               queuedForExecutionAt:
@@ -97,6 +72,9 @@ spec:
                 - min
                 - targetMetricValue
                 type: object
+              transitionedAt:
+                format: date-time
+                type: string
               workload:
                 properties:
                   apiVersion:
@@ -115,24 +93,13 @@ spec:
                     type: string
                   namespace:
                     type: string
-                required:
-                - name
-                - namespace
                 type: object
-            required:
-            - policy
-            - queuedForExecution
-            - targetHPAConfig
-            - workload
             type: object
           status:
             description: PolicyRecommendationStatus defines the observed state of
               PolicyRecommendation
             properties:
               conditions:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
                 items:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct

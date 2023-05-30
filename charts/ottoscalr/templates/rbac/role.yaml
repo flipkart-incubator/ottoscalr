@@ -1,0 +1,98 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - argoproj.io
+    resources:
+      - rollouts
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ottoscaler.io
+    resources:
+      - policies
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ottoscaler.io
+    resources:
+      - policies/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - ottoscaler.io
+    resources:
+      - policies/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - ottoscaler.io
+    resources:
+      - policyrecommendations
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ottoscaler.io
+    resources:
+      - policyrecommendations/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - ottoscaler.io
+    resources:
+      - policyrecommendations/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - your-group.io
+    resources:
+      - policyrecommendations
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - update
+      - watch

@@ -62,7 +62,7 @@ func init() {
 type Config struct {
 	Port                   int    `yaml:"port"`
 	MetricBindAddress      string `yaml:"metricBindAddress"`
-	HealthProbeBindAddress string `yaml:"healthProbBindAddress"`
+	HealthProbeBindAddress string `yaml:"healthProbeBindAddress"`
 	EnableLeaderElection   bool   `yaml:"enableLeaderElection"`
 	LeaderElectionID       string `yaml:"leaderElectionID"`
 	MetricsScraper         struct {
@@ -82,7 +82,8 @@ type Config struct {
 	} `yaml:"periodicTrigger"`
 
 	PolicyRecommendationController struct {
-		MaxConcurrentReconciles int `yaml:"maxConcurrentReconciles"`
+		MaxConcurrentReconciles int    `yaml:"maxConcurrentReconciles"`
+		PolicyExpiryAgeSeconds  string `yaml:"policyExpiryAgeSeconds"`
 	} `yaml:"policyRecommendationController"`
 
 	PolicyRecommendationRegistrar struct {
@@ -114,7 +115,11 @@ func main() {
 	ctrl.SetLogger(logger)
 
 	config := Config{}
-	viper.SetConfigFile("./local-config.yaml")
+	configPath := os.Getenv("OTTOSCALR_CONFIG")
+	if len(configPath) == 0 {
+		configPath = "./local-config.yaml"
+	}
+	viper.SetConfigFile(configPath)
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -153,11 +158,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
-		mgr.GetScheme(),
-		config.PolicyRecommendationController.MaxConcurrentReconciles).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
-		os.Exit(1)
+	agingPolicyTTL, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAgeSeconds)
+	if err != nil {
+		logger.Error(err, "Failed to parse policyExpiryAge. Defaulting to 60s")
+		agingPolicyTTL = 48 * time.Hour
 	}
 
 	scraper, err := metrics.NewPrometheusScraper(config.MetricsScraper.PrometheusUrl,
@@ -185,7 +189,7 @@ func main() {
 		metricsTransformer = append(metricsTransformer, outlierInterpolatorTransformer)
 	}
 
-	_ = reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
+	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
 		scraper,
@@ -195,6 +199,19 @@ func main() {
 		config.CpuUtilizationBasedRecommender.MaxTarget,
 		logger)
 
+	policyRecoReconciler, err := controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
+		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
+		config.PolicyRecommendationController.MaxConcurrentReconciles, cpuUtilizationBasedRecommender, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL))
+	if err != nil {
+		setupLog.Error(err, "Unable to initialize policy reco reconciler")
+		os.Exit(1)
+	}
+
+	if err = policyRecoReconciler.
+		SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
+		os.Exit(1)
+	}
 	triggerHandler := trigger.NewK8sTriggerHandler(mgr.GetClient(), logger)
 	triggerHandler.Start()
 

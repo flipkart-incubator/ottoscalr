@@ -17,6 +17,8 @@ var _ = Describe("K8sTriggerHandler", func() {
 		ctx     context.Context
 	)
 
+	FALSE := false
+
 	BeforeEach(func() {
 		handler = NewK8sTriggerHandler(k8sClient, zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 		ctx = context.TODO()
@@ -31,7 +33,7 @@ var _ = Describe("K8sTriggerHandler", func() {
 					Namespace: "default",
 				},
 				Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
-					QueuedForExecution: false,
+					QueuedForExecution: &FALSE,
 				},
 			}
 			err := k8sClient.Create(ctx, policyRecommendation)
@@ -53,7 +55,7 @@ var _ = Describe("K8sTriggerHandler", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Check if the QueuedForExecution field was updated
-			Expect(updatedPolicyRecommendation.Spec.QueuedForExecution).Should(BeTrue())
+			Expect(*updatedPolicyRecommendation.Spec.QueuedForExecution).Should(BeTrue())
 
 			// Clean up
 			err = k8sClient.Delete(ctx, policyRecommendation)
@@ -69,7 +71,7 @@ var _ = Describe("K8sTriggerHandler", func() {
 					Namespace: "default",
 				},
 				Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
-					QueuedForExecution: false,
+					QueuedForExecution: &FALSE,
 				},
 			}
 			err := k8sClient.Create(ctx, policyRecommendation1)
@@ -81,7 +83,7 @@ var _ = Describe("K8sTriggerHandler", func() {
 					Namespace: "default",
 				},
 				Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
-					QueuedForExecution: false,
+					QueuedForExecution: &FALSE,
 				},
 			}
 			err = k8sClient.Create(ctx, policyRecommendation2)
@@ -103,7 +105,7 @@ var _ = Describe("K8sTriggerHandler", func() {
 
 			// Check if the QueuedForExecution field was updated
 			for _, reco := range recommendations.Items {
-				Expect(reco.Spec.QueuedForExecution).Should(BeTrue())
+				Expect(*reco.Spec.QueuedForExecution).Should(BeTrue())
 
 			}
 

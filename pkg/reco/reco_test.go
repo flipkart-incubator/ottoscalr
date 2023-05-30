@@ -1,8 +1,8 @@
 package reco
 
 import (
+	"context"
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -373,7 +373,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 		})
 		It("should return recommend the optimal HPA configuration", func() {
 
-			workloadSpec := v1alpha1.WorkloadSpec{
+			workloadSpec := WorkloadMeta{
 				Name:      deploymentName,
 				Namespace: deploymentNamespace,
 				TypeMeta: metav1.TypeMeta{
@@ -381,7 +381,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 					APIVersion: "apps/v1",
 				},
 			}
-			hpaConfig, err := recommender.Recommend(workloadSpec)
+			hpaConfig, err := recommender.Recommend(context.TODO(), workloadSpec)
 
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(hpaConfig.TargetMetricValue).To(Equal(52))

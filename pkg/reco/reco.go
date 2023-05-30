@@ -16,10 +16,6 @@ import (
 	"time"
 )
 
-type Recommender interface {
-	Recommend(workloadSpec v1alpha1.WorkloadSpec) (*v1alpha1.HPAConfiguration, error)
-}
-
 type CpuUtilizationBasedRecommender struct {
 	k8sClient          client.Client
 	redLineUtil        float64
@@ -54,19 +50,19 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 	}
 }
 
-func (c *CpuUtilizationBasedRecommender) Recommend(workloadSpec v1alpha1.WorkloadSpec) (*v1alpha1.HPAConfiguration,
+func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workloadMeta WorkloadMeta) (*v1alpha1.HPAConfiguration,
 	error) {
 
 	end := time.Now()
-	start := end.Add(c.metricWindow)
+	start := end.Add(-c.metricWindow)
 
-	dataPoints, err := c.scraper.GetAverageCPUUtilizationByWorkload(workloadSpec.Namespace,
-		workloadSpec.Name,
+	dataPoints, err := c.scraper.GetAverageCPUUtilizationByWorkload(workloadMeta.Namespace,
+		workloadMeta.Name,
 		start,
 		end,
 		c.metricStep)
 	if err != nil {
-		c.logger.Error(err, "Error while scraping GetCPUUtilizationBreachDataPoints.")
+		c.logger.Error(err, "Error while scraping GetAverageCPUUtilizationByWorkload.")
 		return nil, nil
 	}
 	if c.metricsTransformer != nil {
@@ -79,13 +75,13 @@ func (c *CpuUtilizationBasedRecommender) Recommend(workloadSpec v1alpha1.Workloa
 		}
 	}
 
-	acl, err := c.scraper.GetACLByWorkload(workloadSpec.Namespace, workloadSpec.Name)
+	acl, err := c.scraper.GetACLByWorkload(workloadMeta.Namespace, workloadMeta.Name)
 	if err != nil {
 		c.logger.Error(err, "Error while getting GetACL.")
 		return nil, nil
 	}
 
-	perPodResources, err := c.getContainerCPULimitsSum(workloadSpec.Namespace, workloadSpec.Kind, workloadSpec.Name)
+	perPodResources, err := c.getContainerCPULimitsSum(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
 	if err != nil {
 		c.logger.Error(err, "Error while getting getContainerCPULimitsSum")
 		return nil, err

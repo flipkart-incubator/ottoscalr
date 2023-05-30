@@ -20,28 +20,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // PolicyRecommendationSpec defines the desired state of PolicyRecommendation
 type PolicyRecommendationSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of PolicyRecommendation. Edit policyrecommendation_types.go to remove/update
-
-	WorkloadSpec           WorkloadSpec     `json:"workload"`
-	TargetHPAConfiguration HPAConfiguration `json:"targetHPAConfig"`
-	Policy                 Policy           `json:"policy"`
-	GeneratedAt            metav1.Time      `json:"generatedAt,omitempty"`
-	QueuedForExecution     bool             `json:"queuedForExecution"`
-	QueuedForExecutionAt   metav1.Time      `json:"queuedForExecutionAt,omitempty"`
+	WorkloadMeta            WorkloadMeta     `json:"workload,omitempty"`
+	TargetHPAConfiguration  HPAConfiguration `json:"targetHPAConfig,omitempty"`
+	CurrentHPAConfiguration HPAConfiguration `json:"currentHPAConfig,omitempty"`
+	Policy                  string           `json:"policy,omitempty"`
+	GeneratedAt             *metav1.Time     `json:"generatedAt,omitempty"`
+	TransitionedAt          *metav1.Time     `json:"transitionedAt,omitempty"`
+	QueuedForExecution      *bool            `json:"queuedForExecution,omitempty"`
+	QueuedForExecutionAt    *metav1.Time     `json:"queuedForExecutionAt,omitempty"`
 }
 
-type WorkloadSpec struct {
+type WorkloadMeta struct {
 	metav1.TypeMeta `json:","`
-	Name            string `json:"name"`
-	Namespace       string `json:"namespace"`
+	Name            string `json:"name,omitempty"`
+	Namespace       string `json:"namespace,omitempty"`
 }
 
 type HPAConfiguration struct {
@@ -50,10 +44,15 @@ type HPAConfiguration struct {
 	TargetMetricValue int `json:"targetMetricValue"`
 }
 
+func (h HPAConfiguration) DeepEquals(h2 HPAConfiguration) bool {
+	if h.Min != h2.Min || h.Max != h2.Max || h.TargetMetricValue != h2.TargetMetricValue {
+		return false
+	}
+	return true
+}
+
 // PolicyRecommendationStatus defines the observed state of PolicyRecommendation
 type PolicyRecommendationStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
@@ -68,6 +67,20 @@ type PolicyRecommendation struct {
 	Spec   PolicyRecommendationSpec   `json:"spec,omitempty"`
 	Status PolicyRecommendationStatus `json:"status,omitempty"`
 }
+
+type PolicyRecommendationConditionType string
+
+// These are valid conditions of a deployment.
+const (
+	// PolicyRecommendation is initialized post the creation of a workload
+	Initialized PolicyRecommendationConditionType = "Initialized"
+	// A recommendation task is queued for execution
+	RecoTaskQueued PolicyRecommendationConditionType = "RecoTaskQueued"
+	// A recommendation is generated for the workload
+	RecommendationGenerated PolicyRecommendationConditionType = "RecommendationGenerated"
+	// AutoscalingPolicySynced means there's corresponding ScaledObject or HPA reflects the desired state specified in the PolicyRecommendation
+	AutoscalingPolicySynced PolicyRecommendationConditionType = "AutoscalingPolicySynced"
+)
 
 //+kubebuilder:object:root=true
 
