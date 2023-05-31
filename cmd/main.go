@@ -81,7 +81,7 @@ type Config struct {
 
 	PolicyRecommendationController struct {
 		MaxConcurrentReconciles int    `yaml:"maxConcurrentReconciles"`
-		PolicyExpiryAgeSeconds  string `yaml:"policyExpiryAgeSeconds"`
+		PolicyExpiryAge         string `yaml:"policyExpiryAge"`
 	} `yaml:"policyRecommendationController"`
 
 	PolicyRecommendationRegistrar struct {
@@ -114,7 +114,6 @@ func main() {
 		configPath = "./local-config.yaml"
 	}
 	viper.SetConfigFile(configPath)
-
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -153,9 +152,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	agingPolicyTTL, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAgeSeconds)
+	agingPolicyTTL, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAge)
 	if err != nil {
-		logger.Error(err, "Failed to parse policyExpiryAge. Defaulting to 60s")
+		logger.Error(err, "Failed to parse policyExpiryAge. Defaulting.")
 		agingPolicyTTL = 48 * time.Hour
 	}
 
