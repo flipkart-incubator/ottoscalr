@@ -27,9 +27,9 @@ var _ = Describe("PrometheusScraper", func() {
 			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-workload-3", "deployment").Set(1)
 
 			//wait for the metric to be scraped - scraping interval is 1s
-			time.Sleep(2 * time.Second)
+			time.Sleep(5 * time.Second)
 
-			start := time.Now()
+			start := time.Now().Add(1 * time.Second)
 
 			By("creating first metric inside queryRange window")
 
@@ -44,7 +44,7 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(16)
 
 			//wait for the metric to be scraped - scraping interval is 1s
-			time.Sleep(2 * time.Second)
+			time.Sleep(5 * time.Second)
 
 			By("creating second metric inside queryRange window")
 
@@ -54,7 +54,7 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(15)
 
 			//wait for the metric to be scraped - scraping interval is 1s
-			time.Sleep(2 * time.Second)
+			time.Sleep(5 * time.Second)
 
 			// data points after this should be outside the query range
 			end := time.Now()
@@ -67,7 +67,7 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(15)
 
 			//wait for the metric to be scraped - scraping interval is 1s
-			time.Sleep(2 * time.Second)
+			time.Sleep(5 * time.Second)
 
 			dataPoints, err := scraper.GetAverageCPUUtilizationByWorkload("test-ns-1",
 				"test-workload-1", start, end, time.Second)
