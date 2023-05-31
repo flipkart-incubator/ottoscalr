@@ -56,9 +56,9 @@ type PolicyRecommendationReconciler struct {
 
 func NewPolicyRecommendationReconciler(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder,
-	maxConcurrentReconciles int, recommender reco.Recommender, policyIterators ...reco.PolicyIterator) (*PolicyRecommendationReconciler, error) {
+	maxConcurrentReconciles int, minRequiredReplicas int, recommender reco.Recommender, policyIterators ...reco.PolicyIterator) (*PolicyRecommendationReconciler, error) {
 	recoWfBuilder := reco.NewRecommendationWorkflowBuilder().
-		WithRecommender(recommender)
+		WithRecommender(recommender).WithMinRequiredReplicas(minRequiredReplicas)
 	for _, pi := range policyIterators {
 		recoWfBuilder = recoWfBuilder.WithPolicyIterator(pi)
 	}
