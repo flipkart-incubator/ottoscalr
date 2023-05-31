@@ -91,6 +91,7 @@ func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMe
 		rw.logger.Error(err, "Error while generating recommendation")
 		return nil, nil, nil, errors.New("Unable to generate recommendation")
 	}
+	targetRecoConfig = transformTargetRecoConfig(targetRecoConfig)
 	var nextPolicy *Policy
 	for i, pi := range rw.policyIterators {
 		rw.logger.V(0).Info("Running policy iterator", "iterator", i)
@@ -167,4 +168,14 @@ func pickSafestPolicy(p1, p2 *Policy) *Policy {
 	} else {
 		return p2
 	}
+}
+
+func transformTargetRecoConfig(targetRecoConfig *v1alpha1.HPAConfiguration) *v1alpha1.HPAConfiguration {
+	maxReplicas := targetRecoConfig.Max
+	minReplicas := targetRecoConfig.Min
+	optimalTargetUtil := targetRecoConfig.TargetMetricValue
+	if maxReplicas >= 3 && minReplicas < 3 {
+		minReplicas = 3
+	}
+	return &v1alpha1.HPAConfiguration{Min: minReplicas, Max: maxReplicas, TargetMetricValue: optimalTargetUtil}
 }
