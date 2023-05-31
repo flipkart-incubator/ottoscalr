@@ -53,26 +53,24 @@ func (h *K8sTriggerHandler) queuePolicyRecommendations() {
 	TRUE := true
 	for workload := range h.queuedForExecutionCh {
 		now := metav1.Now()
-		policyRecommendation := &ottoscaleriov1alpha1.PolicyRecommendation{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "PolicyRecommendation",
-				APIVersion: "ottoscaler.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      workload.Name,
-				Namespace: workload.Namespace,
-			},
-			Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
-				QueuedForExecution:   &TRUE,
-				QueuedForExecutionAt: &now,
-			},
-		}
+		policyRecommendation := &ottoscaleriov1alpha1.PolicyRecommendation{}
 
-		err := h.k8sClient.Patch(context.TODO(), policyRecommendation, client.Apply, client.ForceOwnership, client.FieldOwner(TRIGGER_HANDLER_K8S))
+		err := h.k8sClient.Get(context.TODO(), types.NamespacedName{
+			Namespace: workload.Namespace,
+			Name:      workload.Name,
+		}, policyRecommendation)
 		if err != nil {
 			h.logger.Error(err, "Error while getting policyRecommendation.", "workload", workload)
 			continue
 		}
 
+		policyRecommendation.Spec.QueuedForExecution = &TRUE
+		policyRecommendation.Spec.QueuedForExecutionAt = &now
+
+		err = h.k8sClient.Update(context.TODO(), policyRecommendation, client.FieldOwner(TRIGGER_HANDLER_K8S))
+		if err != nil {
+			h.logger.Error(err, "Error while updating policyRecommendation.", "workload", workload)
+			continue
+		}
 	}
 }

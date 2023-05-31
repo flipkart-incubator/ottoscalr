@@ -80,6 +80,8 @@ const (
 	RecommendationGenerated PolicyRecommendationConditionType = "RecommendationGenerated"
 	// AutoscalingPolicySynced means there's corresponding ScaledObject or HPA reflects the desired state specified in the PolicyRecommendation
 	AutoscalingPolicySynced PolicyRecommendationConditionType = "AutoscalingPolicySynced"
+	// RecoTaskErrored means the recommendation workflow couldn't run successfully due to various error scenarios
+	RecoTaskErrored PolicyRecommendationConditionType = "RecoTaskErrored"
 )
 
 //+kubebuilder:object:root=true
