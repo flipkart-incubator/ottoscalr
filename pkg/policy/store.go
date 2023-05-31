@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"log"
 	"sort"
@@ -32,6 +33,7 @@ func NewPolicyStore(k8sClient client.Client) *PolicyStore {
 
 var NoNextPolicyFoundErr = errors.New("no next policy found")
 var NoPrevPolicyFoundErr = errors.New("no previous policy found")
+var NoPolicyFoundErr = errors.New("no policy found")
 
 func (ps *PolicyStore) GetSafestPolicy() (*v1alpha1.Policy, error) {
 	policies := &v1alpha1.PolicyList{}
@@ -118,6 +120,9 @@ func (ps *PolicyStore) GetPolicyByName(name string) (*v1alpha1.Policy, error) {
 	policy := &v1alpha1.Policy{}
 	err := ps.k8sClient.Get(context.Background(), types.NamespacedName{Name: name}, policy)
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil, NoPolicyFoundErr
+		}
 		return nil, err
 	}
 	return policy, nil

@@ -239,4 +239,52 @@ var _ = Describe("PolicyStore", func() {
 		Expect(sortedPolicies.Items[2].Name).To(Equal(policies[0].Name))
 
 	})
+
+	It("should get the sorted list of policies", func() {
+		By("creating policies")
+		policies = []v1alpha1.Policy{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "policy1",
+				},
+				Spec: v1alpha1.PolicySpec{
+					RiskIndex:               3,
+					MinReplicaPercentageCut: 1,
+					TargetUtilization:       60,
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "policy2",
+				},
+				Spec: v1alpha1.PolicySpec{
+					IsDefault:               true,
+					RiskIndex:               1,
+					MinReplicaPercentageCut: 2,
+					TargetUtilization:       80,
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "policy3",
+				},
+				Spec: v1alpha1.PolicySpec{
+					RiskIndex:               2,
+					MinReplicaPercentageCut: 20,
+					TargetUtilization:       60,
+				},
+			},
+		}
+
+		for _, p := range policies {
+			Expect(k8sClient.Create(ctx, &p)).Should(Succeed())
+		}
+
+		By("getting a non existent policy")
+		p, err := store.GetPolicyByName("nonexistent-policy")
+		Expect(err).To(HaveOccurred())
+		Expect(p).To(BeNil())
+		Expect(err).To(Equal(NoPolicyFoundErr))
+
+	})
 })

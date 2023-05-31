@@ -2,6 +2,7 @@ package reco
 
 import (
 	"context"
+	"errors"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -94,6 +95,13 @@ func (pi *AgingPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta) 
 
 	currentAppliedPolicy, err := pi.store.GetPolicyByName(policyreco.Spec.Policy)
 	if err != nil {
+		if errors.Is(err, policy.NoPolicyFoundErr) {
+			defaultPolicy, err2 := pi.store.GetSafestPolicy()
+			if err2 != nil {
+				return nil, err2
+			}
+			return PolicyFromCR(defaultPolicy), nil
+		}
 		return nil, err
 	}
 

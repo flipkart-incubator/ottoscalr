@@ -107,6 +107,31 @@ var _ = Describe("PolicyIterators", func() {
 			Expect(policy).NotTo(BeNil())
 			Expect(policy.Name).Should(Equal(policy2.Name))
 		})
+
+		It("Should update policyreco with nonexistent policy", func() {
+
+			policy, err := agingPI.NextPolicy(ctx, wm)
+			Expect(err).To(BeNil())
+			Expect(policy).NotTo(BeNil())
+			Expect(policy.Name).Should(Equal(safestPolicy.Name))
+			Expect(updatePolicyRecoWithPolicy(DeploymentName, DeploymentNamespace, "nonexistent-policy")).Should(Succeed())
+			Expect(func() string {
+				policy, err := fetchPolicyReco(DeploymentName, DeploymentNamespace)
+				if err != nil {
+					fmt.Fprintf(GinkgoWriter, "Error %s\n", err.Error())
+					return ""
+				}
+				fmt.Fprintf(GinkgoWriter, "Fetched policyReco %v\n", policy)
+				return policy.Spec.Policy
+			}()).Should(Equal("nonexistent-policy"))
+
+			By("Aging the policy once")
+			time.Sleep(2 * policyAge)
+			policy, err = agingPI.NextPolicy(ctx, wm)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(policy).NotTo(BeNil())
+			Expect(policy.Name).Should(Equal(safestPolicy.Name))
+		})
 	})
 })
 
