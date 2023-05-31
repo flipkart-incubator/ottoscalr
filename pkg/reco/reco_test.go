@@ -37,6 +37,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			Expect(min).To(Equal(7))
 			Expect(max).To(Equal(24))
 		})
+
 	})
 
 	var _ = Describe("SimulateHPA", func() {
@@ -388,5 +389,38 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			Expect(hpaConfig.Min).To(Equal(7))
 			Expect(hpaConfig.Max).To(Equal(24))
 		})
+	})
+
+	Describe("processMinAndMaxReplicas", func() {
+		It("should return the processed min and max replicas", func() {
+
+			//Both less than 3
+			minReplicas := 1
+			maxReplicas := 2
+
+			minReplicas, maxReplicas = processMinAndMaxReplicas(minReplicas, maxReplicas)
+
+			Expect(minReplicas).To(Equal(1))
+			Expect(maxReplicas).To(Equal(2))
+
+			//Both greater than or equal to 3
+			minReplicas = 5
+			maxReplicas = 10
+
+			minReplicas, maxReplicas = processMinAndMaxReplicas(minReplicas, maxReplicas)
+
+			Expect(minReplicas).To(Equal(5))
+			Expect(maxReplicas).To(Equal(10))
+
+			//MaxReplica greater than or equal to 3 and minReplica less than 3
+			minReplicas = 1
+			maxReplicas = 10
+
+			minReplicas, maxReplicas = processMinAndMaxReplicas(minReplicas, maxReplicas)
+
+			Expect(minReplicas).To(Equal(3))
+			Expect(maxReplicas).To(Equal(10))
+		})
+
 	})
 })

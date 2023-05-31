@@ -202,6 +202,8 @@ func (c *CpuUtilizationBasedRecommender) findOptimalTargetUtilization(dataPoints
 			high = mid - 1
 		}
 	}
+
+	minReplicas, maxReplicas = processMinAndMaxReplicas(minReplicas, maxReplicas)
 	return high, minReplicas, maxReplicas, nil
 }
 
@@ -238,4 +240,11 @@ func (c *CpuUtilizationBasedRecommender) getContainerCPULimitsSum(namespace, obj
 		}
 	}
 	return float64(cpuLimitsSum) / 1000, nil
+}
+
+func processMinAndMaxReplicas(minReplicas int, maxReplicas int) (int, int) {
+	if maxReplicas >= 3 && minReplicas < 3 {
+		minReplicas = 3
+	}
+	return minReplicas, maxReplicas
 }
