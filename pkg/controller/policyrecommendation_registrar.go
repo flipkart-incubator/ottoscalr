@@ -35,19 +35,21 @@ type PolicyRecommendationRegistrar struct {
 	MonitorManager       trigger.MonitorManager
 	RequeueDelayDuration time.Duration
 	PolicyStore          policy.Store
+	ExcludedNamespaces   []string
 }
 
 func NewPolicyRecommendationRegistrar(client client.Client,
 	scheme *runtime.Scheme,
 	requeueDelayMs int,
 	monitorManager trigger.MonitorManager,
-	policyStore policy.Store) *PolicyRecommendationRegistrar {
+	policyStore policy.Store, excludedNamespaces []string) *PolicyRecommendationRegistrar {
 	return &PolicyRecommendationRegistrar{
 		Client:               client,
 		Scheme:               scheme,
 		MonitorManager:       monitorManager,
 		RequeueDelayDuration: time.Duration(requeueDelayMs) * time.Millisecond,
 		PolicyStore:          policyStore,
+		ExcludedNamespaces:   excludedNamespaces,
 	}
 }
 
@@ -206,6 +208,21 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 		},
 	}
 
+	namespaceFilter := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return controller.isWhitelistedNamespace(e.Object.GetNamespace())
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return controller.isWhitelistedNamespace(e.ObjectNew.GetNamespace())
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return controller.isWhitelistedNamespace(e.Object.GetNamespace())
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return controller.isWhitelistedNamespace(e.Object.GetNamespace())
+		},
+	}
+
 	enqueueFunc := func(obj client.Object) []reconcile.Request {
 		return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: obj.GetName(),
 			Namespace: obj.GetNamespace()}}}
@@ -239,5 +256,15 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 			},
 			builder.WithPredicates(deletePredicate),
 		).
+		WithEventFilter(namespaceFilter).
 		Complete(controller)
+}
+
+func (controller *PolicyRecommendationRegistrar) isWhitelistedNamespace(namespace string) bool {
+	for _, ns := range controller.ExcludedNamespaces {
+		if namespace == ns {
+			return false
+		}
+	}
+	return true
 }

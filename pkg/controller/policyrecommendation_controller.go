@@ -125,8 +125,6 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	if policy != nil {
 		policyName = policy.Name
-	} else {
-		policyName = policyreco.Spec.Policy
 	}
 
 	transitionedAt := retrieveTransitionTime(hpaConfigToBeApplied, &policyreco, generatedAt)
@@ -150,7 +148,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		logger.Error(err, "Error patching the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	logger.V(0).Info("After policy patch", "PolicyReco", *policyRecoPatch)
+	logger.V(0).Info("Policy Patch", "PolicyReco", *policyRecoPatch)
 
 	statusPatch := &v1alpha1.PolicyRecommendation{
 		TypeMeta: policyreco.TypeMeta,
