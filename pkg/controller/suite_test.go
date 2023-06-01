@@ -117,7 +117,7 @@ var _ = BeforeSuite(func() {
 
 	policyRecoReconciler, err := NewPolicyRecommendationReconciler(k8sManager.GetClient(),
 		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(PolicyRecoWorkflowCtrlName),
-		1, recommender, reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
+		1, 3, recommender, reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
 		reco.NewAgingPolicyIterator(k8sManager.GetClient(), policyAge))
 	Expect(err).NotTo(HaveOccurred())
 	err = policyRecoReconciler.

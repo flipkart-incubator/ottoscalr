@@ -82,6 +82,7 @@ type Config struct {
 
 	PolicyRecommendationController struct {
 		MaxConcurrentReconciles int    `yaml:"maxConcurrentReconciles"`
+		MinRequiredReplicas     int    `yaml:"minRequiredReplicas"`
 		PolicyExpiryAge         string `yaml:"policyExpiryAge"`
 	} `yaml:"policyRecommendationController"`
 
@@ -182,7 +183,7 @@ func main() {
 
 	policyRecoReconciler, err := controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
-		config.PolicyRecommendationController.MaxConcurrentReconciles, cpuUtilizationBasedRecommender, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL))
+		config.PolicyRecommendationController.MaxConcurrentReconciles, config.PolicyRecommendationController.MinRequiredReplicas, cpuUtilizationBasedRecommender, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL))
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize policy reco reconciler")
 		os.Exit(1)
