@@ -7,6 +7,8 @@ import (
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -20,9 +22,11 @@ var _ = Describe("PolicyrecommendationController", func() {
 		PolicyRecoName      = "test-deployment-cfldw"
 		PolicyRecoNamespace = "default"
 
-		timeout   = time.Second * 10
-		interval  = time.Millisecond * 250
-		policyAge = 1 * time.Second
+		timeout             = time.Second * 10
+		interval            = time.Millisecond * 250
+		policyAge           = 1 * time.Second
+		DeploymentName      = "test-deployment"
+		DeploymentNamespace = "default"
 	)
 
 	BeforeEach(func() {
@@ -377,6 +381,17 @@ var _ = Describe("PolicyrecommendationController", func() {
 					TransitionedAt:     &now,
 					QueuedForExecution: &trueBool,
 				},
+				//Status: v1alpha1.PolicyRecommendationStatus{
+				//	Conditions: []metav1.Condition{
+				//		{
+				//			Type:               string(v1alpha1.Initialized),
+				//			Status:             metav1.ConditionTrue,
+				//			LastTransitionTime: metav1.Now(),
+				//			Reason:             PolicyRecommendationCRDCreated,
+				//			Message:            InitializedMessage,
+				//		},
+				//	},
+				//},
 			}
 			Expect(k8sClient.Create(ctx, policyreco)).Should(Succeed())
 			Eventually(func() bool {
@@ -389,6 +404,8 @@ var _ = Describe("PolicyrecommendationController", func() {
 				}
 				return *createdPolicy.Spec.QueuedForExecution
 			}, timeout, 8*interval).Should(BeFalse())
+
+			fmt.Fprintf(GinkgoWriter, "Created Reco: %v", createdPolicy)
 
 			createdPolicyString, _ := json.MarshalIndent(createdPolicy, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "Created policy : %s", createdPolicyString)
@@ -791,6 +808,119 @@ var _ = Describe("PolicyrecommendationController", func() {
 				return updatedPolicy.Spec.GeneratedAt.Time.After(updatedPolicy.Spec.QueuedForExecutionAt.Time)
 			}).Should(BeTrue())
 
+		})
+	})
+
+	Context("When creating a new Deployment", func() {
+		var deployment *appsv1.Deployment
+		var createdPolicy *v1alpha1.PolicyRecommendation
+		var safestPolicy, policy1, policy2 v1alpha1.Policy
+		BeforeEach(func() {
+			safestPolicy = v1alpha1.Policy{
+				ObjectMeta: metav1.ObjectMeta{Name: "safest-policy"},
+				Spec: v1alpha1.PolicySpec{
+					IsDefault:               false,
+					RiskIndex:               1,
+					MinReplicaPercentageCut: 80,
+					TargetUtilization:       10,
+				},
+			}
+			policy1 = v1alpha1.Policy{
+				ObjectMeta: metav1.ObjectMeta{Name: "policy-1"},
+				Spec: v1alpha1.PolicySpec{
+					IsDefault:               false,
+					RiskIndex:               10,
+					MinReplicaPercentageCut: 100,
+					TargetUtilization:       15,
+				},
+			}
+			policy2 = v1alpha1.Policy{
+				ObjectMeta: metav1.ObjectMeta{Name: "policy-2"},
+				Spec: v1alpha1.PolicySpec{
+					IsDefault:               true,
+					RiskIndex:               20,
+					MinReplicaPercentageCut: 100,
+					TargetUtilization:       20,
+				},
+			}
+			Expect(k8sClient.Create(ctx, &safestPolicy)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, &policy1)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, &policy2)).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, &safestPolicy)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
+		})
+		It("Should Create a new PolicyRecommendation", func() {
+			By("By creating a new Deployment")
+			ctx := context.TODO()
+			deployment = &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      DeploymentName,
+					Namespace: DeploymentNamespace,
+				},
+
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, deployment)).Should(Succeed())
+			createdDeployment := &appsv1.Deployment{}
+			createdPolicy = &v1alpha1.PolicyRecommendation{}
+
+			time.Sleep(5 * time.Second)
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx,
+					types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
+					createdDeployment)
+				if err != nil {
+					return false
+				}
+
+				err = k8sClient.Get(ctx,
+					types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
+					createdPolicy)
+				if err != nil {
+					return false
+				}
+				return true
+			}, timeout, interval).Should(BeTrue())
+			Expect(createdDeployment.Name).Should(Equal(DeploymentName))
+			Expect(createdPolicy.Name).Should(Equal(DeploymentName))
+			Expect(createdPolicy.Namespace).Should(Equal(DeploymentNamespace))
+			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(DeploymentName))
+			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Deployment"))
+			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
+
+			fmt.Fprintf(GinkgoWriter, "PolicyReco: %v", createdPolicy)
+			Expect(createdPolicy.Status.Conditions[0].Type).To(Equal("Initialized"))
+			Expect(createdPolicy.Status.Conditions[1].Type).To(Equal("RecoTaskProgress"))
+
+			By("Testing that monitor has been queuedAllRecos")
+			Eventually(Expect(queuedAllRecos).Should(BeTrue()))
 		})
 	})
 

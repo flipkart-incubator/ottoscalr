@@ -123,6 +123,7 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 	logger.Info("Creating a new PolicyRecommendation object", "GroupVersionKind", gvk)
 
 	now := metav1.Now()
+	//initializedCondition := NewPolicyRecommendationCondition(ottoscaleriov1alpha1.Initialized, metav1.ConditionTrue, PolicyRecommendationCRDCreated, InitializedMessage)
 	newPolicyRecommendation := &ottoscaleriov1alpha1.PolicyRecommendation{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.GetName(),
@@ -154,8 +155,19 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 	}
 
 	logger.Info("PolicyRecommendation created successfully")
+	statusPatch := CreatePolicyPatch(*newPolicyRecommendation, ottoscaleriov1alpha1.Initialized, metav1.ConditionTrue, PolicyRecommendationCRDCreated, InitializedMessage)
+
+	if err := controller.Client.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoRegistrarCtrlName)); err != nil {
+		logger.Error(err, "Failed to patch the status")
+		return nil, client.IgnoreNotFound(err)
+	}
+	logger.V(1).Info("Patch applied", "patch", *statusPatch)
 	// PolicyRecommendation created successfully
 	return newPolicyRecommendation, nil
+}
+
+func getSubresourcePatchOptions1() {
+
 }
 
 func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Context,
