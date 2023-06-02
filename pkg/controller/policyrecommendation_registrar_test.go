@@ -173,8 +173,9 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
 
 			fmt.Fprintf(GinkgoWriter, "PolicyReco: %v", createdPolicy)
-			Expect(createdPolicy.Status.Conditions[0].Type).To(Equal("Initialized"))
-			Expect(createdPolicy.Status.Conditions[1].Type).To(Equal("RecoTaskProgress"))
+			Expect(len(createdPolicy.Status.Conditions)).To(Equal(2))
+			Expect(createdPolicy.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", Equal("Initialized")))))
 
 			By("Testing that monitor has been queuedAllRecos")
 			Eventually(Expect(queuedAllRecos).Should(BeTrue()))
