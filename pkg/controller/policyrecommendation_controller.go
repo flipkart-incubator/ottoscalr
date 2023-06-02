@@ -181,7 +181,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		logger.Error(err, "Error updating status the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	logger.V(1).Info("Policy Patch", "PolicyReco", *statusPatch)
+	logger.V(1).Info("Recommendation generated Policy Patch Applied", "PolicyReco", *statusPatch)
 
 	r.Recorder.Event(&policyreco, eventTypeNormal, "HPARecommendationGenerated", fmt.Sprintf("The HPA recommendation has been generated successfully. The current policy this workload is at %s.", policyName))
 	logger.V(1).Info("Successfully generated HPA Recommendation.")

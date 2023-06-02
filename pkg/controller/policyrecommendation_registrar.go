@@ -123,7 +123,6 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 	logger.Info("Creating a new PolicyRecommendation object", "GroupVersionKind", gvk)
 
 	now := metav1.Now()
-	//initializedCondition := NewPolicyRecommendationCondition(ottoscaleriov1alpha1.Initialized, metav1.ConditionTrue, PolicyRecommendationCRDCreated, InitializedMessage)
 	newPolicyRecommendation := &ottoscaleriov1alpha1.PolicyRecommendation{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.GetName(),
@@ -161,7 +160,7 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 		logger.Error(err, "Failed to patch the status")
 		return nil, client.IgnoreNotFound(err)
 	}
-	logger.V(1).Info("Patch applied", "patch", *statusPatch)
+	logger.V(1).Info("Initialized Status Patch applied", "patch", *statusPatch)
 	// PolicyRecommendation created successfully
 	return newPolicyRecommendation, nil
 }
