@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/viper"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -83,11 +84,13 @@ type Config struct {
 
 	PolicyRecommendationController struct {
 		MaxConcurrentReconciles int    `yaml:"maxConcurrentReconciles"`
-		PolicyExpiryAgeSeconds  string `yaml:"policyExpiryAgeSeconds"`
+		MinRequiredReplicas     int    `yaml:"minRequiredReplicas"`
+		PolicyExpiryAge         string `yaml:"policyExpiryAge"`
 	} `yaml:"policyRecommendationController"`
 
 	PolicyRecommendationRegistrar struct {
-		RequeueDelayMs int `yaml:"requeueDelayMs"`
+		RequeueDelayMs     int    `yaml:"requeueDelayMs"`
+		ExcludedNamespaces string `yaml:"excludedNamespaces"`
 	} `yaml:"policyRecommendationRegistrar"`
 
 	CpuUtilizationBasedRecommender struct {
@@ -158,9 +161,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	agingPolicyTTL, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAgeSeconds)
+	agingPolicyTTL, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAge)
 	if err != nil {
-		logger.Error(err, "Failed to parse policyExpiryAge. Defaulting to 60s")
+		logger.Error(err, "Failed to parse policyExpiryAge. Defaulting.")
 		agingPolicyTTL = 48 * time.Hour
 	}
 
@@ -201,7 +204,7 @@ func main() {
 
 	policyRecoReconciler, err := controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
-		config.PolicyRecommendationController.MaxConcurrentReconciles, cpuUtilizationBasedRecommender, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL))
+		config.PolicyRecommendationController.MaxConcurrentReconciles, config.PolicyRecommendationController.MinRequiredReplicas, cpuUtilizationBasedRecommender, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL))
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize policy reco reconciler")
 		os.Exit(1)
@@ -223,12 +226,14 @@ func main() {
 		config.BreachMonitor.CpuRedLine,
 		logger)
 
+	excludedNamespaces := parseExcludedNamespaces(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
+
 	policyStore := policy.NewPolicyStore(mgr.GetClient())
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
 		mgr.GetScheme(),
 		config.PolicyRecommendationRegistrar.RequeueDelayMs,
 		monitorManager,
-		policyStore).SetupWithManager(mgr); err != nil {
+		policyStore, excludedNamespaces).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",
 			"controller", "PolicyRecommendationRegistration")
 		os.Exit(1)
@@ -265,4 +270,13 @@ func main() {
 		monitorManager.Shutdown()
 		os.Exit(0)
 	}()
+}
+
+func parseExcludedNamespaces(namespaces string) []string {
+	splitNamespaces := strings.Split(namespaces, ",")
+	var excludedNamespaces []string
+	for _, namespace := range splitNamespaces {
+		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(namespace))
+	}
+	return excludedNamespaces
 }

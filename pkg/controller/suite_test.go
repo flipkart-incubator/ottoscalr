@@ -51,8 +51,9 @@ var (
 	ctx       context.Context
 	cancel    context.CancelFunc
 
-	queuedAllRecos = false
-	recommender    *MockRecommender
+	queuedAllRecos     = false
+	recommender        *MockRecommender
+	excludedNamespaces []string
 )
 
 const policyAge = 1 * time.Second
@@ -92,11 +93,14 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	excludedNamespaces = []string{"namespace1", "namespace2"}
+
 	err = (&PolicyRecommendationRegistrar{
-		Client:         k8sManager.GetClient(),
-		Scheme:         k8sManager.GetScheme(),
-		MonitorManager: &FakeMonitorManager{},
-		PolicyStore:    newFakePolicyStore(),
+		Client:             k8sManager.GetClient(),
+		Scheme:             k8sManager.GetScheme(),
+		MonitorManager:     &FakeMonitorManager{},
+		PolicyStore:        newFakePolicyStore(),
+		ExcludedNamespaces: excludedNamespaces,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -113,7 +117,7 @@ var _ = BeforeSuite(func() {
 
 	policyRecoReconciler, err := NewPolicyRecommendationReconciler(k8sManager.GetClient(),
 		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(PolicyRecoWorkflowCtrlName),
-		1, recommender, reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
+		1, 3, recommender, reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
 		reco.NewAgingPolicyIterator(k8sManager.GetClient(), policyAge))
 	Expect(err).NotTo(HaveOccurred())
 	err = policyRecoReconciler.
