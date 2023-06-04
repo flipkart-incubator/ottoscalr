@@ -381,17 +381,6 @@ var _ = Describe("PolicyrecommendationController", func() {
 					TransitionedAt:     &now,
 					QueuedForExecution: &trueBool,
 				},
-				//Status: v1alpha1.PolicyRecommendationStatus{
-				//	Conditions: []metav1.Condition{
-				//		{
-				//			Type:               string(v1alpha1.Initialized),
-				//			Status:             metav1.ConditionTrue,
-				//			LastTransitionTime: metav1.Now(),
-				//			Reason:             PolicyRecommendationCRDCreated,
-				//			Message:            InitializedMessage,
-				//		},
-				//	},
-				//},
 			}
 			Expect(k8sClient.Create(ctx, policyreco)).Should(Succeed())
 			Eventually(func() bool {
@@ -854,7 +843,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
 		})
-		It("Should Create a new PolicyRecommendation", func() {
+		It("Should Create a new PolicyRecommendation with Initialized and Recommendation Generated Status Conditions", func() {
 			By("By creating a new Deployment")
 			ctx := context.TODO()
 			deployment = &appsv1.Deployment{
@@ -918,7 +907,10 @@ var _ = Describe("PolicyrecommendationController", func() {
 			fmt.Fprintf(GinkgoWriter, "PolicyReco: %v", createdPolicy)
 			Expect(len(createdPolicy.Status.Conditions)).To(Equal(2))
 			Expect(createdPolicy.Status.Conditions).To(ContainElement(SatisfyAll(
-				HaveField("Type", Equal("Initialized")))))
+				HaveField("Type", Equal(string(v1alpha1.Initialized))))))
+			Expect(createdPolicy.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", Equal(string(v1alpha1.RecoTaskProgress))),
+				HaveField("Reason", Equal(RecoTaskRecommendationGenerated)))))
 			By("Testing that monitor has been queuedAllRecos")
 			Eventually(Expect(queuedAllRecos).Should(BeTrue()))
 		})

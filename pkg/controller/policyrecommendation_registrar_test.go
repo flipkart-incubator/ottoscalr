@@ -31,7 +31,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 	)
 
 	BeforeEach(func() {
-
+		queuedAllRecos = false
 		DeferCleanup(func() {
 			queuedAllRecos = false
 		})
@@ -424,7 +424,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 				types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
 				policyAfterDeploymentUpdate)).Should(Succeed())
 
-			//Expect(createdPolicy).Should(Equal(policyAfterDeploymentUpdate))
+			Expect(createdPolicy.Status.Conditions[0].LastTransitionTime).Should(Equal(policyAfterDeploymentUpdate.Status.Conditions[0].LastTransitionTime))
 			Expect(createdDeployment.Name).Should(Equal(DeploymentName))
 			createdPolicy = &ottoscaleriov1alpha1.PolicyRecommendation{}
 

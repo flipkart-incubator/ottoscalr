@@ -11,16 +11,14 @@ const (
 	RecoTaskQueued        = "RecoTaskQueued"
 	RecoTaskQueuedMessage = "Workload Queued for Fresh HPA Recommendation"
 
-	RecoTaskInProgress = "RecoTaskInProgress"
-
 	RecoTaskRecommendationGenerated = "RecoTaskRecommendationGenerated"
 	RecommendationGeneratedMessage  = "HPA Recommendation is generated"
 
 	RecoTaskErrored = "RecoTaskErrored"
 
 	//Reason for Initialized Condition
-	PolicyRecommendationCRDCreated = "PolicyRecommendationCreated"
-	InitializedMessage             = "PolicyRecommendation has been created"
+	PolicyRecommendationCreated = "PolicyRecommendationCreated"
+	InitializedMessage          = "PolicyRecommendation has been created"
 )
 
 func NewPolicyRecommendationCondition(condType v1alpha1.PolicyRecommendationConditionType, status metav1.ConditionStatus, reason, message string) *metav1.Condition {

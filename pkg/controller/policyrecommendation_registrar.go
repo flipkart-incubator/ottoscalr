@@ -154,7 +154,7 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 	}
 
 	logger.Info("PolicyRecommendation created successfully")
-	statusPatch := CreatePolicyPatch(*newPolicyRecommendation, ottoscaleriov1alpha1.Initialized, metav1.ConditionTrue, PolicyRecommendationCRDCreated, InitializedMessage)
+	statusPatch := CreatePolicyPatch(*newPolicyRecommendation, ottoscaleriov1alpha1.Initialized, metav1.ConditionTrue, PolicyRecommendationCreated, InitializedMessage)
 
 	if err := controller.Client.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoRegistrarCtrlName)); err != nil {
 		logger.Error(err, "Failed to patch the status")
