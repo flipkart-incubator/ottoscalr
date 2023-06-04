@@ -424,10 +424,18 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 				types.NamespacedName{Name: DeploymentName, Namespace: DeploymentNamespace},
 				policyAfterDeploymentUpdate)).Should(Succeed())
 
-			Expect(createdPolicy.Status.Conditions[0].LastTransitionTime).Should(Equal(policyAfterDeploymentUpdate.Status.Conditions[0].LastTransitionTime))
-			Expect(createdDeployment.Name).Should(Equal(DeploymentName))
-			createdPolicy = &ottoscaleriov1alpha1.PolicyRecommendation{}
-
+			var time1, time2 metav1.Time
+			for _, c := range createdPolicy.Status.Conditions {
+				if c.Type == string(ottoscaleriov1alpha1.Initialized) {
+					time1 = c.LastTransitionTime
+				}
+			}
+			for _, c := range policyAfterDeploymentUpdate.Status.Conditions {
+				if c.Type == string(ottoscaleriov1alpha1.Initialized) {
+					time2 = c.LastTransitionTime
+				}
+			}
+			Expect(time1).Should(Equal(time2))
 			Expect(createdDeployment.Name).Should(Equal(DeploymentName))
 
 		})
