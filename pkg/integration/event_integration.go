@@ -94,6 +94,7 @@ func NewEventCalendarDataFetcher(eventAPIEndpoint string) (*EventCalendarDataFet
 
 func (ec *EventCalendarDataFetcher) GetDesiredEvents(startTime time.Time, endTime time.Time) ([]EventDetails, error) {
 	var eventDetails []EventDetails
+	startTime = startTime.Add(-30 * 24 * time.Hour)
 	fetchEventsUrl := fmt.Sprintf("%s?startTime=%d&tier=%s&pageNo=%d&pageSize=%d", ec.EventAPIEndpoint, startTime.UnixMilli(), "ALL_MP", 0, 100)
 	req, err := http.NewRequest(http.MethodGet, fetchEventsUrl, nil)
 	if err != nil {

@@ -99,9 +99,9 @@ type Config struct {
 	MetricIngestionTime      float64 `yaml:"metricIngestionTime"`
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
-	Integration              struct {
+	EventCallIntegration     struct {
 		EventCalendarAPIEndpoint string `yaml:"eventCalendarAPIEndpoint"`
-	} `yaml:"metricsTransformer"`
+	} `yaml:"eventCallIntegration"`
 }
 
 func main() {
@@ -175,7 +175,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	eventIntegration, err := integration.NewEventCalendarDataFetcher(config.Integration.EventCalendarAPIEndpoint)
+	eventIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint)
+	if err != nil {
+		setupLog.Error(err, "unable to start event calendar data fetcher")
+		os.Exit(1)
+	}
 
 	var metricsTransformer []metrics.MetricsTransformer
 
