@@ -20,9 +20,11 @@ import (
 	"flag"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
+	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
+	"github.com/flipkart-incubator/ottoscalr/pkg/transformer"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	"github.com/spf13/viper"
 	"os"
@@ -97,8 +99,12 @@ type Config struct {
 		MinTarget          int `yaml:"minTarget"`
 		MaxTarget          int `yaml:"minTarget"`
 	} `yaml:"cpuUtilizationBasedRecommender"`
-	MetricIngestionTime float64 `yaml:"metricIngestionTime"`
-	MetricProbeTime     float64 `yaml:"metricProbeTime"`
+	MetricIngestionTime      float64 `yaml:"metricIngestionTime"`
+	MetricProbeTime          float64 `yaml:"metricProbeTime"`
+	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
+	EventCallIntegration     struct {
+		EventCalendarAPIEndpoint string `yaml:"eventCalendarAPIEndpoint"`
+	} `yaml:"eventCallIntegration"`
 }
 
 func main() {
@@ -172,10 +178,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	eventIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint)
+	if err != nil {
+		setupLog.Error(err, "unable to start event calendar data fetcher")
+		os.Exit(1)
+	}
+
+	var metricsTransformer []metrics.MetricsTransformer
+
+	if *config.EnableMetricsTransformer == true {
+		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegration)
+		if err != nil {
+			setupLog.Error(err, "unable to start metrics transformer")
+			os.Exit(1)
+		}
+
+		metricsTransformer = append(metricsTransformer, outlierInterpolatorTransformer)
+	}
+
 	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
 		scraper,
+		metricsTransformer,
 		time.Duration(config.CpuUtilizationBasedRecommender.StepSec)*time.Second,
 		config.CpuUtilizationBasedRecommender.MinTarget,
 		config.CpuUtilizationBasedRecommender.MaxTarget,

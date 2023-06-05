@@ -29,20 +29,20 @@ var (
 	ctx           context.Context
 	cancel        context.CancelFunc
 
-	logger logr.Logger
-
-	redLineUtil        = 0.85
-	metricWindow       = 1 * time.Hour
-	metricStep         = 5 * time.Minute
-	minTarget          = 10
-	maxTarget          = 60
-	fakeScraper        metrics.Scraper
-	recommender        *CpuUtilizationBasedRecommender
-	store              *policy.PolicyStore
-	policyAge          = 1 * time.Second
-	mockRecommender    *Recommender
-	mockPolicyIterator *PolicyIterator
-	mockPolicy         *Policy
+	logger                 logr.Logger
+	redLineUtil            = 0.85
+	metricWindow           = 1 * time.Hour
+	metricStep             = 5 * time.Minute
+	minTarget              = 10
+	maxTarget              = 60
+	fakeScraper            metrics.Scraper
+	recommender            *CpuUtilizationBasedRecommender
+	fakeMetricsTransformer []metrics.MetricsTransformer
+	store                  *policy.PolicyStore
+	policyAge              = 1 * time.Second
+	mockRecommender        *Recommender
+	mockPolicyIterator     *PolicyIterator
+	mockPolicy             *Policy
 )
 
 var safestPolicy, policy1, policy2 *ottoscaleriov1alpha1.Policy
@@ -94,6 +94,8 @@ func (pi *MockPI) GetName() string {
 	return "mockPI"
 }
 
+type FakeMetricsTransformer struct{}
+
 func (fs *FakeScraper) GetAverageCPUUtilizationByWorkload(namespace,
 	workload string,
 	start time.Time,
@@ -115,6 +117,12 @@ func (fs *FakeScraper) GetACLByWorkload(namespace,
 	workload string) (time.Duration, error) {
 	return fs.WorkloadACL, nil
 }
+
+func (fm *FakeMetricsTransformer) Transform(
+	startTime time.Time, endTime time.Time, dataPoints []metrics.DataPoint) ([]metrics.DataPoint, error) {
+	return dataPoints, nil
+}
+
 func TestPolicies(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Policy Suite")
@@ -151,8 +159,10 @@ var _ = BeforeSuite(func() {
 		{Timestamp: time.Now().Add(-6 * time.Minute), Value: 30},
 	}, []metrics.DataPoint{{Timestamp: time.Now(), Value: 1.3}}, 5*time.Minute)
 
+	fakeMetricsTransformer = append(fakeMetricsTransformer, &FakeMetricsTransformer{})
+
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
-		metricWindow, fakeScraper, metricStep, minTarget, maxTarget, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, logger)
 
 	safestPolicy = &ottoscaleriov1alpha1.Policy{
 		ObjectMeta: metav1.ObjectMeta{Name: "safest-policy"},
