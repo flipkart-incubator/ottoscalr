@@ -843,7 +843,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
 		})
-		It("Should Create a new PolicyRecommendation with Initialized,Recommendation Generated and Target Reco Achieved Status Conditions", func() {
+		It("Should Create a new PolicyRecommendation with Initialized,RecoTaskQueued,Recommendation Generated and Target Reco Achieved Status Conditions", func() {
 			By("By creating a new Deployment")
 			ctx := context.TODO()
 			deployment = &appsv1.Deployment{
@@ -905,7 +905,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
 
 			fmt.Fprintf(GinkgoWriter, "PolicyReco: %v", createdPolicy)
-			Expect(len(createdPolicy.Status.Conditions)).To(Equal(3))
+			Expect(len(createdPolicy.Status.Conditions)).To(Equal(4))
 			Expect(createdPolicy.Status.Conditions).To(ContainElement(SatisfyAll(
 				HaveField("Type", Equal(string(v1alpha1.Initialized))))))
 			Expect(createdPolicy.Status.Conditions).To(ContainElement(SatisfyAll(
@@ -913,6 +913,8 @@ var _ = Describe("PolicyrecommendationController", func() {
 				HaveField("Reason", Equal(RecoTaskRecommendationGenerated)))))
 			Expect(createdPolicy.Status.Conditions).To(ContainElement(SatisfyAll(
 				HaveField("Type", Equal(string(v1alpha1.TargetRecoAchieved))))))
+			Expect(createdPolicy.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", Equal(string(v1alpha1.RecoTaskQueued))))))
 			By("Testing that monitor has been queuedAllRecos")
 			By("Testing that monitor has been queuedAllRecos")
 			Eventually(Expect(queuedAllRecos).Should(BeTrue()))

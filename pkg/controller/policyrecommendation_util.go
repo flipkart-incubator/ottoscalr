@@ -8,11 +8,14 @@ import (
 const (
 
 	//Reason for RecoTaskProgress Condition
-	RecoTaskQueued        = "RecoTaskQueued"
-	RecoTaskQueuedMessage = "Workload Queued for Fresh HPA Recommendation"
+	RecoTaskExecutionDone        = "RecoTaskExecutionDone"
+	RecoTaskExecutionDoneMessage = "The Recommendation Workflow execution has been completed"
 
 	RecoTaskRecommendationGenerated = "RecoTaskRecommendationGenerated"
 	RecommendationGeneratedMessage  = "HPA Recommendation is generated"
+
+	RecoTaskInProgress        = "RecoTaskInProgress"
+	RecoTaskInProgressMessage = "Recommendation Workflow execution is in progress"
 
 	RecoTaskErrored        = "RecoTaskErrored"
 	EmptyRecoConfigMessage = "Empty recommendation config could be due to lack of utilization data points or non availability of pod ready time"

@@ -96,14 +96,14 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	var conditions []metav1.Condition
-
 	logger.V(2).Info("PolicyRecomemndation retrieved", "policyreco", policyreco)
 
 	r.Recorder.Event(&policyreco, eventTypeNormal, "HPARecoQueuedForExecution", "This workload has been queued for a fresh HPA recommendation.")
 
-	statusPatch, conditions := CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionTrue, RecoTaskQueued, RecoTaskQueuedMessage)
-	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(RecoQueuedStatusManager)); err != nil {
+	var conditions []metav1.Condition
+
+	statusPatch, conditions := CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionTrue, RecoTaskInProgress, RecoTaskInProgressMessage)
+	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
 		logger.Error(err, "Error updating the status of the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -186,6 +186,13 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		logger.Error(err, "Error updating the of status the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskQueued, metav1.ConditionFalse, RecoTaskExecutionDone, RecoTaskExecutionDoneMessage)
+	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(RecoQueuedStatusManager)); err != nil {
+		logger.Error(err, "Error updating the status of the policy reco object")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
 	logger.V(1).Info("Recommendation generated Policy Patch Applied", "PolicyReco", *statusPatch)
 
 	r.Recorder.Event(&policyreco, eventTypeNormal, "HPARecommendationGenerated", fmt.Sprintf("The HPA recommendation has been generated successfully. The current policy this workload is at %s.", policyName))

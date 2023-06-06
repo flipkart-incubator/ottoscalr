@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"fmt"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -54,8 +55,12 @@ var _ = Describe("K8sTriggerHandler", func() {
 				updatedPolicyRecommendation)
 			Expect(err).ToNot(HaveOccurred())
 
+			fmt.Fprintf(GinkgoWriter, "PolicyREco :%v", updatedPolicyRecommendation)
+
 			// Check if the QueuedForExecution field was updated
 			Expect(*updatedPolicyRecommendation.Spec.QueuedForExecution).Should(BeTrue())
+			Expect(updatedPolicyRecommendation.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", Equal(string(ottoscaleriov1alpha1.RecoTaskQueued))))))
 
 			// Clean up
 			err = k8sClient.Delete(ctx, policyRecommendation)

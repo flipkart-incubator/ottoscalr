@@ -9,7 +9,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const TRIGGER_HANDLER_K8S = "K8sTriggerHandler"
+const (
+	TRIGGER_HANDLER_K8S = "K8sTriggerHandler"
+
+	RecoQueuedStatusManager = "RecoQueuedStatusManager"
+	RecoTaskQueued          = "RecoTaskQueued"
+	RecoTaskQueuedMessage   = "Workload Queued for Fresh HPA Recommendation"
+)
 
 type Handler interface {
 	queuePolicyRecommendations()
@@ -72,5 +78,40 @@ func (h *K8sTriggerHandler) queuePolicyRecommendations() {
 			h.logger.Error(err, "Error while updating policyRecommendation.", "workload", workload)
 			continue
 		}
+
+		statusPatch := &ottoscaleriov1alpha1.PolicyRecommendation{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: ottoscaleriov1alpha1.GroupVersion.String(),
+				Kind:       "PolicyRecommendation",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      policyRecommendation.Name,
+				Namespace: policyRecommendation.Namespace,
+			},
+			Status: ottoscaleriov1alpha1.PolicyRecommendationStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:               string(ottoscaleriov1alpha1.RecoTaskQueued),
+						Status:             metav1.ConditionTrue,
+						LastTransitionTime: now,
+						Reason:             RecoTaskQueued,
+						Message:            RecoTaskQueuedMessage,
+					},
+				},
+			},
+		}
+		if err := h.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(RecoQueuedStatusManager)); err != nil {
+			h.logger.Error(err, "Error updating the status of the policy reco object")
+			continue
+		}
+	}
+}
+
+func getSubresourcePatchOptions(fieldOwner string) *client.SubResourcePatchOptions {
+	patchOpts := client.PatchOptions{}
+	client.ForceOwnership.ApplyToPatch(&patchOpts)
+	client.FieldOwner(fieldOwner).ApplyToPatch(&patchOpts)
+	return &client.SubResourcePatchOptions{
+		PatchOptions: patchOpts,
 	}
 }

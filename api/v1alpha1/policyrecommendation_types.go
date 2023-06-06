@@ -79,6 +79,9 @@ const (
 	// PolicyRecommendation is initialized post the creation of a workload
 	Initialized PolicyRecommendationConditionType = "Initialized"
 
+	//Recommendation is queued for execution
+	RecoTaskQueued PolicyRecommendationConditionType = "RecoTaskQueued"
+
 	// Recommendation WorkFlow Progress is captured in this condition
 	RecoTaskProgress PolicyRecommendationConditionType = "RecoTaskProgress"
 
