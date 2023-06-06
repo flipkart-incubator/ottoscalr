@@ -165,10 +165,6 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 	return newPolicyRecommendation, nil
 }
 
-func getSubresourcePatchOptions1() {
-
-}
-
 func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Context,
 	object client.Object,
 	scheme *runtime.Scheme,

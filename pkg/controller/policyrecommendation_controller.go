@@ -174,7 +174,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 	logger.V(1).Info("Policy Patch", "PolicyReco", *policyRecoPatch)
 
-	if policyRecoPatch.Spec.TargetHPAConfiguration == policyRecoPatch.Spec.CurrentHPAConfiguration {
+	if policyRecoPatch.Spec.TargetHPAConfiguration.DeepEquals(policyRecoPatch.Spec.CurrentHPAConfiguration) {
 		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.TargetRecoAchieved, metav1.ConditionTrue, PolicyRecommendationAtTargetReco, TargetRecoAchievedSuccessMessage)
 	} else {
 		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.TargetRecoAchieved, metav1.ConditionFalse, PolicyRecommendationNotAtTargetReco, TargetRecoAchievedFailureMessage)
