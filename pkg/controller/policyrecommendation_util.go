@@ -14,11 +14,19 @@ const (
 	RecoTaskRecommendationGenerated = "RecoTaskRecommendationGenerated"
 	RecommendationGeneratedMessage  = "HPA Recommendation is generated"
 
-	RecoTaskErrored = "RecoTaskErrored"
+	RecoTaskErrored        = "RecoTaskErrored"
+	EmptyRecoConfigMessage = "Empty recommendation config could be due to lack of utilization data points or non availability of pod ready time"
+	EmptyHPAConfigMessage  = "HPA config to be applied is empty"
 
 	//Reason for Initialized Condition
 	PolicyRecommendationCreated = "PolicyRecommendationCreated"
 	InitializedMessage          = "PolicyRecommendation has been created"
+
+	//Reason for TargetRecoAchieved Condition
+	PolicyRecommendationAtTargetReco    = "PolicyRecommendationAtTargetReco"
+	PolicyRecommendationNotAtTargetReco = "PolicyRecommendationNotAtTargetReco"
+	TargetRecoAchievedSuccessMessage    = "Target Recommendation has been achieved"
+	TargetRecoAchievedFailureMessage    = "Target Recommendation has not been achieved yet"
 )
 
 func NewPolicyRecommendationCondition(condType v1alpha1.PolicyRecommendationConditionType, status metav1.ConditionStatus, reason, message string) *metav1.Condition {
@@ -31,10 +39,9 @@ func NewPolicyRecommendationCondition(condType v1alpha1.PolicyRecommendationCond
 	}
 }
 
-func CreatePolicyPatch(policyreco v1alpha1.PolicyRecommendation, condType v1alpha1.PolicyRecommendationConditionType, status metav1.ConditionStatus, reason, message string) *v1alpha1.PolicyRecommendation {
-	recoTaskProgressCondition := NewPolicyRecommendationCondition(condType, status, reason, message)
-	var conditions1 []metav1.Condition
-	conditions1 = append(conditions1, *recoTaskProgressCondition)
+func CreatePolicyPatch(policyreco v1alpha1.PolicyRecommendation, conditions []metav1.Condition, condType v1alpha1.PolicyRecommendationConditionType, status metav1.ConditionStatus, reason, message string) (*v1alpha1.PolicyRecommendation, []metav1.Condition) {
+	newCondition := NewPolicyRecommendationCondition(condType, status, reason, message)
+	updatedConditions := SetConditions(conditions, *newCondition)
 	statusPatch := &v1alpha1.PolicyRecommendation{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: v1alpha1.GroupVersion.String(),
@@ -45,8 +52,19 @@ func CreatePolicyPatch(policyreco v1alpha1.PolicyRecommendation, condType v1alph
 			Namespace: policyreco.Namespace,
 		},
 		Status: v1alpha1.PolicyRecommendationStatus{
-			Conditions: conditions1,
+			Conditions: updatedConditions,
 		},
 	}
-	return statusPatch
+	return statusPatch, updatedConditions
+}
+
+func SetConditions(conditions []metav1.Condition, newCondition metav1.Condition) []metav1.Condition {
+	var newConditions []metav1.Condition
+	for _, c := range conditions {
+		if c.Type != newCondition.Type {
+			newConditions = append(newConditions, c)
+		}
+	}
+	newConditions = append(newConditions, newCondition)
+	return newConditions
 }

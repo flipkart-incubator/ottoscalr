@@ -82,6 +82,9 @@ const (
 	// Recommendation WorkFlow Progress is captured in this condition
 	RecoTaskProgress PolicyRecommendationConditionType = "RecoTaskProgress"
 
+	//Target Reco is acheived
+	TargetRecoAchieved PolicyRecommendationConditionType = "TargetRecoAchieved"
+
 	// AutoscalingPolicySynced means there's corresponding ScaledObject or HPA reflects the desired state specified in the PolicyRecommendation
 	AutoscalingPolicySynced PolicyRecommendationConditionType = "AutoscalingPolicySynced"
 )
