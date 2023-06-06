@@ -28,12 +28,12 @@ func (ot *OutlierInterpolatorTransformer) Transform(startTime time.Time, endTime
 	if err != nil {
 		return nil, fmt.Errorf("error in getting events from event calendar: %v", err)
 	}
-	intervals := getOutlierIntervals(eventDetails)
+	intervals := getOutlierIntervals(eventDetails, startTime, endTime)
 	newDataPoints := ot.cleanOutliersAndInterpolate(dataPoints, intervals)
 	return newDataPoints, nil
 }
 
-func getOutlierIntervals(eventDetails []integration.EventDetails) []OutlierInterval {
+func getOutlierIntervals(eventDetails []integration.EventDetails, start time.Time, end time.Time) []OutlierInterval {
 	var intervals []OutlierInterval
 	for _, event := range eventDetails {
 		interval := OutlierInterval{
@@ -42,14 +42,15 @@ func getOutlierIntervals(eventDetails []integration.EventDetails) []OutlierInter
 		}
 		intervals = append(intervals, interval)
 	}
+	intervals = filterIntervals(intervals, start, end)
 	return intervals
 }
 
 // Handling Overlapping and Unnecessary Outlier Intervals
-func filterIntervals(intervals []OutlierInterval) []OutlierInterval {
+func filterIntervals(intervals []OutlierInterval, start time.Time, end time.Time) []OutlierInterval {
 	var filteredInterval []OutlierInterval
 	for _, interval := range intervals {
-		if interval.StartTime.Before(time.Now()) {
+		if interval.StartTime.Before(end) && interval.EndTime.After(start) {
 			filteredInterval = append(filteredInterval, interval)
 		}
 	}
@@ -77,9 +78,11 @@ func filterIntervals(intervals []OutlierInterval) []OutlierInterval {
 
 // CleanOutliersAndInterpolate - Linear Interpolation for the dataPoints in interval range.
 func (ot *OutlierInterpolatorTransformer) cleanOutliersAndInterpolate(dataPoints []metrics.DataPoint, intervals []OutlierInterval) []metrics.DataPoint {
-	newDataPoints := dataPoints
-	filteredIntervals := filterIntervals(intervals)
-	for _, interval := range filteredIntervals {
+	var newDataPoints []metrics.DataPoint
+	for _, dataPoint := range dataPoints {
+		newDataPoints = append(newDataPoints, dataPoint)
+	}
+	for _, interval := range intervals {
 		startIndex := -1
 		endIndex := 0
 		for i := 0; i < len(newDataPoints); i++ {
@@ -87,25 +90,29 @@ func (ot *OutlierInterpolatorTransformer) cleanOutliersAndInterpolate(dataPoints
 				if startIndex == -1 {
 					startIndex = i
 				}
-				newDataPoints[i].Value = 0.0
 				endIndex = i
 			}
 		}
 
-		actStartIndex := startIndex - 1
-		actEndIndex := endIndex + 1
+		if startIndex == -1 && endIndex == 0 {
+			return newDataPoints
+		}
 
-		if actEndIndex == len(newDataPoints) {
-			actEndIndex = endIndex
-		}
-		if actStartIndex <= -1 {
-			actStartIndex = 0
-		}
-		// Interpolate data
-		timeDiff := newDataPoints[actEndIndex].Timestamp.Sub(newDataPoints[actStartIndex].Timestamp)
-		slope := (newDataPoints[actEndIndex].Value - newDataPoints[actStartIndex].Value) / (timeDiff.Seconds())
-		for j := actStartIndex; j < actEndIndex-1; j++ {
-			newDataPoints[j+1].Value = newDataPoints[j].Value + slope*(newDataPoints[j+1].Timestamp.Sub(newDataPoints[j].Timestamp).Seconds())
+		if endIndex >= len(newDataPoints)-1 {
+			//Remove ending dataPoints
+			newDataPoints = newDataPoints[0:startIndex]
+		} else if startIndex <= 0 {
+			//Remove starting dataPoints
+			newDataPoints = newDataPoints[(endIndex + 1):]
+		} else {
+			//Interpolate data
+			actStartIndex := startIndex - 1
+			actEndIndex := endIndex + 1
+			timeDiff := newDataPoints[actEndIndex].Timestamp.Sub(newDataPoints[actStartIndex].Timestamp)
+			slope := (newDataPoints[actEndIndex].Value - newDataPoints[actStartIndex].Value) / (timeDiff.Seconds())
+			for j := actStartIndex; j < actEndIndex-1; j++ {
+				newDataPoints[j+1].Value = newDataPoints[j].Value + slope*(newDataPoints[j+1].Timestamp.Sub(newDataPoints[j].Timestamp).Seconds())
+			}
 		}
 	}
 	return newDataPoints

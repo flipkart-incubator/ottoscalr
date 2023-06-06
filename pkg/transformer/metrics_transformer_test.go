@@ -51,30 +51,24 @@ var _ = Describe("cleanOutliersAndInterpolate", func() {
 			{StartTime: time.Now().Add(-31 * time.Minute), EndTime: time.Now().Add(-25 * time.Minute)},
 		}
 		newDataPoints = outlierInterpolatorTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
-		Expect(math.Floor(newDataPoints[0].Value*100) / 100).To(Equal(0.00))
-		Expect(math.Floor(newDataPoints[2].Value*100) / 100).To(Equal(26.66))
+		Expect(len(newDataPoints)).To(Equal(19))
+		Expect(math.Floor(newDataPoints[0].Value*100) / 100).To(Equal(80.00))
+		Expect(math.Floor(newDataPoints[2].Value*100) / 100).To(Equal(50.00))
 
 		//Interval at end
 		intervals = []OutlierInterval{
 			{StartTime: time.Now().Add(-9 * time.Minute), EndTime: time.Now().Add(2 * time.Minute)},
 		}
 		newDataPoints = outlierInterpolatorTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
-		Expect(math.Floor(newDataPoints[24].Value*100) / 100).To(Equal(0.00))
-		Expect(math.Floor(newDataPoints[22].Value*100) / 100).To(Equal(53.33))
+		Expect(len(newDataPoints)).To(Equal(22))
+		Expect(math.Floor(newDataPoints[21].Value*100) / 100).To(Equal(80.00))
+		Expect(math.Floor(newDataPoints[0].Value*100) / 100).To(Equal(60.00))
 
-		//Overlapping intervals
-		intervals = []OutlierInterval{
-			{StartTime: time.Now().Add(-20 * time.Minute), EndTime: time.Now().Add(-15 * time.Minute)},
-			{StartTime: time.Now().Add(-18 * time.Minute), EndTime: time.Now().Add(-10 * time.Minute)},
-		}
-		newData := outlierInterpolatorTransformer.cleanOutliersAndInterpolate(dataPoints, intervals)
-		Expect(math.Floor(newData[15].Value*100) / 100).To(Equal(69.09))
-		Expect(math.Floor(newData[12].Value*100) / 100).To(Equal(63.63))
 	})
 })
 
 var _ = Describe("filterIntervals", func() {
-	It("Should clear any overlapping intervals as well as interval starting after current time", func() {
+	It("Should clear any overlapping intervals as well as interval starting after end time and before start time", func() {
 		time1 := time.Now().Add(-20 * time.Minute)
 		time2 := time.Now().Add(-15 * time.Minute)
 		time3 := time.Now().Add(20 * time.Minute)
@@ -83,13 +77,17 @@ var _ = Describe("filterIntervals", func() {
 		time6 := time.Now().Add(-10 * time.Minute)
 		time7 := time.Now().Add(-9 * time.Minute)
 		time8 := time.Now().Add(-1 * time.Minute)
+		time9 := time.Now().Add(-30 * time.Minute)
+		time10 := time.Now().Add(-25 * time.Minute)
 		intervals := []OutlierInterval{
+			{StartTime: time9, EndTime: time10},
 			{StartTime: time1, EndTime: time2},
-			{StartTime: time3, EndTime: time4},
 			{StartTime: time5, EndTime: time6},
 			{StartTime: time7, EndTime: time8},
+			{StartTime: time3, EndTime: time4},
 		}
-		filteredInterval := filterIntervals(intervals)
+
+		filteredInterval := filterIntervals(intervals, time1, time8)
 		Expect(filteredInterval).To(HaveLen(2))
 		Expect(filteredInterval).To(ContainElements([]OutlierInterval{{StartTime: time1, EndTime: time6},
 			{StartTime: time7, EndTime: time8}}))
