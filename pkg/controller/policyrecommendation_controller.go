@@ -35,6 +35,7 @@ import (
 
 const (
 	PolicyRecoWorkflowCtrlName = "RecoWorkflowController"
+	RecoTaskQueuingCtrlName    = "RecoQueuingController"
 	eventTypeNormal            = "Normal"
 	eventTypeWarning           = "Warning"
 )
@@ -102,7 +103,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	r.Recorder.Event(&policyreco, eventTypeNormal, "HPARecoQueuedForExecution", "This workload has been queued for a fresh HPA recommendation.")
 
 	statusPatch, conditions := CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionTrue, RecoTaskQueued, RecoTaskQueuedMessage)
-	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
+	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(RecoTaskQueuingCtrlName)); err != nil {
 		logger.Error(err, "Error updating the status of the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
