@@ -70,7 +70,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 			dataPoints, err = transformers.Transform(start, end, dataPoints)
 			if err != nil {
 				c.logger.Error(err, "Error while getting outlier interval from event api")
-				return nil, nil
+				return nil, err
 			}
 		}
 	}
