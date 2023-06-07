@@ -3,9 +3,11 @@ package reco
 import (
 	"context"
 	"fmt"
+	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/types"
 	"time"
 )
 
@@ -97,5 +99,26 @@ var _ = Describe("BreachAnalyzer policy iterator", func() {
 			Expect(policy).To(BeNil())
 
 		})
+
+		It("Should fallback to no op if there's no generatedAt field", func() {
+			updatePolicyRecoGeneratedAtFieldWithNil(DeploymentName, DeploymentNamespace)
+			policy, err := breachAnalyzer.NextPolicy(ctx, wm)
+			Expect(err).To(BeNil())
+			Expect(policy).To(BeNil())
+		})
 	})
 })
+
+func updatePolicyRecoGeneratedAtFieldWithNil(name, namespace string) error {
+	policyReco := &ottoscaleriov1alpha1.PolicyRecommendation{}
+	if err := fakeK8SClient.Get(ctx, types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}, policyReco); err != nil {
+		return err
+	}
+	policyReco.Spec.GeneratedAt = nil
+	err := fakeK8SClient.Update(ctx, policyReco)
+	fmt.Fprintf(GinkgoWriter, "Update %v", policyReco)
+	return err
+}
