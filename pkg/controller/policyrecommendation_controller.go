@@ -150,6 +150,8 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	if policy != nil {
 		policyName = policy.Name
+	} else {
+		policyName = policyreco.Spec.Policy
 	}
 
 	transitionedAt := retrieveTransitionTime(hpaConfigToBeApplied, &policyreco, generatedAt)
