@@ -35,6 +35,7 @@ import (
 
 const (
 	PolicyRecoWorkflowCtrlName = "RecoWorkflowController"
+	RecoQueuedStatusManager    = "RecoQueuedStatusManager"
 	eventTypeNormal            = "Normal"
 	eventTypeWarning           = "Warning"
 )
@@ -81,6 +82,7 @@ func NewPolicyRecommendationReconciler(client client.Client,
 //+kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
 
 func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+
 	logger := ctrl.LoggerFrom(ctx).WithName(PolicyRecoWorkflowCtrlName)
 
 	// Keeping this here to consider the generatedAt timestamp to be the beginning of the reconcile op
@@ -98,16 +100,34 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	r.Recorder.Event(&policyreco, eventTypeNormal, "HPARecoQueuedForExecution", "This workload has been queued for a fresh HPA recommendation.")
 
+	var conditions []metav1.Condition
+
+	statusPatch, conditions := CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionTrue, RecoTaskInProgress, RecoTaskInProgressMessage)
+	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
+		logger.Error(err, "Error updating the status of the policy reco object")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
 	hpaConfigToBeApplied, targetHPAReco, policy, err := r.RecoWorkflow.Execute(ctx, reco.WorkloadMeta{
 		TypeMeta:  policyreco.Spec.WorkloadMeta.TypeMeta,
 		Name:      policyreco.Spec.WorkloadMeta.Name,
 		Namespace: policyreco.Spec.WorkloadMeta.Namespace,
 	})
 	if err != nil {
+		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionFalse, RecoTaskErrored, err.Error())
+		if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
+			logger.Error(err, "Error updating the status of the policy reco object")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
 		return ctrl.Result{}, err
 	}
 
 	if targetHPAReco == nil {
+		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionFalse, RecoTaskErrored, EmptyRecoConfigMessage)
+		if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
+			logger.Error(err, "Error updating the status of the policy reco object")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
 		logger.V(0).Error(nil, "Recommended config is empty. Requeuing")
 		return ctrl.Result{
 			RequeueAfter: 5 * time.Second,
@@ -115,6 +135,11 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	if hpaConfigToBeApplied == nil {
+		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionFalse, RecoTaskErrored, EmptyHPAConfigMessage)
+		if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
+			logger.Error(err, "Error updating the status of the policy reco object")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
 		logger.V(0).Error(nil, "HPA config to be applied is empty. Requeuing")
 		return ctrl.Result{
 			RequeueAfter: 5 * time.Second,
@@ -148,20 +173,27 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 		logger.Error(err, "Error patching the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	logger.V(0).Info("Policy Patch", "PolicyReco", *policyRecoPatch)
+	logger.V(1).Info("Policy Patch", "PolicyReco", *policyRecoPatch)
 
-	statusPatch := &v1alpha1.PolicyRecommendation{
-		TypeMeta: policyreco.TypeMeta,
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      policyreco.Name,
-			Namespace: policyreco.Namespace,
-		},
-		Status: v1alpha1.PolicyRecommendationStatus{},
+	if policyRecoPatch.Spec.TargetHPAConfiguration.DeepEquals(policyRecoPatch.Spec.CurrentHPAConfiguration) {
+		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.TargetRecoAchieved, metav1.ConditionTrue, PolicyRecommendationAtTargetReco, TargetRecoAchievedSuccessMessage)
+	} else {
+		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.TargetRecoAchieved, metav1.ConditionFalse, PolicyRecommendationNotAtTargetReco, TargetRecoAchievedFailureMessage)
 	}
-	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions()); err != nil {
-		logger.Error(err, "Failed to patch the status")
+
+	statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionFalse, RecoTaskRecommendationGenerated, RecommendationGeneratedMessage)
+	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
+		logger.Error(err, "Error updating the of status the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskQueued, metav1.ConditionFalse, RecoTaskExecutionDone, RecoTaskExecutionDoneMessage)
+	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(RecoQueuedStatusManager)); err != nil {
+		logger.Error(err, "Error updating the status of the policy reco object")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	logger.V(1).Info("Recommendation generated Policy Patch Applied", "PolicyReco", *statusPatch)
 
 	r.Recorder.Event(&policyreco, eventTypeNormal, "HPARecommendationGenerated", fmt.Sprintf("The HPA recommendation has been generated successfully. The current policy this workload is at %s.", policyName))
 	logger.V(1).Info("Successfully generated HPA Recommendation.")
@@ -180,10 +212,10 @@ func retrieveTransitionTime(hpaConfigToBeApplied *v1alpha1.HPAConfiguration, pol
 	return *policyreco.Spec.TransitionedAt
 }
 
-func getSubresourcePatchOptions() *client.SubResourcePatchOptions {
+func getSubresourcePatchOptions(fieldOwner string) *client.SubResourcePatchOptions {
 	patchOpts := client.PatchOptions{}
 	client.ForceOwnership.ApplyToPatch(&patchOpts)
-	client.FieldOwner(PolicyRecoWorkflowCtrlName).ApplyToPatch(&patchOpts)
+	client.FieldOwner(fieldOwner).ApplyToPatch(&patchOpts)
 	return &client.SubResourcePatchOptions{
 		PatchOptions: patchOpts,
 	}

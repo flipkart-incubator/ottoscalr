@@ -53,7 +53,11 @@ func (h HPAConfiguration) DeepEquals(h2 HPAConfiguration) bool {
 
 // PolicyRecommendationStatus defines the observed state of PolicyRecommendation
 type PolicyRecommendationStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 //+kubebuilder:object:root=true
@@ -74,14 +78,18 @@ type PolicyRecommendationConditionType string
 const (
 	// PolicyRecommendation is initialized post the creation of a workload
 	Initialized PolicyRecommendationConditionType = "Initialized"
-	// A recommendation task is queued for execution
+
+	//Recommendation is queued for execution
 	RecoTaskQueued PolicyRecommendationConditionType = "RecoTaskQueued"
-	// A recommendation is generated for the workload
-	RecommendationGenerated PolicyRecommendationConditionType = "RecommendationGenerated"
+
+	// Recommendation WorkFlow Progress is captured in this condition
+	RecoTaskProgress PolicyRecommendationConditionType = "RecoTaskProgress"
+
+	//Target Reco is acheived
+	TargetRecoAchieved PolicyRecommendationConditionType = "TargetRecoAchieved"
+
 	// AutoscalingPolicySynced means there's corresponding ScaledObject or HPA reflects the desired state specified in the PolicyRecommendation
 	AutoscalingPolicySynced PolicyRecommendationConditionType = "AutoscalingPolicySynced"
-	// RecoTaskErrored means the recommendation workflow couldn't run successfully due to various error scenarios
-	RecoTaskErrored PolicyRecommendationConditionType = "RecoTaskErrored"
 )
 
 //+kubebuilder:object:root=true
