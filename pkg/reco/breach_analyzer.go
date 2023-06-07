@@ -48,6 +48,12 @@ func (pi *BreachAnalyzer) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Pol
 		logger.V(0).Info("Empty policy in policy reco. Falling back to no-op.")
 		return nil, nil
 	}
+
+	if currentPolicyReco.Spec.GeneratedAt == nil || currentPolicyReco.Spec.GeneratedAt.IsZero() {
+		logger.V(0).Info("Policy reco has nil generatedAt field. Falling back to no-op.")
+		return nil, nil
+	}
+
 	end := time.Now()
 	start := currentPolicyReco.Spec.GeneratedAt.Time
 	breached, err := pi.breachFn(ctx, start, end, wm.Kind, types.NamespacedName{
