@@ -220,7 +220,8 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	matrix := result.(model.Matrix)
 
 	if len(matrix) != 1 {
-		return nil, fmt.Errorf("unexpected no of time series: %v", len(matrix))
+		// if no datapoints are returned which satisfy the query it can be considered that there's no breach to redLineUtilization
+		return nil, nil
 	}
 
 	var dataPoints []DataPoint
