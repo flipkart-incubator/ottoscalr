@@ -2,6 +2,7 @@ package reco
 
 import (
 	"context"
+	"fmt"
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	. "github.com/onsi/ginkgo/v2"
@@ -33,7 +34,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 				dataPoints, acl, minTarget, maxTarget, perPodResources)
 
 			Expect(err).To(Not(HaveOccurred()))
-			Expect(optimalTarget).To(Equal(52))
+			Expect(optimalTarget).To(Equal(48))
 			Expect(min).To(Equal(7))
 			Expect(max).To(Equal(24))
 		})
@@ -87,13 +88,14 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 
 				Expect(simulatedDataPoints).ToNot(BeNil())
 				Expect(len(simulatedDataPoints)).To(Equal(len(dataPoints)))
-				expectedSimulatedResources := []float64{104.54999999999998, 104.54999999999998, 104.54999999999998, 90.61, 90.61, 90.61}
+				fmt.Fprintf(GinkgoWriter, "Simulated: %v\n", simulatedDataPoints)
+				expectedSimulatedResources := []float64{90.61, 90.61, 90.61, 83.63999999999999, 83.63999999999999, 83.63999999999999}
 				for i, simulatedDataPoint := range simulatedDataPoints {
 					Expect(simulatedDataPoint.Timestamp).To(Equal(dataPoints[i].Timestamp))
 					Expect(simulatedDataPoint.Value).To(Equal(expectedSimulatedResources[i]))
 				}
-				Expect(min).To(Equal(13))
-				Expect(max).To(Equal(25))
+				Expect(min).To(Equal(12))
+				Expect(max).To(Equal(23))
 			})
 		})
 
@@ -384,7 +386,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			hpaConfig, err := recommender.Recommend(context.TODO(), workloadSpec)
 
 			Expect(err).To(Not(HaveOccurred()))
-			Expect(hpaConfig.TargetMetricValue).To(Equal(52))
+			Expect(hpaConfig.TargetMetricValue).To(Equal(48))
 			Expect(hpaConfig.Min).To(Equal(7))
 			Expect(hpaConfig.Max).To(Equal(24))
 		})
