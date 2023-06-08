@@ -117,6 +117,8 @@ func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPo
 	targetUtilization int,
 	perPodResources float64) ([]metrics.DataPoint, int, int, error) {
 
+	targetUtilization = int(math.Floor(float64(targetUtilization) * 1.1))
+
 	if len(dataPoints) == 0 {
 		return []metrics.DataPoint{}, 0, 0, nil
 	}
