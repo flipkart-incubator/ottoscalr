@@ -1,7 +1,10 @@
 package trigger
 
 import (
+	"fmt"
+	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sync/atomic"
@@ -49,20 +52,26 @@ var _ = Describe("PolicyRecommendationMonitorManager and Monitor", func() {
 		handlerFunc        = func(workload types.NamespacedName) {
 			atomic.AddInt32(&handlerCallCounter, 1)
 		}
+		policyreco ottoscaleriov1alpha1.PolicyRecommendation
 	)
 
 	BeforeEach(func() {
+		err := createPolicyReco("test-workload", "default", "")
+		Expect(err).ToNot(HaveOccurred())
 		handlerCallCounter = 0
 	})
 
 	AfterEach(func() {
+		Expect(k8sClient.Delete(ctx, &policyreco)).Should(Succeed())
 		manager.Shutdown()
 	})
 
 	It("should call handler when breaches are detected", func() {
 
 		By("Creating a monitor mgr that only detects breaches")
-		manager = NewPolicyRecommendationMonitorManager(&FakeScraper{},
+		manager = NewPolicyRecommendationMonitorManager(k8sClient,
+			recorder,
+			&FakeScraper{},
 			1*time.Hour,
 			1*time.Second,
 			handlerFunc,
@@ -77,6 +86,15 @@ var _ = Describe("PolicyRecommendationMonitorManager and Monitor", func() {
 		Expect(monitor).ToNot(BeNil())
 
 		time.Sleep(3 * time.Second)
+		err := k8sClient.Get(ctx, types.NamespacedName{
+			Namespace: workload.Namespace,
+			Name:      workload.Name,
+		}, &policyreco)
+		Expect(err).ToNot(HaveOccurred())
+		fmt.Fprintf(GinkgoWriter, "PolicyReco: %v", policyreco)
+		Expect(policyreco.Status.Conditions).To(ContainElement(SatisfyAll(
+			HaveField("Type", Equal(string(ottoscaleriov1alpha1.Breached))),
+			HaveField("Reason", Equal(BreachDetected)))))
 		Expect(handlerCallCounter).To(BeNumerically(">=", 2))
 		Expect(handlerCallCounter).To(BeNumerically("<=", 3))
 
@@ -98,7 +116,9 @@ var _ = Describe("PolicyRecommendationMonitorManager and Monitor", func() {
 	It("should call handler when periodic trigger is fired", func() {
 
 		By("Creating a monitor mgr that only handles periodic trigger")
-		manager = NewPolicyRecommendationMonitorManager(&FakeScraper{},
+		manager = NewPolicyRecommendationMonitorManager(manager.k8sClient,
+			manager.recorder,
+			&FakeScraper{},
 			1*time.Second,
 			1*time.Hour,
 			handlerFunc,
@@ -131,3 +151,20 @@ var _ = Describe("PolicyRecommendationMonitorManager and Monitor", func() {
 		Expect(handlerCallCounter).To(BeNumerically(">", currentCallCounter))
 	})
 })
+
+func createPolicyReco(name, namespace, policy string) error {
+	now := metav1.Now()
+	return k8sClient.Create(ctx, &ottoscaleriov1alpha1.PolicyRecommendation{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
+			WorkloadMeta:            ottoscaleriov1alpha1.WorkloadMeta{},
+			CurrentHPAConfiguration: ottoscaleriov1alpha1.HPAConfiguration{},
+			Policy:                  policy,
+			GeneratedAt:             &now,
+			TransitionedAt:          &now,
+		},
+	})
+}

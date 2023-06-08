@@ -2,13 +2,28 @@ package trigger
 
 import (
 	"context"
+	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"math/rand"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sync"
 	"time"
+)
+
+const (
+	eventTypeWarning    = "Warning"
+	BreachStatusManager = "BreachStatusManager"
+
+	BreachDetected   = "BreachDetected"
+	NoBreachDetected = "NoBreachDetected"
+
+	BreachDetectedMessage   = "A breach has been detected"
+	NoBreachDetectedMessage = "No breach detected for the current recommendation"
 )
 
 type MonitorManager interface {
@@ -17,6 +32,8 @@ type MonitorManager interface {
 	Shutdown()
 }
 type PolicyRecommendationMonitorManager struct {
+	k8sClient                client.Client
+	recorder                 record.EventRecorder
 	metricScraper            metrics.Scraper
 	metricStep               time.Duration
 	cpuRedLine               float64
@@ -28,7 +45,9 @@ type PolicyRecommendationMonitorManager struct {
 	logger                   logr.Logger
 }
 
-func NewPolicyRecommendationMonitorManager(metricScraper metrics.Scraper,
+func NewPolicyRecommendationMonitorManager(k8sClient client.Client,
+	recorder record.EventRecorder,
+	metricScraper metrics.Scraper,
 	periodicRequeueFrequency time.Duration,
 	breachCheckFrequency time.Duration,
 	handlerFunc func(workloadName types.NamespacedName),
@@ -37,6 +56,8 @@ func NewPolicyRecommendationMonitorManager(metricScraper metrics.Scraper,
 	logger logr.Logger) *PolicyRecommendationMonitorManager {
 
 	return &PolicyRecommendationMonitorManager{
+		k8sClient:                k8sClient,
+		recorder:                 recorder,
 		metricScraper:            metricScraper,
 		metricStep:               time.Duration(stepSec) * time.Second,
 		cpuRedLine:               cpuRedLine,
@@ -58,7 +79,9 @@ func (mf *PolicyRecommendationMonitorManager) RegisterMonitor(workloadType strin
 		return monitor
 	}
 
-	monitor := NewMonitor(workload.Namespace,
+	monitor := NewMonitor(mf.k8sClient,
+		mf.recorder,
+		workload.Namespace,
 		workload,
 		workloadType,
 		mf.metricScraper,
@@ -95,6 +118,8 @@ func (mf *PolicyRecommendationMonitorManager) Shutdown() {
 }
 
 type Monitor struct {
+	k8sClient                client.Client
+	recorder                 record.EventRecorder
 	namespace                string
 	workload                 types.NamespacedName
 	workloadType             string
@@ -110,7 +135,9 @@ type Monitor struct {
 	logger                   logr.Logger
 }
 
-func NewMonitor(namespace string,
+func NewMonitor(k8sClient client.Client,
+	recorder record.EventRecorder,
+	namespace string,
 	workload types.NamespacedName,
 	workloadType string,
 	metricScraper metrics.Scraper,
@@ -123,6 +150,8 @@ func NewMonitor(namespace string,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Monitor{
+		k8sClient:                k8sClient,
+		recorder:                 recorder,
 		namespace:                namespace,
 		workload:                 workload,
 		workloadType:             workloadType,
@@ -162,8 +191,27 @@ func (m *Monitor) monitorBreaches() {
 			m.logger.Info("Executing breach monitor check.", "workload", m.workload)
 			end := time.Now()
 			start := end.Add(-m.breachCheckFrequency)
+
+			policyreco := ottoscaleriov1alpha1.PolicyRecommendation{}
+			if err := m.k8sClient.Get(context.Background(), types.NamespacedName{
+				Namespace: m.workload.Namespace,
+				Name:      m.workload.Name,
+			}, &policyreco); err != nil {
+				m.logger.Error(err, "Error while getting policyRecommendation.", "workload", m.workload)
+			}
+			var statusPatch *ottoscaleriov1alpha1.PolicyRecommendation
 			if breached, _ := HasBreached(log.IntoContext(context.Background(), m.logger), start, end, m.workloadType, m.workload, m.metricScraper, m.cpuRedLine, m.metricStep); breached {
+				m.recorder.Event(&policyreco, eventTypeWarning, "BreachDetected", "A breach has been detected for the current policy")
+				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.Breached, metav1.ConditionTrue, BreachDetected, BreachDetectedMessage)
+				if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
+					m.logger.Error(err, "Error updating the status of the policy reco object")
+				}
 				m.handlerFunc(m.workload)
+			} else {
+				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.Breached, metav1.ConditionFalse, NoBreachDetected, NoBreachDetectedMessage)
+				if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
+					m.logger.Error(err, "Error updating the status of the policy reco object")
+				}
 			}
 		}
 	}
@@ -220,4 +268,31 @@ func (m *Monitor) Stop() {
 	m.logger.Info("Stopping monitor.")
 	m.cancel()
 	m.wg.Wait()
+}
+
+func (m *Monitor) createBreachCondition(
+	condType ottoscaleriov1alpha1.PolicyRecommendationConditionType,
+	status metav1.ConditionStatus, reason, message string) *ottoscaleriov1alpha1.PolicyRecommendation {
+
+	return &ottoscaleriov1alpha1.PolicyRecommendation{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: ottoscaleriov1alpha1.GroupVersion.String(),
+			Kind:       "PolicyRecommendation",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.workload.Name,
+			Namespace: m.workload.Namespace,
+		},
+		Status: ottoscaleriov1alpha1.PolicyRecommendationStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:               string(condType),
+					Status:             status,
+					LastTransitionTime: metav1.Now(),
+					Reason:             reason,
+					Message:            message,
+				},
+			},
+		},
+	}
 }

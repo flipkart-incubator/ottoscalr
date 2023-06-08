@@ -90,6 +90,9 @@ const (
 
 	// AutoscalingPolicySynced means there's corresponding ScaledObject or HPA reflects the desired state specified in the PolicyRecommendation
 	AutoscalingPolicySynced PolicyRecommendationConditionType = "AutoscalingPolicySynced"
+
+	//Breach Condition
+	Breached PolicyRecommendationConditionType = "Breached"
 )
 
 //+kubebuilder:object:root=true

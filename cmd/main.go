@@ -228,7 +228,9 @@ func main() {
 	triggerHandler := trigger.NewK8sTriggerHandler(mgr.GetClient(), logger)
 	triggerHandler.Start()
 
-	monitorManager := trigger.NewPolicyRecommendationMonitorManager(scraper,
+	monitorManager := trigger.NewPolicyRecommendationMonitorManager(mgr.GetClient(),
+		mgr.GetEventRecorderFor(trigger.BreachStatusManager),
+		scraper,
 		time.Duration(config.PeriodicTrigger.PollingIntervalMin)*time.Minute,
 		time.Duration(config.BreachMonitor.PollingIntervalSec)*time.Second,
 		triggerHandler.QueueForExecution,
