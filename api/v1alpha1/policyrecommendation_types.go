@@ -35,7 +35,6 @@ type PolicyRecommendationSpec struct {
 type WorkloadMeta struct {
 	metav1.TypeMeta `json:","`
 	Name            string `json:"name,omitempty"`
-	Namespace       string `json:"namespace,omitempty"`
 }
 
 type HPAConfiguration struct {

@@ -111,7 +111,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	hpaConfigToBeApplied, targetHPAReco, policy, err := r.RecoWorkflow.Execute(ctx, reco.WorkloadMeta{
 		TypeMeta:  policyreco.Spec.WorkloadMeta.TypeMeta,
 		Name:      policyreco.Spec.WorkloadMeta.Name,
-		Namespace: policyreco.Spec.WorkloadMeta.Namespace,
+		Namespace: policyreco.Namespace,
 	})
 	if err != nil {
 		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionFalse, RecoTaskErrored, err.Error())

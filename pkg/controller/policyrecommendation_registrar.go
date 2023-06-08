@@ -130,9 +130,8 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 		},
 		Spec: ottoscaleriov1alpha1.PolicyRecommendationSpec{
 			WorkloadMeta: ottoscaleriov1alpha1.WorkloadMeta{
-				Name:      instance.GetName(),
-				Namespace: instance.GetNamespace(),
-				TypeMeta:  metav1.TypeMeta{Kind: gvk.Kind, APIVersion: gvk.GroupVersion().String()}},
+				Name:     instance.GetName(),
+				TypeMeta: metav1.TypeMeta{Kind: gvk.Kind, APIVersion: gvk.GroupVersion().String()}},
 			Policy:               safestPolicy.Name,
 			TransitionedAt:       &now,
 			QueuedForExecution:   &trueBool,
