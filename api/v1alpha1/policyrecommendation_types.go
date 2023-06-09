@@ -92,7 +92,7 @@ const (
 	AutoscalingPolicySynced PolicyRecommendationConditionType = "AutoscalingPolicySynced"
 
 	//Breach Condition
-	Breached PolicyRecommendationConditionType = "Breached"
+	HasBreached PolicyRecommendationConditionType = "Breached"
 )
 
 //+kubebuilder:object:root=true

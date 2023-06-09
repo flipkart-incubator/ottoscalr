@@ -19,8 +19,8 @@ const (
 	eventTypeWarning    = "Warning"
 	BreachStatusManager = "BreachStatusManager"
 
-	BreachDetected   = "BreachDetected"
-	NoBreachDetected = "NoBreachDetected"
+	BreachDetectedReason   = "BreachDetected"
+	NoBreachDetectedReason = "NoBreachDetected"
 
 	BreachDetectedMessage   = "A breach has been detected"
 	NoBreachDetectedMessage = "No breach detected for the current recommendation"
@@ -202,13 +202,13 @@ func (m *Monitor) monitorBreaches() {
 			var statusPatch *ottoscaleriov1alpha1.PolicyRecommendation
 			if breached, _ := HasBreached(log.IntoContext(context.Background(), m.logger), start, end, m.workloadType, m.workload, m.metricScraper, m.cpuRedLine, m.metricStep); breached {
 				m.recorder.Event(&policyreco, eventTypeWarning, "BreachDetected", "A breach has been detected for the current policy")
-				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.Breached, metav1.ConditionTrue, BreachDetected, BreachDetectedMessage)
+				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionTrue, BreachDetectedReason, BreachDetectedMessage)
 				if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
 					m.logger.Error(err, "Error updating the status of the policy reco object")
 				}
 				m.handlerFunc(m.workload)
 			} else {
-				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.Breached, metav1.ConditionFalse, NoBreachDetected, NoBreachDetectedMessage)
+				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionFalse, NoBreachDetectedReason, NoBreachDetectedMessage)
 				if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
 					m.logger.Error(err, "Error updating the status of the policy reco object")
 				}

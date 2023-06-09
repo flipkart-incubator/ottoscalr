@@ -93,8 +93,8 @@ var _ = Describe("PolicyRecommendationMonitorManager and Monitor", func() {
 		Expect(err).ToNot(HaveOccurred())
 		fmt.Fprintf(GinkgoWriter, "PolicyReco: %v", policyreco)
 		Expect(policyreco.Status.Conditions).To(ContainElement(SatisfyAll(
-			HaveField("Type", Equal(string(ottoscaleriov1alpha1.Breached))),
-			HaveField("Reason", Equal(BreachDetected)))))
+			HaveField("Type", Equal(string(ottoscaleriov1alpha1.HasBreached))),
+			HaveField("Reason", Equal(BreachDetectedReason)))))
 		Expect(handlerCallCounter).To(BeNumerically(">=", 2))
 		Expect(handlerCallCounter).To(BeNumerically("<=", 3))
 
