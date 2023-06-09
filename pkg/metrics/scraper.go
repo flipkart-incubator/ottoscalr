@@ -180,7 +180,7 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		"by (namespace, workload, workload_type) > %.2f) and on(namespace, workload) "+
 		"label_replace(sum(%s{namespace=\"%s\"} * on(replicaset)"+
 		" group_left(namespace, owner_kind, owner_name) %s{namespace=\"%s\", owner_kind=\"%s\", owner_name=\"%s\"}) by"+
-		" (namespace, owner_kind, owner_name) >= on(namespace, owner_kind, owner_name) "+
+		" (namespace, owner_kind, owner_name) < on(namespace, owner_kind, owner_name) "+
 		"(%s{namespace=\"%s\"} * on(namespace, horizontalpodautoscaler) "+
 		"group_left(owner_kind, owner_name) label_replace(label_replace(%s{"+
 		"namespace=\"%s\", scaletargetref_kind=\"%s\", scaletargetref_name=\"%s\"},\"owner_kind\", \"$1\", "+
