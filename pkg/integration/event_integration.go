@@ -1,8 +1,10 @@
 package integration
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/go-logr/logr"
 	"github.com/hashicorp/go-retryablehttp"
 	"io/ioutil"
 	"net/http"
@@ -76,45 +78,89 @@ type PrebookDTO struct {
 }
 
 type EventCalendarDataFetcher struct {
-	Client           *http.Client
-	EventAPIEndpoint string
+	Client             *http.Client
+	EventAPIEndpoint   string
+	EventCache         []EventDetails
+	EventFetchDuration time.Duration
+	logger             logr.Logger
+	ctx                context.Context
+	Cancel             context.CancelFunc
 }
 
-func NewEventCalendarDataFetcher(eventAPIEndpoint string) (*EventCalendarDataFetcher, error) {
+func NewEventCalendarDataFetcher(eventAPIEndpoint string, eventFetchDuration time.Duration, logger logr.Logger) (*EventCalendarDataFetcher, error) {
 	retryClient := retryablehttp.NewClient()
 	retryClient.RetryMax = 10
 
 	client := retryClient.StandardClient()
+	ctx, cancel := context.WithCancel(context.Background())
 
-	return &EventCalendarDataFetcher{
-		Client:           client,
-		EventAPIEndpoint: eventAPIEndpoint,
-	}, nil
+	ec := &EventCalendarDataFetcher{
+		Client:             client,
+		EventAPIEndpoint:   eventAPIEndpoint,
+		EventCache:         nil,
+		EventFetchDuration: eventFetchDuration,
+		logger:             logger,
+		ctx:                ctx,
+		Cancel:             cancel,
+	}
+	start := time.Now().Add(-60 * 24 * time.Hour)
+	end := time.Now()
+
+	err := ec.populateEventCache(start, end)
+
+	if err != nil {
+		logger.Error(err, "Error in fetching data from event calendar")
+	}
+	go ec.Start()
+	return ec, nil
+}
+
+func (ec *EventCalendarDataFetcher) Start() {
+	ticker := time.NewTicker(ec.EventFetchDuration)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ec.ctx.Done():
+			return
+		case <-ticker.C:
+			start := time.Now().Add(-60 * 24 * time.Hour)
+			end := time.Now()
+			err := ec.populateEventCache(start, end)
+
+			if err != nil {
+				ec.logger.Error(err, "Error in fetching data from event calendar", "eventCache", ec.EventCache)
+			}
+		}
+	}
 }
 
 func (ec *EventCalendarDataFetcher) GetDesiredEvents(startTime time.Time, endTime time.Time) ([]EventDetails, error) {
+	return ec.EventCache, nil
+}
+
+func (ec *EventCalendarDataFetcher) populateEventCache(startTime time.Time, endTime time.Time) error {
 	var eventDetails []EventDetails
-	startTime = startTime.Add(-30 * 24 * time.Hour)
 	fetchEventsUrl := fmt.Sprintf("%s?startTime=%d&tier=%s&pageNo=%d&pageSize=%d", ec.EventAPIEndpoint, startTime.UnixMilli(), "ALL_MP", 0, 100)
 	req, err := http.NewRequest(http.MethodGet, fetchEventsUrl, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request for fetching past events list: %v", err)
+		return fmt.Errorf("error creating request for fetching past events list: %v", err)
 	}
 	req.Header.Add("X-Flipkart-Client", "sparrow")
 	req.Header.Add("X-Request-Id", "123")
 	req.Header.Add("accept", "application/json")
 	resp, err := ec.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error calling event api: %v", err)
+		return fmt.Errorf("error calling event api: %v", err)
 	}
 	var allEvents AllEvents
 	responseReader, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading response body from event api: %v", err)
+		return fmt.Errorf("error reading response body from event api: %v", err)
 	}
 	err = json.Unmarshal(responseReader, &allEvents)
 	if err != nil {
-		return nil, fmt.Errorf("error while unmarshaling event api json response: %v", err)
+		return fmt.Errorf("error while unmarshaling event api json response: %v", err)
 	}
 	for _, events := range allEvents.Content {
 		start := time.Unix(0, events.Lifecycle.StartTime*int64(time.Millisecond))
@@ -128,7 +174,8 @@ func (ec *EventCalendarDataFetcher) GetDesiredEvents(startTime time.Time, endTim
 		}
 		eventDetails = append(eventDetails, eventDetail)
 	}
-	return eventDetails, nil
+	ec.EventCache = eventDetails
+	return nil
 }
 
 // Handling Early Access Slots

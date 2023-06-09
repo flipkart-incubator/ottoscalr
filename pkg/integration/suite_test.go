@@ -17,7 +17,6 @@ limitations under the License.
 package integration
 
 import (
-	"github.com/hashicorp/go-retryablehttp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"testing"
@@ -30,15 +29,3 @@ func TestMetrics(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Metrics Suite")
 }
-
-var (
-	eventIntegration *EventCalendarDataFetcher
-)
-
-var _ = BeforeSuite(func() {
-
-	eventIntegration = &EventCalendarDataFetcher{
-		Client:           retryablehttp.NewClient().StandardClient(),
-		EventAPIEndpoint: "",
-	}
-})

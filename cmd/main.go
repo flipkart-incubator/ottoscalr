@@ -104,6 +104,7 @@ type Config struct {
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
 	EventCallIntegration     struct {
 		EventCalendarAPIEndpoint string `yaml:"eventCalendarAPIEndpoint"`
+		EventFetchWindowInHours  int    `yaml:"eventFetchWindowInHours"`
 	} `yaml:"eventCallIntegration"`
 }
 
@@ -178,7 +179,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	eventIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint)
+	eventIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint,
+		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour, logger)
+
 	if err != nil {
 		setupLog.Error(err, "unable to start event calendar data fetcher")
 		os.Exit(1)
@@ -280,6 +283,7 @@ func main() {
 	go func() {
 		<-sigs
 		monitorManager.Shutdown()
+		eventIntegration.Cancel()
 		os.Exit(0)
 	}()
 }
