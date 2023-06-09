@@ -254,7 +254,7 @@ var _ = Describe("PrometheusScraper", func() {
 			Expect(len(dataPoints) >= 1).To(BeTrue())
 
 			for _, dataPoint := range dataPoints {
-				Expect(dataPoint.Value).To(Equal(1.0))
+				Expect(dataPoint.Value).To(Equal(1.7))
 			}
 		})
 
@@ -396,7 +396,7 @@ var _ = Describe("PrometheusScraper", func() {
 			Expect(len(dataPoints) >= 1).To(BeTrue())
 
 			for _, dataPoint := range dataPoints {
-				Expect(dataPoint.Value).To(Equal(1.0))
+				Expect(dataPoint.Value).To(Equal(1.7))
 			}
 		})
 	})
