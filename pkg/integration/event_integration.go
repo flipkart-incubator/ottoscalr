@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"io/ioutil"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -83,6 +84,7 @@ type EventCalendarDataFetcher struct {
 	EventCache         []EventDetails
 	EventFetchDuration time.Duration
 	logger             logr.Logger
+	lock               sync.RWMutex
 	ctx                context.Context
 	Cancel             context.CancelFunc
 }
@@ -100,6 +102,7 @@ func NewEventCalendarDataFetcher(eventAPIEndpoint string, eventFetchDuration tim
 		EventCache:         nil,
 		EventFetchDuration: eventFetchDuration,
 		logger:             logger,
+		lock:               sync.RWMutex{},
 		ctx:                ctx,
 		Cancel:             cancel,
 	}
@@ -136,6 +139,8 @@ func (ec *EventCalendarDataFetcher) Start() {
 }
 
 func (ec *EventCalendarDataFetcher) GetDesiredEvents(startTime time.Time, endTime time.Time) ([]EventDetails, error) {
+	ec.lock.RLock()
+	defer ec.lock.RUnlock()
 	return ec.EventCache, nil
 }
 
@@ -174,6 +179,8 @@ func (ec *EventCalendarDataFetcher) populateEventCache(startTime time.Time, endT
 		}
 		eventDetails = append(eventDetails, eventDetail)
 	}
+	ec.lock.Lock()
+	defer ec.lock.Unlock()
 	ec.EventCache = eventDetails
 	return nil
 }
