@@ -4,8 +4,10 @@ import (
 	"context"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -20,6 +22,7 @@ var (
 	k8sClient client.Client
 	ctx       context.Context
 	cancel    context.CancelFunc
+	recorder  record.EventRecorder
 )
 
 func TestK8sTriggerHandler(t *testing.T) {
@@ -45,6 +48,9 @@ var _ = BeforeSuite(func() {
 	//+kubebuilder:scaffold:Scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+
+	eventBroadcaster := record.NewBroadcaster()
+	recorder = eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "dummy"})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
