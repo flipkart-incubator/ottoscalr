@@ -106,8 +106,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 				},
 				Spec: v1alpha1.PolicyRecommendationSpec{
 					WorkloadMeta: v1alpha1.WorkloadMeta{
-						Name:      PolicyRecoName,
-						Namespace: PolicyRecoNamespace,
+						Name: PolicyRecoName,
 					},
 					Policy:             safestPolicy.Name,
 					GeneratedAt:        &now,
@@ -270,8 +269,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 				},
 				Spec: v1alpha1.PolicyRecommendationSpec{
 					WorkloadMeta: v1alpha1.WorkloadMeta{
-						Name:      PolicyRecoName,
-						Namespace: PolicyRecoNamespace,
+						Name: PolicyRecoName,
 					},
 					Policy:             safestPolicy.Name,
 					GeneratedAt:        &now,
@@ -373,8 +371,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 				},
 				Spec: v1alpha1.PolicyRecommendationSpec{
 					WorkloadMeta: v1alpha1.WorkloadMeta{
-						Name:      PolicyRecoName,
-						Namespace: PolicyRecoNamespace,
+						Name: PolicyRecoName,
 					},
 					Policy:             safestPolicy.Name,
 					GeneratedAt:        &now,
@@ -556,8 +553,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 				},
 				Spec: v1alpha1.PolicyRecommendationSpec{
 					WorkloadMeta: v1alpha1.WorkloadMeta{
-						Name:      PolicyRecoName,
-						Namespace: PolicyRecoNamespace,
+						Name: PolicyRecoName,
 					},
 					Policy:             safestPolicy.Name,
 					GeneratedAt:        &now,
@@ -680,8 +676,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 				},
 				Spec: v1alpha1.PolicyRecommendationSpec{
 					WorkloadMeta: v1alpha1.WorkloadMeta{
-						Name:      PolicyRecoName,
-						Namespace: PolicyRecoNamespace,
+						Name: PolicyRecoName,
 					},
 					Policy:               "",
 					GeneratedAt:          &now,
@@ -716,8 +711,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 				},
 				Spec: v1alpha1.PolicyRecommendationSpec{
 					WorkloadMeta: v1alpha1.WorkloadMeta{
-						Name:      PolicyRecoName,
-						Namespace: PolicyRecoNamespace,
+						Name: PolicyRecoName,
 					},
 					Policy:               "",
 					GeneratedAt:          &now,
@@ -759,8 +753,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 				},
 				Spec: v1alpha1.PolicyRecommendationSpec{
 					WorkloadMeta: v1alpha1.WorkloadMeta{
-						Name:      PolicyRecoName,
-						Namespace: PolicyRecoNamespace,
+						Name: PolicyRecoName,
 					},
 					Policy:               "",
 					GeneratedAt:          &now,
