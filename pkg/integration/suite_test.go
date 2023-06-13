@@ -17,15 +17,34 @@ limitations under the License.
 package integration
 
 import (
+	"context"
+	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"testing"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
+var (
+	cfg       *rest.Config
+	k8sClient client.Client
+	ctx       context.Context
+	err       error
+)
 
 func TestMetrics(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Metrics Suite")
 }
+
+var _ = BeforeSuite(func() {
+	cfg, ctx, _ = testutil.SetupEnvironment()
+	Expect(cfg).NotTo(BeNil())
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(k8sClient).NotTo(BeNil())
+})

@@ -4,20 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-logr/logr"
-	"github.com/hashicorp/go-retryablehttp"
-	"io/ioutil"
-	"net/http"
-	"sync"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 )
-
-type NFRResponse struct {
-	Success      bool               `json:"success"`
-	ErrorMessage string             `json:"errorMessage"`
-	StatusCode   int                `json:"statusCode"`
-	Response     []NFREventMetadata `json:"response"`
-}
 
 type NFREventMetadata struct {
 	EventKey  string `json:"nfrEventKey"`
@@ -27,122 +18,54 @@ type NFREventMetadata struct {
 }
 
 type NFREventDataFetcher struct {
-	Client                *http.Client
-	NFREventAPIEndpoint   string
-	NFREventCache         []EventDetails
-	NFREventFetchDuration time.Duration
-	logger                logr.Logger
-	lock                  sync.RWMutex
-	ctx                   context.Context
-	Cancel                context.CancelFunc
+	k8sClient client.Client
+	namespace string
 }
 
-func NewNFREventDataFetcher(nfrEventAPIEndpoint string, nfrEventFetchDuration time.Duration, logger logr.Logger) (*NFREventDataFetcher, error) {
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 10
+func NewNFREventDataFetcher(k8sClient client.Client, namespace string) (*NFREventDataFetcher, error) {
 
-	client := retryClient.StandardClient()
-	ctx, cancel := context.WithCancel(context.Background())
-
-	ne := &NFREventDataFetcher{
-		Client:                client,
-		NFREventAPIEndpoint:   nfrEventAPIEndpoint,
-		NFREventCache:         nil,
-		NFREventFetchDuration: nfrEventFetchDuration,
-		logger:                logger,
-		lock:                  sync.RWMutex{},
-		ctx:                   ctx,
-		Cancel:                cancel,
-	}
-	start := time.Now().Add(-60 * 24 * time.Hour)
-	end := time.Now()
-
-	ne.lock.Lock()
-	err := ne.populateNFREventCache(start, end)
-	ne.lock.Unlock()
-
-	if err != nil {
-		logger.Error(err, "Error in fetching data from nfr event calendar")
-	}
-
-	go ne.Start()
-	return ne, nil
-}
-
-func (ne *NFREventDataFetcher) Start() {
-	ticker := time.NewTicker(ne.NFREventFetchDuration)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ne.ctx.Done():
-			return
-		case <-ticker.C:
-			start := time.Now().Add(-60 * 24 * time.Hour)
-			end := time.Now()
-
-			ne.lock.Lock()
-			err := ne.populateNFREventCache(start, end)
-			ne.lock.Unlock()
-
-			if err != nil {
-				ne.logger.Error(err, "Error in fetching data from event calendar", "eventCache", ne.NFREventCache)
-			}
-		}
-	}
+	return &NFREventDataFetcher{
+		k8sClient: k8sClient,
+		namespace: namespace,
+	}, nil
 }
 
 func (ne *NFREventDataFetcher) GetDesiredEvents(startTime time.Time, endTime time.Time) ([]EventDetails, error) {
-	ne.lock.RLock()
-	defer ne.lock.RUnlock()
-	return ne.NFREventCache, nil
-}
-
-func (ne *NFREventDataFetcher) populateNFREventCache(startTime time.Time, endTime time.Time) error {
+	nfrDataConfigmap := corev1.ConfigMap{}
+	if err := ne.k8sClient.Get(context.Background(), types.NamespacedName{
+		Namespace: ne.namespace,
+		Name:      "nfr-data-config",
+	}, &nfrDataConfigmap); err != nil {
+		return nil, fmt.Errorf("error while getting nfr data configmap: %v", err)
+	}
 	var eventDetails []EventDetails
-	url := fmt.Sprintf("%s", ne.NFREventAPIEndpoint)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("error creating request for fetching past nfr events list: %v", err)
-	}
-	//set the headers
-	req.Header.Add("Content-Type", "application/json")
-	resp, err := ne.Client.Do(req)
-	if err != nil {
-		return fmt.Errorf("error calling nfr event api: %v", err)
-	}
-	var nfrEvents NFRResponse
-	responseReader, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body from nfr event api: %v", err)
-	}
-
-	err = json.Unmarshal(responseReader, &nfrEvents)
-	if err != nil {
-		return fmt.Errorf("error while unmarshaling nfr event api json response: %v", err)
-	}
-	//iterate over the nfrEvents List and parse it to required format
-	for _, events := range nfrEvents.Response {
-		start := formatTime(events.StartTime)
-		end := formatTime(events.EndTime)
+	for _, value := range nfrDataConfigmap.Data {
+		var nfrEventDetail NFREventMetadata
+		err := json.Unmarshal([]byte(value), &nfrEventDetail)
+		if err != nil {
+			fmt.Printf("Err in umarshaling: %v\n", err)
+		}
 		eventDetail := EventDetails{
+			EventId:   nfrEventDetail.EventKey,
 			EventName: "nfr",
-			EventId:   events.EventKey,
-			StartTime: start,
-			EndTime:   end,
+			StartTime: formatTime(nfrEventDetail.StartTime),
+			EndTime:   formatTime(nfrEventDetail.EndTime),
+		}
+		if err != nil {
+			return nil, fmt.Errorf("error while unmarshaling nfr data from configmap: %v", err)
 		}
 		eventDetails = append(eventDetails, eventDetail)
+
 	}
-	ne.NFREventCache = eventDetails
-	return nil
+	return eventDetails, nil
 }
 
 func formatTime(tm string) time.Time {
 
-	parse, _ := time.Parse("2006-01-02 15:04", tm)
+	parse, _ := time.Parse("2006-01-02T15:04:05", tm)
+
 	unixTime := parse.Unix()
 	actualTm := time.Unix(0, unixTime*int64(time.Second))
 	formattedTime := actualTm.Add(-330 * time.Minute)
-
 	return formattedTime
 }
