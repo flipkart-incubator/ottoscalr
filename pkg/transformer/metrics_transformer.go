@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
+	"sort"
 	"time"
 )
 
@@ -13,27 +14,35 @@ type OutlierInterval struct {
 }
 
 type OutlierInterpolatorTransformer struct {
-	EventIntegration integration.EventIntegration
+	EventIntegration    integration.EventIntegration
+	NFREventIntegration integration.EventIntegration
 }
 
-func NewOutlierInterpolatorTransformer(eventIntegration integration.EventIntegration) (*OutlierInterpolatorTransformer, error) {
+func NewOutlierInterpolatorTransformer(eventIntegration, nfrEventIntegration integration.EventIntegration) (*OutlierInterpolatorTransformer, error) {
 
 	return &OutlierInterpolatorTransformer{
-		EventIntegration: eventIntegration,
+		EventIntegration:    eventIntegration,
+		NFREventIntegration: nfrEventIntegration,
 	}, nil
 }
 
 func (ot *OutlierInterpolatorTransformer) Transform(startTime time.Time, endTime time.Time, dataPoints []metrics.DataPoint) ([]metrics.DataPoint, error) {
-	eventDetails, err := ot.EventIntegration.GetDesiredEvents(startTime, endTime)
+	events, err := ot.EventIntegration.GetDesiredEvents(startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("error in getting events from event calendar: %v", err)
 	}
-	intervals := getOutlierIntervals(eventDetails, startTime, endTime)
+	nfrEvents, err := ot.NFREventIntegration.GetDesiredEvents(startTime, endTime)
+	if err != nil {
+		return nil, fmt.Errorf("error in getting events from nfr event calendar: %v", err)
+	}
+	eventDetails := append(events, nfrEvents...)
+	intervals := getOutlierIntervals(eventDetails)
+	intervals = filterIntervals(intervals, startTime, endTime)
 	newDataPoints := ot.cleanOutliersAndInterpolate(dataPoints, intervals)
 	return newDataPoints, nil
 }
 
-func getOutlierIntervals(eventDetails []integration.EventDetails, start time.Time, end time.Time) []OutlierInterval {
+func getOutlierIntervals(eventDetails []integration.EventDetails) []OutlierInterval {
 	var intervals []OutlierInterval
 	for _, event := range eventDetails {
 		interval := OutlierInterval{
@@ -42,7 +51,10 @@ func getOutlierIntervals(eventDetails []integration.EventDetails, start time.Tim
 		}
 		intervals = append(intervals, interval)
 	}
-	intervals = filterIntervals(intervals, start, end)
+	sort.SliceStable(intervals, func(i, j int) bool {
+		return intervals[i].StartTime.Before(intervals[j].StartTime)
+	})
+
 	return intervals
 }
 

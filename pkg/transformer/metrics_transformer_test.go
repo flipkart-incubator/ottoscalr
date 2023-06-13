@@ -1,6 +1,7 @@
 package transformer
 
 import (
+	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"math"
 	"time"
@@ -91,6 +92,32 @@ var _ = Describe("filterIntervals", func() {
 		Expect(filteredInterval).To(HaveLen(2))
 		Expect(filteredInterval).To(ContainElements([]OutlierInterval{{StartTime: time1, EndTime: time6},
 			{StartTime: time7, EndTime: time8}}))
+	})
+})
+
+var _ = Describe("getOutlierIntervals", func() {
+	It("Should give sorted intervals list on the basis of start time", func() {
+		time1 := time.Now().Add(-20 * time.Minute)
+		time2 := time.Now().Add(-15 * time.Minute)
+		time3 := time.Now().Add(20 * time.Minute)
+		time4 := time.Now().Add(25 * time.Minute)
+		time5 := time.Now().Add(-18 * time.Minute)
+		time6 := time.Now().Add(-10 * time.Minute)
+		time7 := time.Now().Add(-9 * time.Minute)
+		time8 := time.Now().Add(-1 * time.Minute)
+		eventDetails := []integration.EventDetails{
+			{EventName: "event1", EventId: "1234", StartTime: time3, EndTime: time4},
+			{EventName: "event2", EventId: "12345", StartTime: time5, EndTime: time6},
+			{EventName: "nfr", EventId: "123456", StartTime: time1, EndTime: time2},
+			{EventName: "nfr", EventId: "1234567", StartTime: time7, EndTime: time8},
+		}
+
+		outlierIntervals := getOutlierIntervals(eventDetails)
+		Expect(outlierIntervals).To(HaveLen(4))
+		Expect(outlierIntervals[0]).To(Equal(OutlierInterval{StartTime: time1, EndTime: time2}))
+		Expect(outlierIntervals[1]).To(Equal(OutlierInterval{StartTime: time5, EndTime: time6}))
+		Expect(outlierIntervals[2]).To(Equal(OutlierInterval{StartTime: time7, EndTime: time8}))
+		Expect(outlierIntervals[3]).To(Equal(OutlierInterval{StartTime: time3, EndTime: time4}))
 	})
 })
 
