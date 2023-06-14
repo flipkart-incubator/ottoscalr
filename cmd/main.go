@@ -179,7 +179,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	eventIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint,
+	var eventIntegrations []integration.EventIntegration
+	eventCalendarIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint,
 		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour, logger)
 
 	if err != nil {
@@ -194,10 +195,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	eventIntegrations = append(eventIntegrations, eventCalendarIntegration, nfrEventIntegration)
+
 	var metricsTransformer []metrics.MetricsTransformer
 
 	if *config.EnableMetricsTransformer == true {
-		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegration, nfrEventIntegration)
+		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegrations)
 		if err != nil {
 			setupLog.Error(err, "unable to start metrics transformer")
 			os.Exit(1)
@@ -290,7 +293,7 @@ func main() {
 	go func() {
 		<-sigs
 		monitorManager.Shutdown()
-		eventIntegration.Cancel()
+		eventCalendarIntegration.Cancel()
 		os.Exit(0)
 	}()
 }

@@ -75,5 +75,8 @@ var _ = BeforeSuite(func() {
 	fakeEventIntegration = &FakeEventIntegration{}
 	fakeNFREventIntegration = &FakeNFREventIntegration{}
 
-	outlierInterpolatorTransformer, _ = NewOutlierInterpolatorTransformer(fakeEventIntegration, fakeNFREventIntegration)
+	var eventIntegration []integration.EventIntegration
+	eventIntegration = append(eventIntegration, fakeEventIntegration, fakeNFREventIntegration)
+
+	outlierInterpolatorTransformer, _ = NewOutlierInterpolatorTransformer(eventIntegration)
 })
