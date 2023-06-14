@@ -14,8 +14,7 @@ type OutlierInterval struct {
 }
 
 type OutlierInterpolatorTransformer struct {
-	EventIntegration    []integration.EventIntegration
-	NFREventIntegration integration.EventIntegration
+	EventIntegration []integration.EventIntegration
 }
 
 func NewOutlierInterpolatorTransformer(eventIntegration []integration.EventIntegration) (*OutlierInterpolatorTransformer, error) {

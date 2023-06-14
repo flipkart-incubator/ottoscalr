@@ -18,15 +18,17 @@ type NFREventMetadata struct {
 }
 
 type NFREventDataFetcher struct {
-	k8sClient client.Client
-	namespace string
+	k8sClient     client.Client
+	namespace     string
+	configmapName string
 }
 
-func NewNFREventDataFetcher(k8sClient client.Client, namespace string) (*NFREventDataFetcher, error) {
+func NewNFREventDataFetcher(k8sClient client.Client, namespace string, configmapName string) (*NFREventDataFetcher, error) {
 
 	return &NFREventDataFetcher{
-		k8sClient: k8sClient,
-		namespace: namespace,
+		k8sClient:     k8sClient,
+		namespace:     namespace,
+		configmapName: configmapName,
 	}, nil
 }
 
@@ -34,7 +36,7 @@ func (ne *NFREventDataFetcher) GetDesiredEvents(startTime time.Time, endTime tim
 	nfrDataConfigmap := corev1.ConfigMap{}
 	if err := ne.k8sClient.Get(context.Background(), types.NamespacedName{
 		Namespace: ne.namespace,
-		Name:      "nfr-data-config",
+		Name:      ne.configmapName,
 	}, &nfrDataConfigmap); err != nil {
 		return nil, fmt.Errorf("error while getting nfr data configmap: %v", err)
 	}

@@ -45,7 +45,7 @@ var _ = Describe("GetDesiredEvents", func() {
 	It("Should return the nfr outlier intervals by fetching the event metadata and parsing it", func() {
 		time1 := time.Now().Add(-20 * time.Minute)
 		time2 := time.Now().Add(-14 * time.Minute)
-		nfrEventIntegration, _ = NewNFREventDataFetcher(k8sClient, "ottoscalr")
+		nfrEventIntegration, _ = NewNFREventDataFetcher(k8sClient, "ottoscalr", "nfr-data-config")
 		events, err := nfrEventIntegration.GetDesiredEvents(time1, time2)
 		Expect(err).NotTo(HaveOccurred())
 		fmt.Fprintf(GinkgoWriter, "Events: %v\n", events)

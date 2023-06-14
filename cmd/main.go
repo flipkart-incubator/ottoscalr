@@ -106,6 +106,7 @@ type Config struct {
 		EventCalendarAPIEndpoint string `yaml:"eventCalendarAPIEndpoint"`
 		EventFetchWindowInHours  int    `yaml:"eventFetchWindowInHours"`
 	} `yaml:"eventCallIntegration"`
+	NfrDataConfigMapName string `yaml:"nfrDataConfigMapName"`
 }
 
 func main() {
@@ -188,7 +189,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	nfrEventIntegration, err := integration.NewNFREventDataFetcher(mgr.GetClient(), os.Getenv("DEPLOYMENT_NAMESPACE"))
+	nfrEventIntegration, err := integration.NewNFREventDataFetcher(mgr.GetClient(),
+		os.Getenv("DEPLOYMENT_NAMESPACE"), config.NfrDataConfigMapName)
 
 	if err != nil {
 		setupLog.Error(err, "unable to start nfr event data fetcher")
