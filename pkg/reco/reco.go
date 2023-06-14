@@ -63,7 +63,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		c.metricStep)
 	if err != nil {
 		c.logger.Error(err, "Error while scraping GetAverageCPUUtilizationByWorkload.")
-		return nil, nil
+		return nil, err
 	}
 	if c.metricsTransformer != nil {
 		for _, transformers := range c.metricsTransformer {
@@ -78,7 +78,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	acl, err := c.scraper.GetACLByWorkload(workloadMeta.Namespace, workloadMeta.Name)
 	if err != nil {
 		c.logger.Error(err, "Error while getting GetACL.")
-		return nil, nil
+		return nil, err
 	}
 
 	perPodResources, err := c.getContainerCPULimitsSum(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
@@ -215,6 +215,10 @@ func (c *CpuUtilizationBasedRecommender) findOptimalTargetUtilization(dataPoints
 		} else {
 			high = mid - 1
 		}
+	}
+
+	if high < minTarget {
+		return 0, 0, 0, errors.New("Unable to generate recommendation without any breaches.")
 	}
 	return high, minReplicas, maxReplicas, nil
 }
