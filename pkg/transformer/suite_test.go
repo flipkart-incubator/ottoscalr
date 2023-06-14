@@ -34,10 +34,12 @@ func TestMetrics(t *testing.T) {
 }
 
 type FakeEventIntegration struct{}
+type FakeNFREventIntegration struct{}
 
 var (
 	outlierInterpolatorTransformer *OutlierInterpolatorTransformer
 	fakeEventIntegration           integration.EventIntegration
+	fakeNFREventIntegration        integration.EventIntegration
 )
 
 func (fe *FakeEventIntegration) GetDesiredEvents(startTime time.Time,
@@ -54,9 +56,27 @@ func (fe *FakeEventIntegration) GetDesiredEvents(startTime time.Time,
 	}, nil
 }
 
+func (fne *FakeNFREventIntegration) GetDesiredEvents(startTime time.Time,
+	endTime time.Time) ([]integration.EventDetails, error) {
+	time3 := time.Now().Add(-10 * time.Minute)
+	time4 := time.Now().Add(-8 * time.Minute)
+	return []integration.EventDetails{
+		{
+			EventName: "nfr",
+			EventId:   "12345",
+			StartTime: time3,
+			EndTime:   time4,
+		},
+	}, nil
+}
+
 var _ = BeforeSuite(func() {
 
 	fakeEventIntegration = &FakeEventIntegration{}
+	fakeNFREventIntegration = &FakeNFREventIntegration{}
 
-	outlierInterpolatorTransformer, _ = NewOutlierInterpolatorTransformer(fakeEventIntegration)
+	var eventIntegration []integration.EventIntegration
+	eventIntegration = append(eventIntegration, fakeEventIntegration, fakeNFREventIntegration)
+
+	outlierInterpolatorTransformer, _ = NewOutlierInterpolatorTransformer(eventIntegration)
 })

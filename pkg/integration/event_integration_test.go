@@ -3,12 +3,18 @@ package integration
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/go-logr/logr"
 	"net/http"
 	"net/http/httptest"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+)
+
+var (
+	eventIntegration *EventCalendarDataFetcher
+	logger           logr.Logger
 )
 
 var _ = Describe("GetDesiredEvents", func() {
@@ -47,7 +53,8 @@ var _ = Describe("GetDesiredEvents", func() {
 		}))
 		defer server.Close()
 
-		eventIntegration.EventAPIEndpoint = server.URL
+		eventIntegration, _ = NewEventCalendarDataFetcher(server.URL, 2*time.Second, logger)
+		time.Sleep(2 * time.Second)
 
 		events, err := eventIntegration.GetDesiredEvents(time1, time2)
 		Expect(err).NotTo(HaveOccurred())
