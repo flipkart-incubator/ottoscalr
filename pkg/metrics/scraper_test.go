@@ -251,9 +251,10 @@ var _ = Describe("PrometheusScraper", func() {
 			Expect(dataPoints).ToNot(BeEmpty())
 
 			//since metrics could have been scraped multiple times, we just check the first and last value
-			Expect(len(dataPoints) >= 1).To(BeTrue())
-			for _, datapoint := range dataPoints {
-				Expect(datapoint.Value).To(Or(Equal(1.7), Equal(0.9)))
+      Expect(len(dataPoints) >= 1).To(BeTrue())
+
+			for _, dataPoint := range dataPoints {
+				Expect(dataPoint.Value).To(Or(Equal(1.7), Equal(0.9)))
 			}
 
 		})
@@ -394,8 +395,9 @@ var _ = Describe("PrometheusScraper", func() {
 
 			//since metrics could have been scraped multiple times, we just check the first and last value
 			Expect(len(dataPoints) >= 1).To(BeTrue())
-			for _, datapoint := range dataPoints {
-				Expect(datapoint.Value).To(Or(Equal(1.7), Equal(0.9)))
+
+			for _, dataPoint := range dataPoints {
+				Expect(dataPoint.Value).To(Or(Equal(1.7), Equal(0.9)))
 			}
 		})
 	})
