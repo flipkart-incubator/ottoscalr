@@ -289,20 +289,25 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 }
 
 func (controller *PolicyRecommendationRegistrar) isWhitelistedNamespace(namespace string) bool {
-	for _, ns := range controller.ExcludedNamespaces {
-		if namespace == ns {
-			return false
+
+	if len(controller.IncludedNamespaces) > 0 {
+		for _, ns := range controller.IncludedNamespaces {
+			if namespace == ns {
+				return true
+			}
 		}
+		return false
 	}
 
-	if len(controller.IncludedNamespaces) == 0 {
+	if len(controller.ExcludedNamespaces) > 0 {
+		for _, ns := range controller.ExcludedNamespaces {
+			if namespace == ns {
+				return false
+			}
+		}
 		return true
-	}
-	for _, ns := range controller.IncludedNamespaces {
-		if namespace == ns {
-			return true
-		}
+
 	}
 
-	return false
+	return true
 }
