@@ -2,7 +2,7 @@ apiVersion: flow-v1
 kind: Pipeline
 spec:
   pipeline_type: build
-  id: 22525
+  id: 22537
   event_type: pull
   trigger:
     enable: true
@@ -21,7 +21,13 @@ spec:
       value: ""
       type: parameter
     - name: BRANCH_NAME
-      value: main
+      value: master
+      type: parameter
+    - name: VERSION
+      value: v1.0.0
+      type: parameter
+    - name: DOCKERFILE
+      value: Dockerfile
       type: parameter
     artifacts: []
 deployparams:
