@@ -91,6 +91,7 @@ type Config struct {
 	PolicyRecommendationRegistrar struct {
 		RequeueDelayMs     int    `yaml:"requeueDelayMs"`
 		ExcludedNamespaces string `yaml:"excludedNamespaces"`
+		IncludedNamespaces string `yaml:"includedNamespaces"`
 	} `yaml:"policyRecommendationRegistrar"`
 
 	CpuUtilizationBasedRecommender struct {
@@ -253,14 +254,15 @@ func main() {
 		config.BreachMonitor.CpuRedLine,
 		logger)
 
-	excludedNamespaces := parseExcludedNamespaces(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
+	excludedNamespaces := parseNamespaces(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
+	includedNamespaces := parseNamespaces(config.PolicyRecommendationRegistrar.IncludedNamespaces)
 
 	policyStore := policy.NewPolicyStore(mgr.GetClient())
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
 		mgr.GetScheme(),
 		config.PolicyRecommendationRegistrar.RequeueDelayMs,
 		monitorManager,
-		policyStore, excludedNamespaces).SetupWithManager(mgr); err != nil {
+		policyStore, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",
 			"controller", "PolicyRecommendationRegistration")
 		os.Exit(1)
@@ -300,11 +302,14 @@ func main() {
 	}()
 }
 
-func parseExcludedNamespaces(namespaces string) []string {
-	splitNamespaces := strings.Split(namespaces, ",")
-	var excludedNamespaces []string
-	for _, namespace := range splitNamespaces {
-		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(namespace))
+func parseNamespaces(namespaces string) []string {
+	if namespaces == "" {
+		return nil
 	}
-	return excludedNamespaces
+	splitNamespaces := strings.Split(namespaces, ",")
+	var namespaceList []string
+	for _, namespace := range splitNamespaces {
+		namespaceList = append(namespaceList, strings.TrimSpace(namespace))
+	}
+	return namespaceList
 }
