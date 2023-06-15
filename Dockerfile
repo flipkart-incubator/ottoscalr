@@ -8,7 +8,7 @@ ENV GO111MODULE=on \
     CGO_ENABLED=0 \
     GOOS=${TARGETOS:-linux} \
     GOARCH=${TARGETARCH:-amd64} \
-    GOPROXY="https://10.24.14.195/artifactory/api/go/go_virtual" \
+    GOPROXY="http://10.24.14.195/artifactory/api/go/go_virtual" \
     GOPRIVATE="github.fkinternal.com/*" \
     GOCACHE=$FLOW_CACHE_GOLANG
 
