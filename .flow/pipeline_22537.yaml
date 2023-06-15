@@ -1,0 +1,40 @@
+apiVersion: flow-v1
+kind: Pipeline
+spec:
+  pipeline_type: build
+  id: 22537
+  event_type: pull
+  trigger:
+    enable: true
+    source_branch: ""
+    commit_message: KAAS-101
+    pr_title: KAAS-101
+    modified_files: '*.go'
+    pr_comment: /build/ottoscalr
+    pr_label: ""
+  arguments:
+    parameters:
+    - name: jira
+      value: ""
+      type: parameter
+    - name: pr
+      value: ""
+      type: parameter
+    - name: BRANCH_NAME
+      value: master
+      type: parameter
+    - name: VERSION
+      value: v1.0.0
+      type: parameter
+    - name: DOCKERFILE
+      value: Dockerfile
+      type: parameter
+    artifacts: []
+deployparams:
+  env_type: ""
+  env_name: ""
+  env_id: 0
+  cluster_context_id: 0
+  registry_id: 768
+  cluster_provider: ""
+  deploystrategy: null
