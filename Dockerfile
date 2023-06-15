@@ -4,11 +4,11 @@ ARG TARGETOS
 ARG TARGETARCH
 
 ENV GO111MODULE=on \
-    GOPROXY=http://10.47.104.84 \
+#    GOPROXY=http://10.47.104.84 \
     CGO_ENABLED=0 \
     GOOS=${TARGETOS:-linux} \
     GOARCH=${TARGETARCH:-amd64} \
-#    GOPROXY="https://jfrog.fkinternal.com/artifactory/api/go/go_virtual" \
+    GOPROXY="https://10.24.14.195/artifactory/api/go/go_virtual" \
     GOPRIVATE="github.fkinternal.com/*" \
     GOCACHE=$FLOW_CACHE_GOLANG
 
