@@ -4,28 +4,28 @@ ARG TARGETOS
 ARG TARGETARCH
 
 ENV GO111MODULE=on \
-#    GOPROXY=http://10.47.104.84 \
+    GOPROXY=http://10.47.104.84 \
     CGO_ENABLED=0 \
     GOOS=${TARGETOS:-linux} \
     GOARCH=${TARGETARCH:-amd64} \
-    GOPROXY="https://jfrog.fkinternal.com/artifactory/api/go/go_virtual" \
+#    GOPROXY="https://jfrog.fkinternal.com/artifactory/api/go/go_virtual" \
     GOPRIVATE="github.fkinternal.com/*" \
     GOCACHE=$FLOW_CACHE_GOLANG
 
 WORKDIR /workspace
 
-RUN mkdir -p /tmp/mod-cache
-COPY go.mod /tmp/mod-cache
-COPY go.sum /tmp/mod-cache
-RUN cd /tmp/mod-cache && \
-    go mod download -x && \
-    cd - && \
-    rm -rf /tmp/mod-cache
+#RUN mkdir -p /tmp/mod-cache
+#COPY go.mod /tmp/mod-cache
+#COPY go.sum /tmp/mod-cache
+#RUN cd /tmp/mod-cache && \
+#    go mod download -x && \
+#    cd - && \
+#    rm -rf /tmp/mod-cache
 # Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum
 
-COPY vendor/ vendor/
+#COPY vendor/ vendor/
 # cache deps before building and copying source so that we don't need to re-download as much
 # and so that source changes don't invalidate our downloaded layer
 RUN go mod download
