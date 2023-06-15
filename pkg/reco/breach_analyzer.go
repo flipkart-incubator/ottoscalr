@@ -10,7 +10,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
+
+var (
+	breachCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "breachanalyzer_breached_counter",
+			Help: "Number of breaches counter"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
+	)
+)
+
+func init() {
+	p8smetrics.Registry.MustRegister(breachCounter)
+}
 
 type BreachAnalyzer struct {
 	store    policy.Store
@@ -79,6 +94,7 @@ func (pi *BreachAnalyzer) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Pol
 			logger.V(0).Error(err3, "Error fetching the previous policy.")
 			return nil, err
 		}
+		breachCounter.WithLabelValues(wm.Namespace, currentPolicyReco.Name, wm.Kind, wm.Name).Inc()
 		return PolicyFromCR(saferPolicy), nil
 	}
 	return nil, nil

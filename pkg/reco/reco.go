@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+var unableToRecommendError = errors.New("Unable to generate recommendation without any breaches.")
+
 type CpuUtilizationBasedRecommender struct {
 	k8sClient          client.Client
 	redLineUtil        float64
@@ -218,7 +220,7 @@ func (c *CpuUtilizationBasedRecommender) findOptimalTargetUtilization(dataPoints
 	}
 
 	if high < minTarget {
-		return 0, 0, 0, errors.New("Unable to generate recommendation without any breaches.")
+		return 0, 0, 0, unableToRecommendError
 	}
 	return high, minReplicas, maxReplicas, nil
 }
