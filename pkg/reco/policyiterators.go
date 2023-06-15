@@ -5,12 +5,26 @@ import (
 	"errors"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"time"
 )
+
+var (
+	agedPolicyCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "policyage_expired_counter",
+			Help: "Number of policyrecos reconcile errored counter"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
+	)
+)
+
+func init() {
+	p8smetrics.Registry.MustRegister(agedPolicyCounter)
+}
 
 type Policy struct {
 	Name                    string `json:"name"`
@@ -110,6 +124,7 @@ func (pi *AgingPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta) 
 		return PolicyFromCR(currentAppliedPolicy), nil
 	}
 
+	agedPolicyCounter.WithLabelValues(wm.Namespace, policyreco.Name, wm.Kind, wm.Name).Inc()
 	nextPolicy, err := pi.store.GetNextPolicyByName(policyreco.Spec.Policy)
 	if err != nil {
 		if policy.IsLastPolicy(err) {
