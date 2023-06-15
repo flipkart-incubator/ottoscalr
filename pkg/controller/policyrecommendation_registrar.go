@@ -50,13 +50,14 @@ type PolicyRecommendationRegistrar struct {
 	RequeueDelayDuration time.Duration
 	PolicyStore          policy.Store
 	ExcludedNamespaces   []string
+	IncludedNamespaces   []string
 }
 
 func NewPolicyRecommendationRegistrar(client client.Client,
 	scheme *runtime.Scheme,
 	requeueDelayMs int,
 	monitorManager trigger.MonitorManager,
-	policyStore policy.Store, excludedNamespaces []string) *PolicyRecommendationRegistrar {
+	policyStore policy.Store, excludedNamespaces []string, includedNamespaces []string) *PolicyRecommendationRegistrar {
 	return &PolicyRecommendationRegistrar{
 		Client:               client,
 		Scheme:               scheme,
@@ -64,6 +65,7 @@ func NewPolicyRecommendationRegistrar(client client.Client,
 		RequeueDelayDuration: time.Duration(requeueDelayMs) * time.Millisecond,
 		PolicyStore:          policyStore,
 		ExcludedNamespaces:   excludedNamespaces,
+		IncludedNamespaces:   includedNamespaces,
 	}
 }
 
@@ -292,5 +294,15 @@ func (controller *PolicyRecommendationRegistrar) isWhitelistedNamespace(namespac
 			return false
 		}
 	}
-	return true
+
+	if len(controller.IncludedNamespaces) == 0 {
+		return true
+	}
+	for _, ns := range controller.IncludedNamespaces {
+		if namespace == ns {
+			return true
+		}
+	}
+
+	return false
 }
