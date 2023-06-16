@@ -63,6 +63,33 @@ var (
 		prometheus.GaugeOpts{Name: "policyreco_reconciler_conditions",
 			Help: "PolicyReco conditions"}, []string{"namespace", "policyreco", "type", "status"},
 	)
+	policyRecoTaskProgressReasonsGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "policyreco_reconciler_task_progress_reason",
+			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco", "type", "reason"})
+
+	policyRecoTargetMin = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "policyreco_target_policy_min",
+			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+
+	policyRecoTargetMax = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "policyreco_target_policy_max",
+			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+
+	policyRecoTargetUtil = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "policyreco_target_policy_utilization",
+			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+
+	policyRecoCurrentMin = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "policyreco_current_policy_min",
+			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+
+	policyRecoCurrentMax = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "policyreco_current_policy_max",
+			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+
+	policyRecoCurrentUtil = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "policyreco_current_policy_utilization",
+			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
 )
 
 func init() {
@@ -124,14 +151,16 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	r.Recorder.Event(&policyreco, eventTypeNormal, "HPARecoQueuedForExecution", "This workload has been queued for a fresh HPA recommendation.")
 
+	policyRecoWorkloadGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.TypeMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Set(1)
+
 	var conditions []metav1.Condition
 
 	statusPatch, conditions := CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionTrue, RecoTaskInProgress, RecoTaskInProgressMessage)
-	logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionTrue)
 	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
 		logger.Error(err, "Error updating the status of the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionTrue)
 
 	hpaConfigToBeApplied, targetHPAReco, policy, err := r.RecoWorkflow.Execute(ctx, reco.WorkloadMeta{
 		TypeMeta:  policyreco.Spec.WorkloadMeta.TypeMeta,
@@ -140,22 +169,24 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	})
 	if err != nil {
 		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionFalse, RecoTaskErrored, err.Error())
-		logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionFalse)
 		if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
 			logger.Error(err, "Error updating the status of the policy reco object")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
+		logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionFalse)
+		logRecoTaskProgressReasonGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, RecoTaskErrored)
 		reconcileErroredCounter.WithLabelValues(policyreco.Namespace, policyreco.Name).Inc()
 		return ctrl.Result{}, err
 	}
 
 	if targetHPAReco == nil {
 		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionFalse, RecoTaskErrored, EmptyRecoConfigMessage)
-		logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionFalse)
 		if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
 			logger.Error(err, "Error updating the status of the policy reco object")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
+		logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionFalse)
+		logRecoTaskProgressReasonGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, RecoTaskErrored)
 		logger.V(0).Error(nil, "Recommended config is empty. Requeuing")
 		reconcileErroredCounter.WithLabelValues(policyreco.Namespace, policyreco.Name).Inc()
 		return ctrl.Result{
@@ -165,11 +196,12 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	if hpaConfigToBeApplied == nil {
 		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionFalse, RecoTaskErrored, EmptyHPAConfigMessage)
-		logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionFalse)
 		if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
 			logger.Error(err, "Error updating the status of the policy reco object")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
+		logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionFalse)
+		logRecoTaskProgressReasonGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, RecoTaskErrored)
 		logger.V(0).Error(nil, "HPA config to be applied is empty. Requeuing")
 		reconcileErroredCounter.WithLabelValues(policyreco.Namespace, policyreco.Name).Inc()
 		return ctrl.Result{
@@ -208,6 +240,9 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 	logger.V(1).Info("Policy Patch", "PolicyReco", *policyRecoPatch)
 
+	logTargetHPAConfiguration(policyreco, targetHPAReco)
+	logCurrentHPAConfiguration(policyreco, hpaConfigToBeApplied)
+
 	initializedTime := fetchInitializedTime(&policyreco)
 	targetAchievedAlready := fetchTargetAchieved(&policyreco)
 	if policyRecoPatch.Spec.TargetHPAConfiguration.DeepEquals(policyRecoPatch.Spec.CurrentHPAConfiguration) {
@@ -223,11 +258,12 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskProgress, metav1.ConditionFalse, RecoTaskRecommendationGenerated, RecommendationGeneratedMessage)
-	logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionFalse)
 	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(PolicyRecoWorkflowCtrlName)); err != nil {
 		logger.Error(err, "Error updating the of status the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionFalse)
+	logRecoTaskProgressReasonGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, RecoTaskRecommendationGenerated)
 
 	statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.RecoTaskQueued, metav1.ConditionFalse, RecoTaskExecutionDone, RecoTaskExecutionDoneMessage)
 	if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(RecoQueuedStatusManager)); err != nil {
@@ -243,6 +279,18 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	return ctrl.Result{}, nil
 }
 
+func logCurrentHPAConfiguration(policyreco v1alpha1.PolicyRecommendation, currentHPAReco *v1alpha1.HPAConfiguration) {
+	policyRecoCurrentMin.WithLabelValues(policyreco.Namespace, policyreco.Name).Set(float64(currentHPAReco.Min))
+	policyRecoCurrentMax.WithLabelValues(policyreco.Namespace, policyreco.Name).Set(float64(currentHPAReco.Max))
+	policyRecoCurrentUtil.WithLabelValues(policyreco.Namespace, policyreco.Name).Set(float64(currentHPAReco.TargetMetricValue))
+}
+
+func logTargetHPAConfiguration(policyreco v1alpha1.PolicyRecommendation, targetHPAReco *v1alpha1.HPAConfiguration) {
+	policyRecoTargetMin.WithLabelValues(policyreco.Namespace, policyreco.Name).Set(float64(targetHPAReco.Min))
+	policyRecoTargetMax.WithLabelValues(policyreco.Namespace, policyreco.Name).Set(float64(targetHPAReco.Max))
+	policyRecoTargetUtil.WithLabelValues(policyreco.Namespace, policyreco.Name).Set(float64(targetHPAReco.TargetMetricValue))
+}
+
 func logPolicyRecoGaugeMetric(policyreco v1alpha1.PolicyRecommendation, condition v1alpha1.PolicyRecommendationConditionType, status metav1.ConditionStatus) {
 	if status == metav1.ConditionTrue {
 		policyRecoConditionsGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, string(condition), string(metav1.ConditionTrue)).Set(1)
@@ -250,6 +298,16 @@ func logPolicyRecoGaugeMetric(policyreco v1alpha1.PolicyRecommendation, conditio
 	} else {
 		policyRecoConditionsGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, string(condition), string(metav1.ConditionTrue)).Set(0)
 		policyRecoConditionsGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, string(condition), string(metav1.ConditionFalse)).Set(1)
+	}
+}
+
+func logRecoTaskProgressReasonGaugeMetric(policyreco v1alpha1.PolicyRecommendation, condition v1alpha1.PolicyRecommendationConditionType, reason string) {
+	if reason == RecoTaskRecommendationGenerated {
+		policyRecoTaskProgressReasonsGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, string(condition), RecoTaskRecommendationGenerated).Set(1)
+		policyRecoTaskProgressReasonsGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, string(condition), RecoTaskErrored).Set(0)
+	} else if reason == RecoTaskErrored {
+		policyRecoTaskProgressReasonsGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, string(condition), RecoTaskRecommendationGenerated).Set(0)
+		policyRecoTaskProgressReasonsGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, string(condition), RecoTaskErrored).Set(1)
 	}
 }
 

@@ -218,7 +218,7 @@ func (m *Monitor) monitorBreaches() {
 				m.logger.Error(err, "Error while getting policyRecommendation.", "workload", m.workload)
 			}
 			var breachedInPast bool
-			var lastBreachedTime time.Time
+			lastBreachedTime := time.Now()
 			for _, condition := range policyreco.Status.Conditions {
 				if string(ottoscaleriov1alpha1.HasBreached) == condition.Type {
 					if condition.Status == metav1.ConditionTrue {
