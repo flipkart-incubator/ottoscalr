@@ -93,7 +93,9 @@ var (
 )
 
 func init() {
-	metrics.Registry.MustRegister(reconcileCounter, reconcileErroredCounter, targetRecoSLI, policyRecoConditionsGauge)
+	metrics.Registry.MustRegister(reconcileCounter, reconcileErroredCounter, targetRecoSLI,
+		policyRecoConditionsGauge, policyRecoTaskProgressReasonsGauge, policyRecoTargetMin, policyRecoTargetMax, policyRecoTargetUtil,
+		policyRecoCurrentMin, policyRecoCurrentMax, policyRecoCurrentUtil)
 }
 
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
