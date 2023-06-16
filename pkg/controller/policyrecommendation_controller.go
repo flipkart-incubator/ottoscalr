@@ -69,27 +69,27 @@ var (
 
 	policyRecoTargetMin = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{Name: "policyreco_target_policy_min",
-			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+			Help: "PolicyReco Target Policy Min"}, []string{"namespace", "policyreco"})
 
 	policyRecoTargetMax = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{Name: "policyreco_target_policy_max",
-			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+			Help: "PolicyReco Target Policy Max"}, []string{"namespace", "policyreco"})
 
 	policyRecoTargetUtil = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{Name: "policyreco_target_policy_utilization",
-			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+			Help: "PolicyReco Target Policy Utilization"}, []string{"namespace", "policyreco"})
 
 	policyRecoCurrentMin = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{Name: "policyreco_current_policy_min",
-			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+			Help: "PolicyReco Current Policy Min"}, []string{"namespace", "policyreco"})
 
 	policyRecoCurrentMax = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{Name: "policyreco_current_policy_max",
-			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+			Help: "PolicyReco Current Policy Max"}, []string{"namespace", "policyreco"})
 
 	policyRecoCurrentUtil = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{Name: "policyreco_current_policy_utilization",
-			Help: "PolicyReco RecoTaskProgress Reason"}, []string{"namespace", "policyreco"})
+			Help: "PolicyReco Current Policy Utilization"}, []string{"namespace", "policyreco"})
 )
 
 func init() {
