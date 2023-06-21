@@ -54,6 +54,7 @@ var (
 	queuedAllRecos     = false
 	recommender        *MockRecommender
 	excludedNamespaces []string
+	includedNamespaces []string
 )
 
 const policyAge = 1 * time.Second
@@ -94,6 +95,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	excludedNamespaces = []string{"namespace1", "namespace2"}
+	includedNamespaces = []string{}
 
 	err = (&PolicyRecommendationRegistrar{
 		Client:             k8sManager.GetClient(),
@@ -101,6 +103,7 @@ var _ = BeforeSuite(func() {
 		MonitorManager:     &FakeMonitorManager{},
 		PolicyStore:        newFakePolicyStore(),
 		ExcludedNamespaces: excludedNamespaces,
+		IncludedNamespaces: includedNamespaces,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

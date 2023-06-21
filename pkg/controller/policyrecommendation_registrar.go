@@ -7,6 +7,8 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,11 +21,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 	"time"
 )
+
+var (
+	policyRecoWorkloadGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "policyreco_workload_info",
+			Help: "PolicyReco and workload mapping"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
+	)
+)
+
+func init() {
+	metrics.Registry.MustRegister(policyRecoWorkloadGauge)
+}
 
 const PolicyRecoRegistrarCtrlName = "PolicyRecommendationRegistrar"
 
@@ -36,13 +50,14 @@ type PolicyRecommendationRegistrar struct {
 	RequeueDelayDuration time.Duration
 	PolicyStore          policy.Store
 	ExcludedNamespaces   []string
+	IncludedNamespaces   []string
 }
 
 func NewPolicyRecommendationRegistrar(client client.Client,
 	scheme *runtime.Scheme,
 	requeueDelayMs int,
 	monitorManager trigger.MonitorManager,
-	policyStore policy.Store, excludedNamespaces []string) *PolicyRecommendationRegistrar {
+	policyStore policy.Store, excludedNamespaces []string, includedNamespaces []string) *PolicyRecommendationRegistrar {
 	return &PolicyRecommendationRegistrar{
 		Client:               client,
 		Scheme:               scheme,
@@ -50,6 +65,7 @@ func NewPolicyRecommendationRegistrar(client client.Client,
 		RequeueDelayDuration: time.Duration(requeueDelayMs) * time.Millisecond,
 		PolicyStore:          policyStore,
 		ExcludedNamespaces:   excludedNamespaces,
+		IncludedNamespaces:   includedNamespaces,
 	}
 }
 
@@ -85,6 +101,10 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	if err == nil {
 		// Deployment exists, create policy recommendation
 		return ctrl.Result{}, controller.handleReconcile(ctx, &deployment, controller.Scheme, logger)
+	}
+
+	if errors.IsNotFound(err) {
+		policyRecoWorkloadGauge.DeletePartialMatch(prometheus.Labels{"namespace": request.Namespace, "policyreco": request.Name})
 	}
 
 	if !errors.IsNotFound(err) {
@@ -138,6 +158,7 @@ func (controller *PolicyRecommendationRegistrar) createPolicyRecommendation(
 			QueuedForExecutionAt: &now,
 		},
 	}
+	policyRecoWorkloadGauge.WithLabelValues(instance.GetNamespace(), instance.GetName(), gvk.Kind, instance.GetName()).Set(1)
 
 	err = controllerutil.SetControllerReference(instance, newPolicyRecommendation, scheme)
 	if err != nil {
@@ -178,6 +199,7 @@ func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Con
 				Namespace: object.GetNamespace(),
 			})
 	}
+
 	return err
 }
 
@@ -267,10 +289,25 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 }
 
 func (controller *PolicyRecommendationRegistrar) isWhitelistedNamespace(namespace string) bool {
-	for _, ns := range controller.ExcludedNamespaces {
-		if namespace == ns {
-			return false
+
+	if len(controller.IncludedNamespaces) > 0 {
+		for _, ns := range controller.IncludedNamespaces {
+			if namespace == ns {
+				return true
+			}
 		}
+		return false
 	}
+
+	if len(controller.ExcludedNamespaces) > 0 {
+		for _, ns := range controller.ExcludedNamespaces {
+			if namespace == ns {
+				return false
+			}
+		}
+		return true
+
+	}
+
 	return true
 }

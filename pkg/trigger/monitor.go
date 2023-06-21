@@ -5,15 +5,33 @@ import (
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"math/rand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sync"
 	"time"
 )
+
+var (
+	breachCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "breachmonitor_breached_counter",
+			Help: "Number of breaches detected counter"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
+	)
+	timeToMitigateLatency = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{Name: "breachmonitor_mitigation_latency_seconds",
+			Help: "Time to mitigate breach latency in seconds"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
+	)
+)
+
+func init() {
+	p8smetrics.Registry.MustRegister(breachCounter, timeToMitigateLatency)
+}
 
 const (
 	eventTypeWarning    = "Warning"
@@ -199,18 +217,43 @@ func (m *Monitor) monitorBreaches() {
 			}, &policyreco); err != nil {
 				m.logger.Error(err, "Error while getting policyRecommendation.", "workload", m.workload)
 			}
+			var breachedInPast bool
+			lastBreachedTime := time.Now()
+			for _, condition := range policyreco.Status.Conditions {
+				if string(ottoscaleriov1alpha1.HasBreached) == condition.Type {
+					if condition.Status == metav1.ConditionTrue {
+						breachedInPast = true
+						lastBreachedTime = condition.LastTransitionTime.Time
+					} else {
+						breachedInPast = false
+						lastBreachedTime = condition.LastTransitionTime.Time
+					}
+				}
+			}
 			var statusPatch *ottoscaleriov1alpha1.PolicyRecommendation
-			if breached, _ := HasBreached(log.IntoContext(context.Background(), m.logger), start, end, m.workloadType, m.workload, m.metricScraper, m.cpuRedLine, m.metricStep); breached {
+			breached, _ := HasBreached(log.IntoContext(context.Background(), m.logger), start, end, m.workloadType, m.workload, m.metricScraper, m.cpuRedLine, m.metricStep)
+			var lastTransitionTime time.Time
+			if breached == breachedInPast {
+				lastTransitionTime = lastBreachedTime
+			} else {
+				lastTransitionTime = time.Now()
+			}
+			if breached {
 				m.recorder.Event(&policyreco, eventTypeWarning, "BreachDetected", "A breach has been detected for the current policy")
-				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionTrue, BreachDetectedReason, BreachDetectedMessage)
+				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionTrue, BreachDetectedReason, BreachDetectedMessage, lastTransitionTime)
 				if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
 					m.logger.Error(err, "Error updating the status of the policy reco object")
 				}
+				breachCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Inc()
 				m.handlerFunc(m.workload)
 			} else {
-				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionFalse, NoBreachDetectedReason, NoBreachDetectedMessage)
+				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionFalse, NoBreachDetectedReason, NoBreachDetectedMessage, lastTransitionTime)
 				if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
 					m.logger.Error(err, "Error updating the status of the policy reco object")
+				}
+				if breachedInPast {
+					mitigationLatency := time.Since(lastBreachedTime).Seconds()
+					timeToMitigateLatency.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Observe(mitigationLatency)
 				}
 			}
 		}
@@ -272,7 +315,7 @@ func (m *Monitor) Stop() {
 
 func (m *Monitor) createBreachCondition(
 	condType ottoscaleriov1alpha1.PolicyRecommendationConditionType,
-	status metav1.ConditionStatus, reason, message string) *ottoscaleriov1alpha1.PolicyRecommendation {
+	status metav1.ConditionStatus, reason, message string, lastTransitionTime time.Time) *ottoscaleriov1alpha1.PolicyRecommendation {
 
 	return &ottoscaleriov1alpha1.PolicyRecommendation{
 		TypeMeta: metav1.TypeMeta{
@@ -286,11 +329,13 @@ func (m *Monitor) createBreachCondition(
 		Status: ottoscaleriov1alpha1.PolicyRecommendationStatus{
 			Conditions: []metav1.Condition{
 				{
-					Type:               string(condType),
-					Status:             status,
-					LastTransitionTime: metav1.Now(),
-					Reason:             reason,
-					Message:            message,
+					Type:   string(condType),
+					Status: status,
+					LastTransitionTime: metav1.Time{
+						Time: lastTransitionTime,
+					},
+					Reason:  reason,
+					Message: message,
 				},
 			},
 		},

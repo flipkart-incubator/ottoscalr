@@ -91,6 +91,7 @@ type Config struct {
 	PolicyRecommendationRegistrar struct {
 		RequeueDelayMs     int    `yaml:"requeueDelayMs"`
 		ExcludedNamespaces string `yaml:"excludedNamespaces"`
+		IncludedNamespaces string `yaml:"includedNamespaces"`
 	} `yaml:"policyRecommendationRegistrar"`
 
 	CpuUtilizationBasedRecommender struct {
@@ -180,7 +181,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	eventIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint,
+	var eventIntegrations []integration.EventIntegration
+	eventCalendarIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint,
 		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour, logger)
 
 	if err != nil {
@@ -196,10 +198,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	eventIntegrations = append(eventIntegrations, eventCalendarIntegration, nfrEventIntegration)
+
 	var metricsTransformer []metrics.MetricsTransformer
 
 	if *config.EnableMetricsTransformer == true {
-		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegration, nfrEventIntegration)
+		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegrations)
 		if err != nil {
 			setupLog.Error(err, "unable to start metrics transformer")
 			os.Exit(1)
@@ -250,14 +254,15 @@ func main() {
 		config.BreachMonitor.CpuRedLine,
 		logger)
 
-	excludedNamespaces := parseExcludedNamespaces(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
+	excludedNamespaces := parseNamespaces(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
+	includedNamespaces := parseNamespaces(config.PolicyRecommendationRegistrar.IncludedNamespaces)
 
 	policyStore := policy.NewPolicyStore(mgr.GetClient())
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
 		mgr.GetScheme(),
 		config.PolicyRecommendationRegistrar.RequeueDelayMs,
 		monitorManager,
-		policyStore, excludedNamespaces).SetupWithManager(mgr); err != nil {
+		policyStore, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",
 			"controller", "PolicyRecommendationRegistration")
 		os.Exit(1)
@@ -292,16 +297,19 @@ func main() {
 	go func() {
 		<-sigs
 		monitorManager.Shutdown()
-		eventIntegration.Cancel()
+		eventCalendarIntegration.Cancel()
 		os.Exit(0)
 	}()
 }
 
-func parseExcludedNamespaces(namespaces string) []string {
-	splitNamespaces := strings.Split(namespaces, ",")
-	var excludedNamespaces []string
-	for _, namespace := range splitNamespaces {
-		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(namespace))
+func parseNamespaces(namespaces string) []string {
+	if namespaces == "" {
+		return nil
 	}
-	return excludedNamespaces
+	splitNamespaces := strings.Split(namespaces, ",")
+	var namespaceList []string
+	for _, namespace := range splitNamespaces {
+		namespaceList = append(namespaceList, strings.TrimSpace(namespace))
+	}
+	return namespaceList
 }

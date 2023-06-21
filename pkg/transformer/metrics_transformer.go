@@ -14,28 +14,25 @@ type OutlierInterval struct {
 }
 
 type OutlierInterpolatorTransformer struct {
-	EventIntegration    integration.EventIntegration
-	NFREventIntegration integration.EventIntegration
+	EventIntegration []integration.EventIntegration
 }
 
-func NewOutlierInterpolatorTransformer(eventIntegration, nfrEventIntegration integration.EventIntegration) (*OutlierInterpolatorTransformer, error) {
+func NewOutlierInterpolatorTransformer(eventIntegration []integration.EventIntegration) (*OutlierInterpolatorTransformer, error) {
 
 	return &OutlierInterpolatorTransformer{
-		EventIntegration:    eventIntegration,
-		NFREventIntegration: nfrEventIntegration,
+		EventIntegration: eventIntegration,
 	}, nil
 }
 
 func (ot *OutlierInterpolatorTransformer) Transform(startTime time.Time, endTime time.Time, dataPoints []metrics.DataPoint) ([]metrics.DataPoint, error) {
-	events, err := ot.EventIntegration.GetDesiredEvents(startTime, endTime)
-	if err != nil {
-		return nil, fmt.Errorf("error in getting events from event calendar: %v", err)
+	var eventDetails []integration.EventDetails
+	for _, ei := range ot.EventIntegration {
+		events, err := ei.GetDesiredEvents(startTime, endTime)
+		if err != nil {
+			return nil, fmt.Errorf("error in getting events from event integration: %v", err)
+		}
+		eventDetails = append(eventDetails, events...)
 	}
-	nfrEvents, err := ot.NFREventIntegration.GetDesiredEvents(startTime, endTime)
-	if err != nil {
-		return nil, fmt.Errorf("error in getting events from nfr event calendar: %v", err)
-	}
-	eventDetails := append(events, nfrEvents...)
 	intervals := getOutlierIntervals(eventDetails)
 	intervals = filterIntervals(intervals, startTime, endTime)
 	newDataPoints := ot.cleanOutliersAndInterpolate(dataPoints, intervals)

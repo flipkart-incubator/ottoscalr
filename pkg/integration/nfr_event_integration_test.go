@@ -1,14 +1,12 @@
 package integration
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"time"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"time"
 )
 
 var (
@@ -16,51 +14,42 @@ var (
 )
 
 var _ = Describe("GetDesiredEvents", func() {
-	It("Should return the outlier intervals by fetching the event metadata and parsing it", func() {
+
+	var configmap corev1.ConfigMap
+	var namespace corev1.Namespace
+
+	BeforeEach(func() {
+		configmap = corev1.ConfigMap{
+			TypeMeta:   metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
+			ObjectMeta: metav1.ObjectMeta{Name: "nfr-data-config", Namespace: "ottoscalr"},
+			Data: map[string]string{
+				"430cda1d-84d7-4022-8dd7-2e951e837bca": fmt.Sprintf(`{"nfrEventKey":"430cda1d-84d7-4022-8dd7-2e951e837bca","startDateTime":"2023-06-07T14:00:00","endDateTime":"2023-06-07T23:59:00","notes":""}`),
+				"7f8b9c84-3533-4c64-9598-008db4c67974": fmt.Sprintf(`{"nfrEventKey":"7f8b9c84-3533-4c64-9598-008db4c67974","startDateTime":"2023-06-08T14:00:00","endDateTime":"2023-06-08T23:59:00","notes":""}`),
+				"cf6edadc-e2fe-4d8a-92d1-de3c57053994": fmt.Sprintf(`{"nfrEventKey":"cf6edadc-e2fe-4d8a-92d1-de3c57053994","startDateTime":"2023-06-09T14:00:00","endDateTime":"2023-06-09T23:59:00","notes":""}`),
+			},
+		}
+
+		namespace = corev1.Namespace{
+			TypeMeta:   metav1.TypeMeta{Kind: "Namespace", APIVersion: "v1"},
+			ObjectMeta: metav1.ObjectMeta{Name: "ottoscalr"},
+		}
+		Expect(k8sClient.Create(ctx, &namespace)).Should(Succeed())
+		time.Sleep(2 * time.Second)
+		Expect(k8sClient.Create(ctx, &configmap)).Should(Succeed())
+	})
+
+	AfterEach(func() {
+		Expect(k8sClient.Delete(ctx, &configmap)).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, &namespace)).Should(Succeed())
+	})
+	It("Should return the nfr outlier intervals by fetching the event metadata and parsing it", func() {
 		time1 := time.Now().Add(-20 * time.Minute)
 		time2 := time.Now().Add(-14 * time.Minute)
-		server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Define the mock endpoint logic
-			// Handle unknown endpoints
-			response := NFRResponse{
-
-				Success:      true,
-				ErrorMessage: "",
-				StatusCode:   200,
-				Response: []NFREventMetadata{
-					{
-						EventKey:  "123456",
-						StartTime: "2023-06-04 13:30",
-						EndTime:   "2023-06-04 18:30",
-					},
-					{
-						EventKey:  "1234567",
-						StartTime: "2023-06-06 13:30",
-						EndTime:   "2023-06-06 18:30",
-					},
-				},
-			}
-			jsonResponse, err := json.Marshal(response)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				Expect(err).NotTo(HaveOccurred())
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprintf(w, "%s", string(jsonResponse))
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server2.Close()
-
-		nfrEventIntegration, _ = NewNFREventDataFetcher(server2.URL, 2*time.Second, logger)
-		time.Sleep(2 * time.Second)
-
+		nfrEventIntegration, _ = NewNFREventDataFetcher(k8sClient, "ottoscalr", "nfr-data-config")
 		events, err := nfrEventIntegration.GetDesiredEvents(time1, time2)
-		fmt.Fprintf(GinkgoWriter, "events: %v\n", events)
-		Expect(len(events)).To(Equal(2))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(events).To(ContainElements([]EventDetails{
-			{EventName: "nfr", EventId: "123456", StartTime: formatTime("2023-06-04 13:30"), EndTime: formatTime("2023-06-04 18:30")},
-			{EventName: "nfr", EventId: "1234567", StartTime: formatTime("2023-06-06 13:30"), EndTime: formatTime("2023-06-06 18:30")},
-		}))
+		fmt.Fprintf(GinkgoWriter, "Events: %v\n", events)
+		Expect(len(events)).To(Equal(3))
+
 	})
 })
