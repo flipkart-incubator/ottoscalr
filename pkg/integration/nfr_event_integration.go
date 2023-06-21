@@ -13,10 +13,10 @@ import (
 )
 
 type NFRResponse struct {
-	Success      bool               `json:"success"`
-	ErrorMessage string             `json:"errorMessage"`
-	StatusCode   int                `json:"statusCode"`
-	Response     []NFREventMetadata `json:"response"`
+	Success bool               `json:"success"`
+	Error   string             `json:"error"`
+	Status  int                `json:"status"`
+	Message []NFREventMetadata `json:"message"`
 }
 
 type NFREventMetadata struct {
@@ -121,8 +121,9 @@ func (ne *NFREventDataFetcher) populateNFREventCache(startTime time.Time, endTim
 	if err != nil {
 		return fmt.Errorf("error while unmarshaling nfr event api json response: %v", err)
 	}
+	ne.logger.Info("List of fetched NFR events", "events", nfrEvents)
 	//iterate over the nfrEvents List and parse it to required format
-	for _, events := range nfrEvents.Response {
+	for _, events := range nfrEvents.Message {
 		start := formatTime(events.StartTime)
 		end := formatTime(events.EndTime)
 		eventDetail := EventDetails{
