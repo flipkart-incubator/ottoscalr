@@ -57,9 +57,7 @@ func NewNFREventDataFetcher(nfrEventAPIEndpoint string, nfrEventFetchDuration ti
 	start := time.Now().Add(-60 * 24 * time.Hour)
 	end := time.Now()
 
-	ne.lock.Lock()
 	err := ne.populateNFREventCache(start, end)
-	ne.lock.Unlock()
 
 	if err != nil {
 		logger.Error(err, "Error in fetching data from nfr event calendar")
@@ -80,10 +78,7 @@ func (ne *NFREventDataFetcher) Start() {
 		case <-ticker.C:
 			start := time.Now().Add(-60 * 24 * time.Hour)
 			end := time.Now()
-
-			ne.lock.Lock()
 			err := ne.populateNFREventCache(start, end)
-			ne.lock.Unlock()
 
 			if err != nil {
 				ne.logger.Error(err, "Error in fetching data from event calendar", "eventCache", ne.NFREventCache)
@@ -134,6 +129,8 @@ func (ne *NFREventDataFetcher) populateNFREventCache(startTime time.Time, endTim
 		}
 		eventDetails = append(eventDetails, eventDetail)
 	}
+	ne.lock.Lock()
+	defer ne.lock.Unlock()
 	ne.NFREventCache = eventDetails
 	return nil
 }
