@@ -308,7 +308,7 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	query := fmt.Sprintf("min((%s"+
+	query := fmt.Sprintf("quantile(0.5,(%s"+
 		"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload, workload_type)"+
 		"(%s{namespace=\"%s\", workload=\"%s\","+
 		" workload_type=\"deployment\"}))",
