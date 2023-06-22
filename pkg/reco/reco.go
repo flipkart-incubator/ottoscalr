@@ -13,10 +13,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strconv"
 	"time"
 )
 
 var unableToRecommendError = errors.New("Unable to generate recommendation without any breaches.")
+
+const OTTOSCALR_MAX_POD_ANNOTATION = "ottoscalr.io/max-pods"
 
 type CpuUtilizationBasedRecommender struct {
 	k8sClient          client.Client
@@ -89,11 +92,19 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		return nil, err
 	}
 
+	maxPods, err := c.getMaxPodFromAnnotations(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	fmt.Println("MAxPods: ", maxPods)
+
+	if err != nil {
+		c.logger.Error(err, "Error while getting getMaxPodFromAnnotations")
+		return nil, err
+	}
+
 	optimalTargetUtil, minReplicas, maxReplicas, err := c.findOptimalTargetUtilization(dataPoints,
 		acl,
 		c.minTarget,
 		c.maxTarget,
-		perPodResources)
+		perPodResources, maxPods)
 	if err != nil {
 		c.logger.Error(err, "Error while executing findOptimalTargetUtilization")
 		return nil, err
@@ -117,7 +128,7 @@ type TimerEvent struct {
 func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPoint,
 	acl time.Duration,
 	targetUtilization int,
-	perPodResources float64) ([]metrics.DataPoint, int, int, error) {
+	perPodResources float64, maxReplicas int) ([]metrics.DataPoint, int, int, error) {
 
 	targetUtilization = int(math.Floor(float64(targetUtilization) * 1.1))
 
@@ -131,9 +142,8 @@ func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPo
 
 	simulatedDataPoints := make([]metrics.DataPoint, len(dataPoints))
 
-	currentReplicas := math.Ceil((dataPoints[0].Value * 100) / float64(targetUtilization) / perPodResources)
+	currentReplicas := math.Min(float64(maxReplicas), math.Ceil((dataPoints[0].Value*100)/float64(targetUtilization)/perPodResources))
 	minReplicas := currentReplicas
-	maxReplicas := currentReplicas
 	currentResources := currentReplicas * perPodResources
 	readyResources := currentResources
 
@@ -150,9 +160,8 @@ func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPo
 			readyResources += readyResourcesTimerList[0].Delta
 			readyResourcesTimerList = readyResourcesTimerList[1:]
 		}
-		newReplicas := math.Ceil((100 * dp.Value) / float64(targetUtilization) / perPodResources)
+		newReplicas := math.Min(float64(maxReplicas), math.Ceil((100*dp.Value)/float64(targetUtilization)/perPodResources))
 		minReplicas = math.Min(newReplicas, minReplicas)
-		maxReplicas = math.Max(newReplicas, maxReplicas)
 
 		newResources := newReplicas * perPodResources
 		currentResources = newResources
@@ -179,7 +188,7 @@ func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPo
 		simulatedDataPoints[i+1] = metrics.DataPoint{Timestamp: dp.Timestamp, Value: availableResources}
 	}
 
-	return simulatedDataPoints, int(minReplicas), int(maxReplicas), nil
+	return simulatedDataPoints, int(minReplicas), maxReplicas, nil
 }
 
 func (c *CpuUtilizationBasedRecommender) hasNoBreachOccurred(original, simulated []metrics.DataPoint) bool {
@@ -195,18 +204,17 @@ func (c *CpuUtilizationBasedRecommender) findOptimalTargetUtilization(dataPoints
 	acl time.Duration,
 	minTarget,
 	maxTarget int,
-	perPodResources float64) (int, int, int, error) {
+	perPodResources float64, maxReplicas int) (int, int, int, error) {
 	low := minTarget
 	high := maxTarget
 	minReplicas := 0
-	maxReplicas := 0
 
 	for low <= high {
 		mid := low + (high-low)/2
 		target := mid
 		var simulatedHPAList []metrics.DataPoint
 		var err error
-		simulatedHPAList, minReplicas, maxReplicas, err = c.simulateHPA(dataPoints, acl, target, perPodResources)
+		simulatedHPAList, minReplicas, maxReplicas, err = c.simulateHPA(dataPoints, acl, target, perPodResources, maxReplicas)
 		if err != nil {
 			c.logger.Error(err, "Error while simulating HPA")
 			return -1, minReplicas, maxReplicas, err
@@ -258,4 +266,44 @@ func (c *CpuUtilizationBasedRecommender) getContainerCPULimitsSum(namespace, obj
 		}
 	}
 	return float64(cpuLimitsSum) / 1000, nil
+}
+
+func (c *CpuUtilizationBasedRecommender) getMaxPodFromAnnotations(namespace string, objectKind string, objectName string) (int, error) {
+	var obj client.Object
+	switch objectKind {
+	case "Deployment":
+		obj = &appsv1.Deployment{}
+	case "Rollout":
+		obj = &rolloutv1alpha1.Rollout{}
+	default:
+		return 0, fmt.Errorf("unsupported objectKind: %s", objectKind)
+	}
+
+	if err := c.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: objectName}, obj); err != nil {
+		return 0, err
+	}
+
+	maxPodAnnotation, ok := obj.GetAnnotations()[OTTOSCALR_MAX_POD_ANNOTATION]
+
+	var maxPods int
+
+	if ok {
+		var err error
+		maxPods, err = strconv.Atoi(maxPodAnnotation)
+		if err != nil {
+			return 0, fmt.Errorf("unable to convert maxPods from string to int")
+		}
+
+	} else {
+		switch v := obj.(type) {
+		case *appsv1.Deployment:
+			maxPods = int(*v.Spec.Replicas)
+		case *rolloutv1alpha1.Rollout:
+			maxPods = int(*v.Spec.Replicas)
+		default:
+			return 0, fmt.Errorf("unsupported object type")
+		}
+	}
+
+	return maxPods, nil
 }

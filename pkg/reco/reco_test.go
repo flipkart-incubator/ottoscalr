@@ -31,7 +31,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			perPodResources := 8.2
 
 			optimalTarget, min, max, err := recommender.findOptimalTargetUtilization(
-				dataPoints, acl, minTarget, maxTarget, perPodResources)
+				dataPoints, acl, minTarget, maxTarget, perPodResources, 24)
 
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(optimalTarget).To(Equal(48))
@@ -83,7 +83,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 
 		Context("with valid inputs", func() {
 			It("should simulate HPA correctly", func() {
-				simulatedDataPoints, min, max, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2)
+				simulatedDataPoints, min, max, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2, 23)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(simulatedDataPoints).ToNot(BeNil())
@@ -103,7 +103,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			It("should handle empty dataPoints", func() {
 				dataPoints = []metrics.DataPoint{}
 
-				simulatedDataPoints, _, _, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2)
+				simulatedDataPoints, _, _, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2, 24)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(simulatedDataPoints).ToNot(BeNil())
 				Expect(len(simulatedDataPoints)).To(Equal(0))
@@ -112,7 +112,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			It("should handle zero targetUtilization", func() {
 				targetUtilization = 0
 
-				_, _, _, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2)
+				_, _, _, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2, 24)
 				Expect(err).To(HaveOccurred())
 			})
 		})
@@ -324,6 +324,9 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      deploymentName,
 					Namespace: deploymentNamespace,
+					Annotations: map[string]string{
+						"ottoscalr.io/max-pods": "30",
+					},
 				},
 				Spec: appsv1.DeploymentSpec{
 					Selector: &metav1.LabelSelector{
@@ -388,7 +391,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(hpaConfig.TargetMetricValue).To(Equal(48))
 			Expect(hpaConfig.Min).To(Equal(7))
-			Expect(hpaConfig.Max).To(Equal(24))
+			Expect(hpaConfig.Max).To(Equal(30))
 		})
 	})
 })
