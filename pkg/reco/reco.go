@@ -90,8 +90,6 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		return nil, err
 	}
 
-	fmt.Println("PerPod", perPodResources)
-
 	optimalTargetUtil, minReplicas, maxReplicas, err := c.findOptimalTargetUtilization(dataPoints,
 		acl,
 		c.minTarget,
