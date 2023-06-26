@@ -10,6 +10,7 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,6 +59,14 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	end := time.Now()
 	start := end.Add(-c.metricWindow)
 
+	perPodResources, err := c.getContainerCPULimitsSum(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	if err != nil {
+		c.logger.Error(err, "Error while getting getContainerCPULimitsSum")
+		return nil, err
+	}
+
+	fmt.Println("PerPod", perPodResources)
+
 	dataPoints, err := c.scraper.GetAverageCPUUtilizationByWorkload(workloadMeta.Namespace,
 		workloadMeta.Name,
 		start,
@@ -80,12 +89,6 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	acl, err := c.scraper.GetACLByWorkload(workloadMeta.Namespace, workloadMeta.Name)
 	if err != nil {
 		c.logger.Error(err, "Error while getting GetACL.")
-		return nil, err
-	}
-
-	perPodResources, err := c.getContainerCPULimitsSum(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
-	if err != nil {
-		c.logger.Error(err, "Error while getting getContainerCPULimitsSum")
 		return nil, err
 	}
 
@@ -251,11 +254,30 @@ func (c *CpuUtilizationBasedRecommender) getContainerCPULimitsSum(namespace, obj
 		return 0, fmt.Errorf("unsupported object type")
 	}
 
+	podList := &corev1.PodList{}
+
+	if podTemplateSpec.Labels == nil {
+		return 0, fmt.Errorf("no labels present on the workload to fetch pod")
+	}
+
+	labelSet := labels.Set(podTemplateSpec.Labels)
+	selector := labels.SelectorFromSet(labelSet)
+
+	if err := c.k8sClient.List(context.Background(), podList, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
+		return 0, err
+	}
+
 	cpuLimitsSum := int64(0)
-	for _, container := range podTemplateSpec.Spec.Containers {
+
+	if len(podList.Items) == 0 {
+		return 0, fmt.Errorf("no pod found for the workload")
+	}
+
+	for _, container := range podList.Items[0].Spec.Containers {
 		if limit, ok := container.Resources.Limits[corev1.ResourceCPU]; ok {
 			cpuLimitsSum += limit.MilliValue()
 		}
 	}
+
 	return float64(cpuLimitsSum) / 1000, nil
 }
