@@ -59,14 +59,6 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	end := time.Now()
 	start := end.Add(-c.metricWindow)
 
-	perPodResources, err := c.getContainerCPULimitsSum(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
-	if err != nil {
-		c.logger.Error(err, "Error while getting getContainerCPULimitsSum")
-		return nil, err
-	}
-
-	fmt.Println("PerPod", perPodResources)
-
 	dataPoints, err := c.scraper.GetAverageCPUUtilizationByWorkload(workloadMeta.Namespace,
 		workloadMeta.Name,
 		start,
@@ -91,6 +83,14 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		c.logger.Error(err, "Error while getting GetACL.")
 		return nil, err
 	}
+
+	perPodResources, err := c.getContainerCPULimitsSum(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	if err != nil {
+		c.logger.Error(err, "Error while getting getContainerCPULimitsSum")
+		return nil, err
+	}
+
+	fmt.Println("PerPod", perPodResources)
 
 	optimalTargetUtil, minReplicas, maxReplicas, err := c.findOptimalTargetUtilization(dataPoints,
 		acl,
