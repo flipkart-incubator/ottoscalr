@@ -104,9 +104,10 @@ type Config struct {
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
 	EventCallIntegration     struct {
-		EventCalendarAPIEndpoint string `yaml:"eventCalendarAPIEndpoint"`
-		NfrEventAPIEndpoint      string `yaml:"nfrEventAPIEndpoint"`
-		EventFetchWindowInHours  int    `yaml:"eventFetchWindowInHours"`
+		EventCalendarAPIEndpoint      string `yaml:"eventCalendarAPIEndpoint"`
+		NfrEventCompletedAPIEndpoint  string `yaml:"nfrEventCompletedAPIEndpoint"`
+		NfrEventInProgressAPIEndpoint string `yaml:"nfrEventInProgressAPIEndpoint"`
+		EventFetchWindowInHours       int    `yaml:"eventFetchWindowInHours"`
 	} `yaml:"eventCallIntegration"`
 }
 
@@ -190,7 +191,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	nfrEventIntegration, err := integration.NewNFREventDataFetcher(config.EventCallIntegration.NfrEventAPIEndpoint,
+	nfrEventIntegration, err := integration.NewNFREventDataFetcher(config.EventCallIntegration.NfrEventCompletedAPIEndpoint,
+		config.EventCallIntegration.NfrEventInProgressAPIEndpoint,
 		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour, logger)
 
 	if err != nil {

@@ -51,14 +51,48 @@ var _ = Describe("GetDesiredEvents", func() {
 		}))
 		defer server2.Close()
 
-		nfrEventIntegration, _ = NewNFREventDataFetcher(server2.URL, 2*time.Second, logger)
+		server3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Define the mock endpoint logic
+			// Handle unknown endpoints
+			response := NFRResponse{
+
+				Success: true,
+				Error:   "",
+				Status:  200,
+				Message: []NFREventMetadata{
+					{
+						EventKey:  "123456",
+						StartTime: "2023-06-04 13:30",
+						EndTime:   "2023-06-04 18:30",
+					},
+					{
+						EventKey:  "1234567",
+						StartTime: "2023-06-06 13:30",
+						EndTime:   "2023-06-06 18:30",
+					},
+				},
+			}
+			jsonResponse, err := json.Marshal(response)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				Expect(err).NotTo(HaveOccurred())
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, "%s", string(jsonResponse))
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server3.Close()
+
+		nfrEventIntegration, _ = NewNFREventDataFetcher(server2.URL, server3.URL, 2*time.Second, logger)
 		time.Sleep(2 * time.Second)
 
 		events, err := nfrEventIntegration.GetDesiredEvents(time1, time2)
 		fmt.Fprintf(GinkgoWriter, "events: %v\n", events)
-		Expect(len(events)).To(Equal(2))
+		Expect(len(events)).To(Equal(4))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(events).To(ContainElements([]EventDetails{
+			{EventName: "nfr", EventId: "123456", StartTime: formatTime("2023-06-04 13:30"), EndTime: formatTime("2023-06-04 18:30")},
+			{EventName: "nfr", EventId: "1234567", StartTime: formatTime("2023-06-06 13:30"), EndTime: formatTime("2023-06-06 18:30")},
 			{EventName: "nfr", EventId: "123456", StartTime: formatTime("2023-06-04 13:30"), EndTime: formatTime("2023-06-04 18:30")},
 			{EventName: "nfr", EventId: "1234567", StartTime: formatTime("2023-06-06 13:30"), EndTime: formatTime("2023-06-06 18:30")},
 		}))

@@ -27,17 +27,18 @@ type NFREventMetadata struct {
 }
 
 type NFREventDataFetcher struct {
-	Client                *http.Client
-	NFREventAPIEndpoint   string
-	NFREventCache         []EventDetails
-	NFREventFetchDuration time.Duration
-	logger                logr.Logger
-	lock                  sync.RWMutex
-	ctx                   context.Context
-	Cancel                context.CancelFunc
+	Client                        *http.Client
+	NFREventCompletedAPIEndpoint  string
+	NFREventInProgressAPIEndpoint string
+	NFREventCache                 []EventDetails
+	NFREventFetchDuration         time.Duration
+	logger                        logr.Logger
+	lock                          sync.RWMutex
+	ctx                           context.Context
+	Cancel                        context.CancelFunc
 }
 
-func NewNFREventDataFetcher(nfrEventAPIEndpoint string, nfrEventFetchDuration time.Duration, logger logr.Logger) (*NFREventDataFetcher, error) {
+func NewNFREventDataFetcher(nfrEventCompletedAPIEndpoint string, nfrEventInProgressAPIEndpoint string, nfrEventFetchDuration time.Duration, logger logr.Logger) (*NFREventDataFetcher, error) {
 	retryClient := retryablehttp.NewClient()
 	retryClient.RetryMax = 10
 
@@ -45,14 +46,15 @@ func NewNFREventDataFetcher(nfrEventAPIEndpoint string, nfrEventFetchDuration ti
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ne := &NFREventDataFetcher{
-		Client:                client,
-		NFREventAPIEndpoint:   nfrEventAPIEndpoint,
-		NFREventCache:         nil,
-		NFREventFetchDuration: nfrEventFetchDuration,
-		logger:                logger,
-		lock:                  sync.RWMutex{},
-		ctx:                   ctx,
-		Cancel:                cancel,
+		Client:                        client,
+		NFREventCompletedAPIEndpoint:  nfrEventCompletedAPIEndpoint,
+		NFREventInProgressAPIEndpoint: nfrEventInProgressAPIEndpoint,
+		NFREventCache:                 nil,
+		NFREventFetchDuration:         nfrEventFetchDuration,
+		logger:                        logger,
+		lock:                          sync.RWMutex{},
+		ctx:                           ctx,
+		Cancel:                        cancel,
 	}
 	start := time.Now().Add(-60 * 24 * time.Hour)
 	end := time.Now()
@@ -95,26 +97,45 @@ func (ne *NFREventDataFetcher) GetDesiredEvents(startTime time.Time, endTime tim
 
 func (ne *NFREventDataFetcher) populateNFREventCache(startTime time.Time, endTime time.Time) error {
 	var eventDetails []EventDetails
-	url := fmt.Sprintf("%s", ne.NFREventAPIEndpoint)
+
+	completedNFREvents, err := ne.getNFREvents(ne.NFREventCompletedAPIEndpoint, startTime, endTime)
+	if err != nil {
+		return err
+	}
+	inProgressNFREvents, err := ne.getNFREvents(ne.NFREventInProgressAPIEndpoint, startTime, endTime)
+	if err != nil {
+		return err
+	}
+	eventDetails = append(eventDetails, completedNFREvents...)
+	eventDetails = append(eventDetails, inProgressNFREvents...)
+	ne.lock.Lock()
+	defer ne.lock.Unlock()
+	ne.NFREventCache = eventDetails
+	return nil
+}
+
+func (ne *NFREventDataFetcher) getNFREvents(apiEndpoint string, startTime time.Time, endTime time.Time) ([]EventDetails, error) {
+	var eventDetails []EventDetails
+	url := fmt.Sprintf("%s", apiEndpoint)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("error creating request for fetching past nfr events list: %v", err)
+		return nil, fmt.Errorf("error creating request for fetching past nfr events list: %v", err)
 	}
 	//set the headers
 	req.Header.Add("Content-Type", "application/json")
 	resp, err := ne.Client.Do(req)
 	if err != nil {
-		return fmt.Errorf("error calling nfr event api: %v", err)
+		return nil, fmt.Errorf("error calling nfr event api: %v", err)
 	}
 	var nfrEvents NFRResponse
 	responseReader, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("error reading response body from nfr event api: %v", err)
+		return nil, fmt.Errorf("error reading response body from nfr event api: %v", err)
 	}
 
 	err = json.Unmarshal(responseReader, &nfrEvents)
 	if err != nil {
-		return fmt.Errorf("error while unmarshaling nfr event api json response: %v", err)
+		return nil, fmt.Errorf("error while unmarshaling nfr event api json response: %v", err)
 	}
 	ne.logger.Info("List of fetched NFR events", "events", nfrEvents)
 	//iterate over the nfrEvents List and parse it to required format
@@ -129,10 +150,7 @@ func (ne *NFREventDataFetcher) populateNFREventCache(startTime time.Time, endTim
 		}
 		eventDetails = append(eventDetails, eventDetail)
 	}
-	ne.lock.Lock()
-	defer ne.lock.Unlock()
-	ne.NFREventCache = eventDetails
-	return nil
+	return eventDetails, nil
 }
 
 func formatTime(tm string) time.Time {
