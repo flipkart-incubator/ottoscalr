@@ -104,10 +104,11 @@ type Config struct {
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
 	EventCallIntegration     struct {
-		EventCalendarAPIEndpoint string `yaml:"eventCalendarAPIEndpoint"`
-		EventFetchWindowInHours  int    `yaml:"eventFetchWindowInHours"`
+		EventCalendarAPIEndpoint      string `yaml:"eventCalendarAPIEndpoint"`
+		NfrEventCompletedAPIEndpoint  string `yaml:"nfrEventCompletedAPIEndpoint"`
+		NfrEventInProgressAPIEndpoint string `yaml:"nfrEventInProgressAPIEndpoint"`
+		EventFetchWindowInHours       int    `yaml:"eventFetchWindowInHours"`
 	} `yaml:"eventCallIntegration"`
-	NfrDataConfigMapName string `yaml:"nfrDataConfigMapName"`
 }
 
 func main() {
@@ -190,8 +191,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	nfrEventIntegration, err := integration.NewNFREventDataFetcher(mgr.GetClient(),
-		os.Getenv("DEPLOYMENT_NAMESPACE"), config.NfrDataConfigMapName)
+	nfrEventIntegration, err := integration.NewNFREventDataFetcher(config.EventCallIntegration.NfrEventCompletedAPIEndpoint,
+		config.EventCallIntegration.NfrEventInProgressAPIEndpoint,
+		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour, logger)
 
 	if err != nil {
 		setupLog.Error(err, "unable to start nfr event data fetcher")
