@@ -182,6 +182,8 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			rolloutName         = "test-rollout"
 			rollout             *rolloutv1alpha1.Rollout
 			deployment          *appsv1.Deployment
+			deploymentPod       *corev1.Pod
+			rolloutPod          *corev1.Pod
 		)
 
 		BeforeEach(func() {
@@ -196,6 +198,11 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 				},
 				Spec: rolloutv1alpha1.RolloutSpec{
 					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app1",
+							},
+						},
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
 								{
@@ -274,12 +281,95 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 
 			err = k8sClient.Create(ctx, deployment)
 			Expect(err).ToNot(HaveOccurred())
+
+			deploymentPod = &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment-pod",
+					Namespace: deploymentNamespace,
+					Labels: map[string]string{
+						"app": "test-app",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "container-1",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("1"),
+								},
+							},
+						},
+						{
+							Name:  "container-2",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("0.5"),
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err = k8sClient.Create(ctx, deploymentPod)
+			Expect(err).ToNot(HaveOccurred())
+
+			rolloutPod = &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rollout-pod",
+					Namespace: rolloutNamespace,
+					Labels: map[string]string{
+						"app": "test-app1",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "container-1",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("1"),
+								},
+							},
+						},
+						{
+							Name:  "container-2",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("0.2"),
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err = k8sClient.Create(ctx, rolloutPod)
+			Expect(err).ToNot(HaveOccurred())
+
 		})
 
 		AfterEach(func() {
 			err := k8sClient.Delete(ctx, rollout)
 			Expect(err).ToNot(HaveOccurred())
 			err = k8sClient.Delete(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+			err = k8sClient.Delete(ctx, deploymentPod)
+			Expect(err).ToNot(HaveOccurred())
+			err = k8sClient.Delete(ctx, rolloutPod)
 			Expect(err).ToNot(HaveOccurred())
 
 		})
@@ -313,6 +403,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			deploymentNamespace = "default"
 			deploymentName      = "test-deployment"
 			deployment          *appsv1.Deployment
+			deploymentPod       *corev1.Pod
 		)
 
 		BeforeEach(func() {
@@ -366,10 +457,51 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 
 			err := k8sClient.Create(ctx, deployment)
 			Expect(err).ToNot(HaveOccurred())
+
+			deploymentPod = &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment-pod",
+					Namespace: deploymentNamespace,
+					Labels: map[string]string{
+						"app": "test-app",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "container-1",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("8"),
+								},
+							},
+						},
+						{
+							Name:  "container-2",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("0.2"),
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err = k8sClient.Create(ctx, deploymentPod)
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		AfterEach(func() {
 			err := k8sClient.Delete(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+			err = k8sClient.Delete(ctx, deploymentPod)
 			Expect(err).ToNot(HaveOccurred())
 
 		})
