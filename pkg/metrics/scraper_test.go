@@ -89,25 +89,28 @@ var _ = Describe("PrometheusScraper", func() {
 
 			podCreatedTimeMetric.WithLabelValues("test-ns-1", "test-pod-1").Set(45)
 			podCreatedTimeMetric.WithLabelValues("test-ns-1", "test-pod-2").Set(55)
-			podCreatedTimeMetric.WithLabelValues("test-ns-1", "test-pod-3").Set(65)
+			podCreatedTimeMetric.WithLabelValues("test-ns-2", "test-pod-3").Set(65)
 			podCreatedTimeMetric.WithLabelValues("test-ns-2", "test-pod-4").Set(75)
+			podCreatedTimeMetric.WithLabelValues("test-ns-2", "test-pod-5").Set(80)
 
 			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-1").Set(50)
 			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-2").Set(70)
-			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-3").Set(80)
+			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-3").Set(80)
 			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-4").Set(100)
+			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-5").Set(120)
 
 			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-workload-1", "deployment").Set(1)
-			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-workload-2", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-3", "test-workload-3", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-workload-3", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-5", "test-workload-3", "deployment").Set(1)
 
 			//wait for the metric to be scraped - scraping interval is 1s
 			time.Sleep(2 * time.Second)
 
 			autoscalingLag1, err := scraper.GetACLByWorkload("test-ns-1", "test-workload-1")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(autoscalingLag1).To(Equal(time.Duration(35.0 * time.Second)))
+			Expect(autoscalingLag1).To(Equal(time.Duration(40.0 * time.Second)))
 
 			autoscalingLag2, err := scraper.GetACLByWorkload("test-ns-2", "test-workload-3")
 			Expect(err).NotTo(HaveOccurred())
