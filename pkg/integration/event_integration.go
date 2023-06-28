@@ -167,6 +167,7 @@ func (ec *EventCalendarDataFetcher) populateEventCache(startTime time.Time, endT
 	if err != nil {
 		return fmt.Errorf("error while unmarshaling event api json response: %v", err)
 	}
+	ec.logger.Info("List of fetched Event Calendar events", "events", allEvents)
 	for _, events := range allEvents.Content {
 		start := time.Unix(0, events.Lifecycle.StartTime*int64(time.Millisecond))
 		end := time.Unix(0, events.Lifecycle.EndTime*int64(time.Millisecond))
