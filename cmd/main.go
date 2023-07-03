@@ -22,8 +22,6 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
 	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
-	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
-	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/transformer"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	"github.com/spf13/viper"
@@ -45,6 +43,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -57,6 +56,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(argov1alpha1.AddToScheme(scheme))
 	utilruntime.Must(ottoscaleriov1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kedaapi.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -164,11 +164,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	agingPolicyTTL, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAge)
-	if err != nil {
-		logger.Error(err, "Failed to parse policyExpiryAge. Defaulting.")
-		agingPolicyTTL = 48 * time.Hour
-	}
+	//agingPolicyTTL, err := time.ParseDuration(config.PolicyRecommendationController.PolicyExpiryAge)
+	//if err != nil {
+	//	logger.Error(err, "Failed to parse policyExpiryAge. Defaulting.")
+	//	agingPolicyTTL = 48 * time.Hour
+	//}
 
 	scraper, err := metrics.NewPrometheusScraper(config.MetricsScraper.PrometheusUrl,
 		time.Duration(config.MetricsScraper.QueryTimeoutSec)*time.Second,
@@ -212,35 +212,35 @@ func main() {
 		metricsTransformer = append(metricsTransformer, outlierInterpolatorTransformer)
 	}
 
-	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
-		config.BreachMonitor.CpuRedLine,
-		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
-		scraper,
-		metricsTransformer,
-		time.Duration(config.CpuUtilizationBasedRecommender.StepSec)*time.Second,
-		config.CpuUtilizationBasedRecommender.MinTarget,
-		config.CpuUtilizationBasedRecommender.MaxTarget,
-		logger)
+	//cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
+	//	config.BreachMonitor.CpuRedLine,
+	//	time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
+	//	scraper,
+	//	metricsTransformer,
+	//	time.Duration(config.CpuUtilizationBasedRecommender.StepSec)*time.Second,
+	//	config.CpuUtilizationBasedRecommender.MinTarget,
+	//	config.CpuUtilizationBasedRecommender.MaxTarget,
+	//	logger)
+	//
+	//breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
+	//if err != nil {
+	//	setupLog.Error(err, "unable to initialize breach analyzer")
+	//	os.Exit(1)
+	//}
 
-	breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
-	if err != nil {
-		setupLog.Error(err, "unable to initialize breach analyzer")
-		os.Exit(1)
-	}
+	//policyRecoReconciler, err := controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
+	//	mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
+	//	config.PolicyRecommendationController.MaxConcurrentReconciles, config.PolicyRecommendationController.MinRequiredReplicas, cpuUtilizationBasedRecommender, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL), breachAnalyzer)
+	//if err != nil {
+	//	setupLog.Error(err, "Unable to initialize policy reco reconciler")
+	//	os.Exit(1)
+	//}
 
-	policyRecoReconciler, err := controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
-		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
-		config.PolicyRecommendationController.MaxConcurrentReconciles, config.PolicyRecommendationController.MinRequiredReplicas, cpuUtilizationBasedRecommender, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL), breachAnalyzer)
-	if err != nil {
-		setupLog.Error(err, "Unable to initialize policy reco reconciler")
-		os.Exit(1)
-	}
-
-	if err = policyRecoReconciler.
-		SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
-		os.Exit(1)
-	}
+	//if err = policyRecoReconciler.
+	//	SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
+	//	os.Exit(1)
+	//}
 	triggerHandler := trigger.NewK8sTriggerHandler(mgr.GetClient(), logger)
 	triggerHandler.Start()
 
@@ -254,19 +254,33 @@ func main() {
 		config.BreachMonitor.CpuRedLine,
 		logger)
 
-	excludedNamespaces := parseNamespaces(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
-	includedNamespaces := parseNamespaces(config.PolicyRecommendationRegistrar.IncludedNamespaces)
+	//excludedNamespaces := parseNamespaces(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
+	//includedNamespaces := parseNamespaces(config.PolicyRecommendationRegistrar.IncludedNamespaces)
 
-	policyStore := policy.NewPolicyStore(mgr.GetClient())
-	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
-		mgr.GetScheme(),
-		config.PolicyRecommendationRegistrar.RequeueDelayMs,
-		monitorManager,
-		policyStore, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller",
-			"controller", "PolicyRecommendationRegistration")
+	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
+		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
+		config.PolicyRecommendationController.MaxConcurrentReconciles, false)
+	if err != nil {
+		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
 		os.Exit(1)
 	}
+
+	if err = hpaEnforcementController.
+		SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "HPAEnforcementController")
+		os.Exit(1)
+	}
+
+	//policyStore := policy.NewPolicyStore(mgr.GetClient())
+	//if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
+	//	mgr.GetScheme(),
+	//	config.PolicyRecommendationRegistrar.RequeueDelayMs,
+	//	monitorManager,
+	//	policyStore, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller",
+	//		"controller", "PolicyRecommendationRegistration")
+	//	os.Exit(1)
+	//}
 
 	if err = controller.NewPolicyWatcher(mgr.GetClient(),
 		mgr.GetScheme(),
