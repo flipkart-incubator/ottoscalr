@@ -317,7 +317,6 @@ func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind
 		}
 
 		if len(scaledObjects.Items) == 0 {
-			fmt.Println("No Scaled Object")
 			switch v := obj.(type) {
 			case *appsv1.Deployment:
 				maxPods = int(*v.Spec.Replicas)
@@ -327,7 +326,6 @@ func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind
 				return 0, fmt.Errorf("unsupported object type")
 			}
 		} else {
-			fmt.Println("Scaled Object Present")
 			maxPods = int(*scaledObjects.Items[0].Spec.MaxReplicaCount)
 		}
 
