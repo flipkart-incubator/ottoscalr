@@ -8,8 +8,11 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/go-logr/logr"
+	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -19,7 +22,11 @@ import (
 
 var unableToRecommendError = errors.New("Unable to generate recommendation without any breaches.")
 
-const OTTOSCALR_MAX_POD_ANNOTATION = "ottoscalr.io/max-pods"
+const (
+	ScaledObjectField         = "spec.scaleTargetRef.name"
+	CreatedByLabelKey         = "created-by"
+	OttoscalrMaxPodAnnotation = "ottoscalr.io/max-pods"
+)
 
 type CpuUtilizationBasedRecommender struct {
 	k8sClient          client.Client
@@ -92,12 +99,14 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		return nil, err
 	}
 
-	maxReplicas, err := c.getMaxPodFromAnnotations(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	maxReplicas, err := c.getMaxPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
 
 	if err != nil {
 		c.logger.Error(err, "Error while getting getMaxPodFromAnnotations")
 		return nil, err
 	}
+
+	fmt.Println("Max: ", maxReplicas)
 
 	optimalTargetUtil, minReplicas, maxReplicas, err := c.findOptimalTargetUtilization(dataPoints,
 		acl,
@@ -267,7 +276,7 @@ func (c *CpuUtilizationBasedRecommender) getContainerCPULimitsSum(namespace, obj
 	return float64(cpuLimitsSum) / 1000, nil
 }
 
-func (c *CpuUtilizationBasedRecommender) getMaxPodFromAnnotations(namespace string, objectKind string, objectName string) (int, error) {
+func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind string, objectName string) (int, error) {
 	var obj client.Object
 	switch objectKind {
 	case "Deployment":
@@ -282,7 +291,7 @@ func (c *CpuUtilizationBasedRecommender) getMaxPodFromAnnotations(namespace stri
 		return 0, err
 	}
 
-	maxPodAnnotation, ok := obj.GetAnnotations()[OTTOSCALR_MAX_POD_ANNOTATION]
+	maxPodAnnotation, ok := obj.GetAnnotations()[OttoscalrMaxPodAnnotation]
 
 	var maxPods int
 
@@ -290,18 +299,38 @@ func (c *CpuUtilizationBasedRecommender) getMaxPodFromAnnotations(namespace stri
 		var err error
 		maxPods, err = strconv.Atoi(maxPodAnnotation)
 		if err != nil {
-			return 0, fmt.Errorf("unable to convert maxPods from string to int")
+			return 0, fmt.Errorf("unable to convert maxPods from string to int: %s", err)
 		}
 
 	} else {
-		switch v := obj.(type) {
-		case *appsv1.Deployment:
-			maxPods = int(*v.Spec.Replicas)
-		case *rolloutv1alpha1.Rollout:
-			maxPods = int(*v.Spec.Replicas)
-		default:
-			return 0, fmt.Errorf("unsupported object type")
+		scaledObjects := &kedaapi.ScaledObjectList{}
+		labelSelector, err := labels.Parse(fmt.Sprintf("!%s", CreatedByLabelKey))
+		if err != nil {
+			return 0, fmt.Errorf("unable to parse label selector string: %s", err)
 		}
+		if err := c.k8sClient.List(context.Background(), scaledObjects, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(ScaledObjectField, objectName),
+			LabelSelector: labelSelector,
+			Namespace:     namespace,
+		}); err != nil && client.IgnoreNotFound(err) != nil {
+			return 0, fmt.Errorf("unable to fetch scaledobjects: %s", err)
+		}
+
+		if len(scaledObjects.Items) == 0 {
+			fmt.Println("No Scaled Object")
+			switch v := obj.(type) {
+			case *appsv1.Deployment:
+				maxPods = int(*v.Spec.Replicas)
+			case *rolloutv1alpha1.Rollout:
+				maxPods = int(*v.Spec.Replicas)
+			default:
+				return 0, fmt.Errorf("unsupported object type")
+			}
+		} else {
+			fmt.Println("Scaled Object Present")
+			maxPods = int(*scaledObjects.Items[0].Spec.MaxReplicaCount)
+		}
+
 	}
 
 	return maxPods, nil
