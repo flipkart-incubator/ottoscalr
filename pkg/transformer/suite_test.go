@@ -18,6 +18,7 @@ package transformer
 
 import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
+	"github.com/go-logr/logr"
 	"testing"
 	"time"
 
@@ -40,6 +41,7 @@ var (
 	outlierInterpolatorTransformer *OutlierInterpolatorTransformer
 	fakeEventIntegration           integration.EventIntegration
 	fakeNFREventIntegration        integration.EventIntegration
+	logger                         logr.Logger
 )
 
 func (fe *FakeEventIntegration) GetDesiredEvents(startTime time.Time,
@@ -77,6 +79,5 @@ var _ = BeforeSuite(func() {
 
 	var eventIntegration []integration.EventIntegration
 	eventIntegration = append(eventIntegration, fakeEventIntegration, fakeNFREventIntegration)
-
-	outlierInterpolatorTransformer, _ = NewOutlierInterpolatorTransformer(eventIntegration)
+	outlierInterpolatorTransformer, _ = NewOutlierInterpolatorTransformer(eventIntegration, logger)
 })
