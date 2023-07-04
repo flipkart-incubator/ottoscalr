@@ -205,7 +205,7 @@ func main() {
 	var metricsTransformer []metrics.MetricsTransformer
 
 	if *config.EnableMetricsTransformer == true {
-		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegrations)
+		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegrations, logger)
 		if err != nil {
 			setupLog.Error(err, "unable to start metrics transformer")
 			os.Exit(1)
