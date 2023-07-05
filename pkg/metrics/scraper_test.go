@@ -4,6 +4,7 @@ import (
 	"context"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"math"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -487,5 +488,34 @@ var _ = Describe("RangeQuerySplitter", func() {
 		matrix := result.(model.Matrix)
 		Expect(len(matrix)).To(Equal(1))
 		Expect(len(matrix[0].Values)).To(Equal(6))
+	})
+})
+
+var _ = Describe("interpolateMissingDataPoints", func() {
+	It("should interpolate the missing data", func() {
+		dataPoints := []DataPoint{
+			{Timestamp: time.Now().Add(-30 * time.Minute), Value: 60},
+			{Timestamp: time.Now().Add(-29 * time.Minute), Value: 80},
+			{Timestamp: time.Now().Add(-28 * time.Minute), Value: 100},
+			{Timestamp: time.Now().Add(-27 * time.Minute), Value: 50},
+			{Timestamp: time.Now().Add(-26 * time.Minute), Value: 30},
+			{Timestamp: time.Now().Add(-25 * time.Minute), Value: 60},
+			{Timestamp: time.Now().Add(-24 * time.Minute), Value: 80},
+			{Timestamp: time.Now().Add(-20 * time.Minute), Value: 60},
+			{Timestamp: time.Now().Add(-19 * time.Minute), Value: 80},
+			{Timestamp: time.Now().Add(-18 * time.Minute), Value: 100},
+			{Timestamp: time.Now().Add(-17 * time.Minute), Value: 50},
+			{Timestamp: time.Now().Add(-16 * time.Minute), Value: 30},
+			{Timestamp: time.Now().Add(-9 * time.Minute), Value: 80},
+			{Timestamp: time.Now().Add(-8 * time.Minute), Value: 100},
+			{Timestamp: time.Now().Add(-7 * time.Minute), Value: 50},
+			{Timestamp: time.Now().Add(-6 * time.Minute), Value: 30},
+		}
+		dataPoints = scraper.interpolateMissingDataPoints(dataPoints, time.Minute)
+		Expect(len(dataPoints)).To(Equal(25))
+		Expect(dataPoints[7].Value).To(Equal(75.0))
+		Expect(dataPoints[8].Value).To(Equal(70.0))
+		Expect(math.Floor(dataPoints[15].Value*100) / 100).To(Equal(37.14))
+		Expect(math.Floor(dataPoints[20].Value*100) / 100).To(Equal(72.85))
 	})
 })
