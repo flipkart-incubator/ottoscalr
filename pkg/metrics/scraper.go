@@ -155,6 +155,8 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 			dataPoints = append(dataPoints, datapoint)
 		}
 	}
+
+	dataPoints = ps.interpolateMissingDataPoints(dataPoints, step)
 	return dataPoints, nil
 }
 
@@ -337,4 +339,35 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 	podBootstrapTime := float64(matrix[0].Value)
 
 	return podBootstrapTime, nil
+}
+
+func (ps *PrometheusScraper) interpolateMissingDataPoints(dataPoints []DataPoint, step time.Duration) []DataPoint {
+	var interpolatedData []DataPoint
+	prevTimestamp := dataPoints[0].Timestamp
+	prevValue := dataPoints[0].Value
+
+	interpolatedData = append(interpolatedData, dataPoints[0])
+
+	for i := 1; i < len(dataPoints); i++ {
+		currTimestamp := dataPoints[i].Timestamp
+		currValue := dataPoints[i].Value
+
+		//Find Missing time intervals
+		diff := currTimestamp.Sub(prevTimestamp)
+		missingIntervals := int(diff / step)
+		if missingIntervals > 1 {
+			stepSize := (currValue - prevValue) / float64(missingIntervals)
+			for j := 1; j < missingIntervals; j++ {
+				interpolatedTimestamp := prevTimestamp.Add(step * time.Duration(j))
+				interpolatedValue := prevValue + float64(j)*stepSize
+				interpolatedData = append(interpolatedData, DataPoint{Timestamp: interpolatedTimestamp, Value: interpolatedValue})
+			}
+		}
+
+		interpolatedData = append(interpolatedData, dataPoints[i])
+		prevTimestamp = currTimestamp
+		prevValue = currValue
+	}
+
+	return interpolatedData
 }
