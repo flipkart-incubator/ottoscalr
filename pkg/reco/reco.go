@@ -9,6 +9,8 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/go-logr/logr"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -16,9 +18,21 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"strconv"
 	"time"
 )
+
+var (
+	getAverageCPUUtilizationQueryLatency = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{Name: "get_avg_cpu_utilization_query_latency_seconds",
+			Help: "Time to execute utilization datapoint query in seconds"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
+	)
+)
+
+func init() {
+	p8smetrics.Registry.MustRegister(getAverageCPUUtilizationQueryLatency)
+}
 
 var unableToRecommendError = errors.New("Unable to generate recommendation without any breaches.")
 
@@ -67,6 +81,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	end := time.Now()
 	start := end.Add(-c.metricWindow)
 
+	utilizationQueryStartTime := time.Now()
 	dataPoints, err := c.scraper.GetAverageCPUUtilizationByWorkload(workloadMeta.Namespace,
 		workloadMeta.Name,
 		start,
@@ -76,6 +91,9 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		c.logger.Error(err, "Error while scraping GetAverageCPUUtilizationByWorkload.")
 		return nil, err
 	}
+	cpuUtilizationQueryLatency := time.Since(utilizationQueryStartTime).Seconds()
+	getAverageCPUUtilizationQueryLatency.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name, workloadMeta.Kind, workloadMeta.Name).Observe(cpuUtilizationQueryLatency)
+
 	if c.metricsTransformer != nil {
 		for _, transformers := range c.metricsTransformer {
 			dataPoints, err = transformers.Transform(start, end, dataPoints)
