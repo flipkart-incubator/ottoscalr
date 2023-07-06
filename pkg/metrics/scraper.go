@@ -6,6 +6,8 @@ import (
 	"github.com/prometheus/client_golang/api"
 	"github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"sort"
+	"sync"
 	"time"
 )
 
@@ -54,6 +56,11 @@ type MetricNameRegistry struct {
 	hpaOwnerInfoMetric    string
 	podCreatedTimeMetric  string
 	podReadyTimeMetric    string
+}
+
+type PrometheusQueryResult struct {
+	result model.Matrix
+	err    error
 }
 
 func (ps *PrometheusScraper) GetACLByWorkload(namespace string, workload string) (time.Duration, error) {
@@ -156,6 +163,9 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 		}
 	}
 
+	sort.SliceStable(dataPoints, func(i, j int) bool {
+		return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
+	})
 	dataPoints = ps.interpolateMissingDataPoints(dataPoints, step)
 	return dataPoints, nil
 }
@@ -233,6 +243,10 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 			dataPoints = append(dataPoints, datapoint)
 		}
 	}
+
+	sort.SliceStable(dataPoints, func(i, j int) bool {
+		return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
+	})
 	return dataPoints, nil
 }
 
@@ -253,33 +267,52 @@ func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
 
 	var resultMatrix model.Matrix
 
+	resultChanLength := int(end.Sub(start).Hours()/rqs.splitInterval.Hours()) + 50 //Added some buffer
+	resultChan := make(chan PrometheusQueryResult, resultChanLength)
+	var wg sync.WaitGroup
+
 	for start.Before(end) {
 		splitEnd := start.Add(rqs.splitInterval)
 		if splitEnd.After(end) {
 			splitEnd = end
 		}
-
 		splitRange := v1.Range{
 			Start: start,
 			End:   splitEnd,
 			Step:  step,
 		}
 
-		partialResult, _, err := rqs.api.QueryRange(ctx, query, splitRange)
-		if err != nil {
-			return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)
-		}
+		wg.Add(1)
+		go func(splitRange v1.Range) {
+			defer wg.Done()
+			partialResult, _, err := rqs.api.QueryRange(ctx, query, splitRange)
+			if err != nil {
+				resultChan <- PrometheusQueryResult{nil, fmt.Errorf("failed to execute Prometheus query: %v", err)}
+				return
+			}
 
-		if partialResult.Type() != model.ValMatrix {
-			return nil, fmt.Errorf("unexpected result type: %v", partialResult.Type())
-		}
+			if partialResult.Type() != model.ValMatrix {
+				resultChan <- PrometheusQueryResult{nil, fmt.Errorf("unexpected result type: %v", partialResult.Type())}
+				return
+			}
 
-		partialMatrix := partialResult.(model.Matrix)
-		resultMatrix = mergeMatrices(resultMatrix, partialMatrix)
+			partialMatrix := partialResult.(model.Matrix)
+			resultChan <- PrometheusQueryResult{partialMatrix, nil}
+
+		}(splitRange)
 
 		start = splitEnd
 	}
 
+	wg.Wait()
+	close(resultChan)
+
+	for p8sQueryResult := range resultChan {
+		if p8sQueryResult.err != nil {
+			return nil, p8sQueryResult.err
+		}
+		resultMatrix = mergeMatrices(resultMatrix, p8sQueryResult.result)
+	}
 	return resultMatrix, nil
 }
 
