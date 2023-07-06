@@ -24,7 +24,6 @@ var unableToRecommendError = errors.New("Unable to generate recommendation witho
 
 const (
 	ScaledObjectField         = "spec.scaleTargetRef.name"
-	CreatedByLabelKey         = "created-by"
 	OttoscalrMaxPodAnnotation = "ottoscalr.io/max-pods"
 )
 
@@ -321,13 +320,8 @@ func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind
 
 	} else {
 		scaledObjects := &kedaapi.ScaledObjectList{}
-		labelSelector, err := labels.Parse(fmt.Sprintf("!%s", CreatedByLabelKey))
-		if err != nil {
-			return 0, fmt.Errorf("unable to parse label selector string: %s", err)
-		}
 		if err := c.k8sClient.List(context.Background(), scaledObjects, &client.ListOptions{
 			FieldSelector: fields.OneTermEqualSelector(ScaledObjectField, objectName),
-			LabelSelector: labelSelector,
 			Namespace:     namespace,
 		}); err != nil && client.IgnoreNotFound(err) != nil {
 			return 0, fmt.Errorf("unable to fetch scaledobjects: %s", err)

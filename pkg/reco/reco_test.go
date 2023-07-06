@@ -612,7 +612,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 						UID:        "d8790740-8b18-4a43-a352-66417f3ca65c",
 					}},
 					Labels: map[string]string{
-						CreatedByLabelKey: "ottoscalr",
+						"created-by": "ottoscalr",
 					},
 				},
 				Spec: kedaapi.ScaledObjectSpec{
@@ -665,10 +665,10 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			Expect(maxReplicas).To(Equal(4))
 		})
 
-		It("should return the spec.replicas if scaledobject is there which is created by ottoscalr hpaEnforcer and no annotation is there", func() {
+		It("should return the scaledobject's maxReplicas if scaledobject is there which is created by ottoscalr hpaEnforcer and no annotation is there", func() {
 			maxReplicas, err := recommender1.getMaxPods(rolloutNamespace, "Rollout", rolloutName1)
 			Expect(err).To(BeNil())
-			Expect(maxReplicas).To(Equal(4))
+			Expect(maxReplicas).To(Equal(10))
 		})
 	})
 
