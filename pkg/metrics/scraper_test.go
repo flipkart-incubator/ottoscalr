@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"math"
@@ -97,7 +98,7 @@ var _ = Describe("PrometheusScraper", func() {
 			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-1").Set(50)
 			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-2").Set(70)
 			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-3").Set(80)
-			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-4").Set(100)
+			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-4").Set(110)
 			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-5").Set(120)
 
 			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
@@ -106,16 +107,28 @@ var _ = Describe("PrometheusScraper", func() {
 			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-workload-3", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-5", "test-workload-3", "deployment").Set(1)
 
+			podCreatedTimeMetric1.WithLabelValues("test-ns-1", "test-pod-1").Set(45)
+			podCreatedTimeMetric1.WithLabelValues("test-ns-1", "test-pod-2").Set(55)
+			podCreatedTimeMetric1.WithLabelValues("test-ns-2", "test-pod-3").Set(65)
+			podCreatedTimeMetric1.WithLabelValues("test-ns-2", "test-pod-4").Set(75)
+			podCreatedTimeMetric1.WithLabelValues("test-ns-2", "test-pod-5").Set(80)
+
+			podReadyTimeMetric1.WithLabelValues("test-ns-1", "test-pod-1").Set(60)
+			podReadyTimeMetric1.WithLabelValues("test-ns-1", "test-pod-2").Set(70)
+			podReadyTimeMetric1.WithLabelValues("test-ns-2", "test-pod-3").Set(80)
+			podReadyTimeMetric1.WithLabelValues("test-ns-2", "test-pod-4").Set(100)
+			podReadyTimeMetric1.WithLabelValues("test-ns-2", "test-pod-5").Set(120)
+
 			//wait for the metric to be scraped - scraping interval is 1s
 			time.Sleep(2 * time.Second)
 
 			autoscalingLag1, err := scraper.GetACLByWorkload("test-ns-1", "test-workload-1")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(autoscalingLag1).To(Equal(time.Duration(40.0 * time.Second)))
+			Expect(autoscalingLag1).To(Equal(45.0 * time.Second))
 
 			autoscalingLag2, err := scraper.GetACLByWorkload("test-ns-2", "test-workload-3")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(autoscalingLag2).To(Equal(time.Duration(55.0 * time.Second)))
+			Expect(autoscalingLag2).To(Equal(65.0 * time.Second))
 		})
 	})
 
@@ -403,6 +416,92 @@ var _ = Describe("PrometheusScraper", func() {
 			}
 		})
 	})
+
+	Context("when querying GetAverageCPUUtilizationByWorkload with two prometheus instances", func() {
+		It("should return correct data points", func() {
+
+			By("creating a metric before queryRange window")
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-1", "test-node-1", "test-container-1").Set(4)
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-2", "test-node-2", "test-container-1").Set(3)
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-3", "test-node-2", "test-container-1").Set(5)
+			cpuUsageMetric.WithLabelValues("test-nsp-2", "test-pod-4", "test-node-4", "test-container-1").Set(20)
+
+			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-1", "test-node-1", "test-container-1").Set(4)
+			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-2", "test-node-2", "test-container-1").Set(3)
+			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-3", "test-node-2", "test-container-1").Set(5)
+			cpuUsageMetric1.WithLabelValues("test-nsp-2", "test-pod-4", "test-node-4", "test-container-1").Set(20)
+
+			kubePodOwnerMetric.WithLabelValues("test-nsp-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-nsp-1", "test-pod-2", "test-workload-1", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-nsp-1", "test-pod-3", "test-workload-2", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-nsp-2", "test-pod-4", "test-workload-3", "deployment").Set(1)
+
+			//wait for the metric to be scraped - scraping interval is 1s
+			time.Sleep(5 * time.Second)
+
+			start := time.Now().Add(1 * time.Second)
+
+			By("creating first metric inside queryRange window")
+
+			kubePodOwnerMetric.WithLabelValues("test-nsp-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-nsp-1", "test-pod-2", "test-workload-1", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-nsp-1", "test-pod-3", "test-workload-2", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-nsp-2", "test-pod-4", "test-workload-3", "deployment").Set(1)
+
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-1", "test-node-1", "test-container-1").Set(12)
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-2", "test-node-2", "test-container-1").Set(14)
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-3", "test-node-2", "test-container-1").Set(3)
+			cpuUsageMetric.WithLabelValues("test-nsp-2", "test-pod-4", "test-node-4", "test-container-1").Set(16)
+
+			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-1", "test-node-1", "test-container-1").Set(12)
+			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-2", "test-node-2", "test-container-1").Set(14)
+			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-3", "test-node-2", "test-container-1").Set(3)
+			cpuUsageMetric1.WithLabelValues("test-nsp-2", "test-pod-4", "test-node-4", "test-container-1").Set(16)
+
+			//wait for the metric to be scraped - scraping interval is 1s
+			time.Sleep(5 * time.Second)
+
+			By("creating second metric inside queryRange window")
+
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-1", "test-node-1", "test-container-1").Set(5)
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-2", "test-node-2", "test-container-1").Set(4)
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-3", "test-node-2", "test-container-1").Set(12)
+			cpuUsageMetric.WithLabelValues("test-nsp-2", "test-pod-4", "test-node-4", "test-container-1").Set(15)
+
+			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-1", "test-node-1", "test-container-1").Set(5)
+			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-2", "test-node-2", "test-container-1").Set(5)
+			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-3", "test-node-2", "test-container-1").Set(12)
+			cpuUsageMetric1.WithLabelValues("test-nsp-2", "test-pod-4", "test-node-4", "test-container-1").Set(15)
+
+			//wait for the metric to be scraped - scraping interval is 1s
+			time.Sleep(5 * time.Second)
+
+			// data points after this should be outside the query range
+			end := time.Now()
+
+			By("creating metric after queryRange window")
+
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-1", "test-node-1", "test-container-1").Set(23)
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-2", "test-node-2", "test-container-1").Set(12)
+			cpuUsageMetric.WithLabelValues("test-nsp-1", "test-pod-3", "test-node-2", "test-container-1").Set(12)
+			cpuUsageMetric.WithLabelValues("test-nsp-2", "test-pod-4", "test-node-4", "test-container-1").Set(15)
+
+			//wait for the metric to be scraped - scraping interval is 1s
+			time.Sleep(5 * time.Second)
+
+			dataPoints, err := scraper.GetAverageCPUUtilizationByWorkload("test-nsp-1",
+				"test-workload-1", start, end, time.Second)
+			fmt.Println(dataPoints)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dataPoints).ToNot(BeEmpty())
+
+			//since metrics could have been scraped multiple times, we just check the first and last value
+			Expect(len(dataPoints) >= 2).To(BeTrue())
+
+			Expect(dataPoints[0].Value).To(Equal(26.0))
+			Expect(dataPoints[len(dataPoints)-1].Value).To(Equal(10.0))
+		})
+	})
 })
 
 var _ = Describe("mergeMatrices", func() {
@@ -479,9 +578,9 @@ var _ = Describe("RangeQuerySplitter", func() {
 			},
 		}
 
-		splitter := NewRangeQuerySplitter(mockApi, splitDuration)
+		splitter := NewRangeQuerySplitter(splitDuration)
 
-		result, err := splitter.QueryRangeByInterval(context.TODO(), query, start, end, step)
+		result, err := splitter.QueryRangeByInterval(context.TODO(), mockApi, query, start, end, step)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.Type()).To(Equal(model.ValMatrix))
 
@@ -517,5 +616,52 @@ var _ = Describe("interpolateMissingDataPoints", func() {
 		Expect(dataPoints[8].Value).To(Equal(70.0))
 		Expect(math.Floor(dataPoints[15].Value*100) / 100).To(Equal(37.14))
 		Expect(math.Floor(dataPoints[20].Value*100) / 100).To(Equal(72.85))
+	})
+})
+
+var _ = Describe("aggregateMetrics", func() {
+	It("should aggregate the metrics from different sources", func() {
+		time1 := time.Now().Add(-30 * time.Minute)
+		time2 := time.Now().Add(-29 * time.Minute)
+		time3 := time.Now().Add(-28 * time.Minute)
+		time4 := time.Now().Add(-27 * time.Minute)
+		time5 := time.Now().Add(-26 * time.Minute)
+		time6 := time.Now().Add(-25 * time.Minute)
+		time7 := time.Now().Add(-24 * time.Minute)
+		time8 := time.Now().Add(-20 * time.Minute)
+		time9 := time.Now().Add(-19 * time.Minute)
+		time10 := time.Now().Add(-18 * time.Minute)
+		time11 := time.Now().Add(-17 * time.Minute)
+		time12 := time.Now().Add(-16 * time.Minute)
+		dataPoints1 := []DataPoint{
+			{Timestamp: time1, Value: 60},
+			{Timestamp: time2, Value: 80},
+			{Timestamp: time3, Value: 100},
+			{Timestamp: time4, Value: 50},
+			{Timestamp: time5, Value: 30},
+			{Timestamp: time6, Value: 60},
+			{Timestamp: time7, Value: 80},
+			{Timestamp: time8, Value: 60},
+			{Timestamp: time10, Value: 80},
+			{Timestamp: time11, Value: 100},
+		}
+		dataPoints2 := []DataPoint{
+			{Timestamp: time1, Value: 30},
+			{Timestamp: time2, Value: 80},
+			{Timestamp: time3, Value: 100},
+			{Timestamp: time5, Value: 30},
+			{Timestamp: time6, Value: 60},
+			{Timestamp: time7, Value: 100},
+			{Timestamp: time9, Value: 80},
+			{Timestamp: time10, Value: 80},
+			{Timestamp: time11, Value: 100},
+			{Timestamp: time12, Value: 100},
+		}
+		dataPoints := aggregateMetrics(dataPoints1, dataPoints2)
+		fmt.Println(dataPoints)
+		Expect(len(dataPoints)).To(Equal(12))
+		Expect(dataPoints[0].Value).To(Equal(60.0))
+		Expect(dataPoints[6].Value).To(Equal(100.0))
+		Expect(dataPoints[11].Value).To(Equal(100.0))
 	})
 })
