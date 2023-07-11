@@ -54,10 +54,14 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+PROMETHEUS_INSTANCES := prometheus-1 prometheus-2
 .PHONY: test
 test: prometheus manifests generate fmt vet envtest ## Run tests with Prometheus.
 	@echo "Starting Prometheus for testing..."
-	@$(PROMETHEUS) --config.file=pkg/testconfig/prometheus.yml & \
+	$(PROMETHEUS) --config.file=pkg/testconfig/prometheus-1.yml & \
+	echo "Started Prometheus instance: prometheus-1"; \
+	$(PROMETHEUS) --config.file=pkg/testconfig/prometheus-2.yml --web.listen-address=0.0.0.0:8080 --storage.tsdb.path=./data1 & \
+	echo "Started Prometheus instance: prometheus-2"; \
 	trap 'killall prometheus; rm -rf data' EXIT; \
     KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" ginkgo run --cover --coverprofile cover.out ${OTTOSCALR_TEST_ARGS} --procs 1 --nodes 1 -v --output-interceptor-mode=none ./...
 
@@ -169,9 +173,12 @@ PROMETHEUS_URL = https://github.com/prometheus/prometheus/releases/download/v$(P
 .PHONY: prometheus
 prometheus: $(PROMETHEUS) ## Download Prometheus locally if necessary.
 $(PROMETHEUS): $(LOCALBIN)
+    $(shell mkdir -p /data1)
 	@if [ ! -s $(PROMETHEUS) ]; then \
 		mkdir -p $(PROMETHEUS_DIR) && \
 		curl -L -o prometheus.tar.gz $(PROMETHEUS_URL) && \
 		tar -zxvf prometheus.tar.gz -C $(PROMETHEUS_DIR) --strip-components=1 prometheus-$(PROMETHEUS_VERSION).$(shell uname -s| tr '[:upper:]' '[:lower:]')-amd64/prometheus && \
 		rm prometheus.tar.gz; \
 	fi
+
+
