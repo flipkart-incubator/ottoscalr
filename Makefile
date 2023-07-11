@@ -63,7 +63,7 @@ test: prometheus manifests generate fmt vet envtest ## Run tests with Prometheus
 	$(PROMETHEUS) --config.file=pkg/testconfig/prometheus-2.yml --web.listen-address=0.0.0.0:8080 --storage.tsdb.path=./data1 & \
 	echo "Started Prometheus instance: prometheus-2"; \
 	trap 'killall prometheus; rm -rf data; rm -rf data1' EXIT; \
-    KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" ginkgo run --cover --coverprofile cover.out ${OTTOSCALR_TEST_ARGS} --procs 1 --nodes 1 -v --output-interceptor-mode=none ./pkg/metrics
+    KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" ginkgo run --cover --coverprofile cover.out ${OTTOSCALR_TEST_ARGS} --procs 1 --nodes 1 -v --output-interceptor-mode=none ./...
 
 #	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -p=1 ./...  -coverprofile cover.out -test.v --ginkgo.vv
 
