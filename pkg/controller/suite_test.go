@@ -22,6 +22,7 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
+	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
@@ -51,10 +52,14 @@ var (
 	ctx       context.Context
 	cancel    context.CancelFunc
 
-	queuedAllRecos     = false
-	recommender        *MockRecommender
-	excludedNamespaces []string
-	includedNamespaces []string
+	queuedAllRecos                = false
+	recommender                   *MockRecommender
+	excludedNamespaces            []string
+	includedNamespaces            []string
+	hpaEnforcerExcludedNamespaces *[]string
+	hpaEnforcerIncludedNamespaces *[]string
+	hpaEnforcerIsDryRun           *bool
+	whitelistMode                 *bool
 )
 
 const policyAge = 1 * time.Second
@@ -82,6 +87,8 @@ var _ = BeforeSuite(func() {
 	err = ottoscaleriov1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
+	err = kedaapi.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 	//+kubebuilder:scaffold:Scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
@@ -124,6 +131,21 @@ var _ = BeforeSuite(func() {
 		reco.NewAgingPolicyIterator(k8sManager.GetClient(), policyAge))
 	Expect(err).NotTo(HaveOccurred())
 	err = policyRecoReconciler.
+		SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	hpaEnforcerIsDryRun = new(bool)
+	whitelistMode = new(bool)
+
+	hpaEnforcerExcludedNamespaces = new([]string)
+	hpaEnforcerIncludedNamespaces = new([]string)
+	*hpaEnforcerIsDryRun = falseBool
+	*whitelistMode = falseBool
+	hpaenforcer, err := NewHPAEnforcementController(k8sManager.GetClient(),
+		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName),
+		1, hpaEnforcerIsDryRun, hpaEnforcerExcludedNamespaces, hpaEnforcerIncludedNamespaces, whitelistMode)
+	Expect(err).NotTo(HaveOccurred())
+	err = hpaenforcer.
 		SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

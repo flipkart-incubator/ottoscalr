@@ -45,8 +45,6 @@ const (
 )
 
 var (
-	falseBool        = false
-	trueBool         = true
 	reconcileCounter = promauto.NewCounterVec(
 		prometheus.CounterOpts{Name: "policyreco_reconciled_count",
 			Help: "Number of policyrecos reconciled counter"}, []string{"namespace", "policyreco"},
