@@ -83,13 +83,14 @@ type EventCalendarDataFetcher struct {
 	EventAPIEndpoint   string
 	EventCache         []EventDetails
 	EventFetchDuration time.Duration
+	EventScaleUpBuffer time.Duration
 	logger             logr.Logger
 	lock               sync.RWMutex
 	ctx                context.Context
 	Cancel             context.CancelFunc
 }
 
-func NewEventCalendarDataFetcher(eventAPIEndpoint string, eventFetchDuration time.Duration, logger logr.Logger) (*EventCalendarDataFetcher, error) {
+func NewEventCalendarDataFetcher(eventAPIEndpoint string, eventFetchDuration time.Duration, eventScaleUpBuffer time.Duration, logger logr.Logger) (*EventCalendarDataFetcher, error) {
 	retryClient := retryablehttp.NewClient()
 	retryClient.RetryMax = 10
 
@@ -101,6 +102,7 @@ func NewEventCalendarDataFetcher(eventAPIEndpoint string, eventFetchDuration tim
 		EventAPIEndpoint:   eventAPIEndpoint,
 		EventCache:         nil,
 		EventFetchDuration: eventFetchDuration,
+		EventScaleUpBuffer: eventScaleUpBuffer,
 		logger:             logger,
 		lock:               sync.RWMutex{},
 		ctx:                ctx,
@@ -175,11 +177,12 @@ func (ec *EventCalendarDataFetcher) populateEventCache(startTime time.Time, endT
 		eventDetail := EventDetails{
 			EventName: events.EventName,
 			EventId:   events.EventId,
-			StartTime: start,
+			StartTime: start.Add(-ec.EventScaleUpBuffer),
 			EndTime:   end,
 		}
 		eventDetails = append(eventDetails, eventDetail)
 	}
+	ec.logger.Info("List of outlier event intervals", "events", eventDetails)
 	ec.lock.Lock()
 	defer ec.lock.Unlock()
 	ec.EventCache = eventDetails

@@ -83,7 +83,7 @@ var _ = Describe("GetDesiredEvents", func() {
 		}))
 		defer server3.Close()
 
-		nfrEventIntegration, _ = NewNFREventDataFetcher(server2.URL, server3.URL, 2*time.Second, logger)
+		nfrEventIntegration, _ = NewNFREventDataFetcher(server2.URL, server3.URL, 2*time.Second, 0*time.Second, logger)
 		time.Sleep(2 * time.Second)
 
 		events, err := nfrEventIntegration.GetDesiredEvents(time1, time2)
