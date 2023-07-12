@@ -48,7 +48,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
