@@ -3,13 +3,49 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/api"
 	"github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"math"
+	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sort"
 	"sync"
 	"time"
 )
+
+const (
+	CPUUtilizationDataPointsQuery = "cpuUtilizationDataPointsQuery"
+	BreachDataPointsQuery         = "breachDataPointsQuery"
+)
+
+var (
+	prometheusQueryLatency = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{Name: "prometheus_scraper_query_latency",
+			Help: "Time to execute prometheus scraper query in seconds"}, []string{"namespace", "query", "instance", "workload"},
+	)
+
+	dataPointsFetched = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "datapoints_fetched_by_p8s_instance",
+			Help: "Number of Datapoints fetched by quering p8s instance"}, []string{"namespace", "query", "instance", "workload"},
+	)
+
+	totalDataPointsFetched = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "total_datapoints_fetched",
+			Help: "Total Number of Datapoints fetched by quering p8s instances"}, []string{"namespace", "query", "workload"},
+	)
+
+	p8sInstanceQueried = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "p8s_instance_queried",
+			Help: "Number of P8s instances which returned datapoints"}, []string{"namespace", "query", "instance", "workload"},
+	)
+)
+
+func init() {
+	p8smetrics.Registry.MustRegister(prometheusQueryLatency, dataPointsFetched, totalDataPointsFetched, p8sInstanceQueried)
+}
 
 type DataPoint struct {
 	Timestamp time.Time
@@ -38,12 +74,13 @@ type Scraper interface {
 
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
 type PrometheusScraper struct {
-	api                 v1.API
+	api                 []PrometheusInstance
 	metricRegistry      *MetricNameRegistry
 	queryTimeout        time.Duration
 	rangeQuerySplitter  *RangeQuerySplitter
 	metricIngestionTime float64
 	metricProbeTime     float64
+	logger              logr.Logger
 }
 
 type MetricNameRegistry struct {
@@ -95,29 +132,44 @@ func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
 	}
 }
 
+type PrometheusInstance struct {
+	apiUrl  v1.API
+	address string
+}
+
 // NewPrometheusScraper returns a new PrometheusScraper instance.
 
-func NewPrometheusScraper(apiURL string,
+func NewPrometheusScraper(apiUrls []string,
 	timeout time.Duration,
 	splitInterval time.Duration,
 	metricIngestionTime float64,
-	metricProbeTime float64) (*PrometheusScraper, error) {
+	metricProbeTime float64,
+	logger logr.Logger) (*PrometheusScraper, error) {
 
-	client, err := api.NewClient(api.Config{
-		Address: apiURL,
-	})
+	var prometheusInstances []PrometheusInstance
+	for _, pi := range apiUrls {
+		logger.Info("prometheus instance ", "endpoint", pi)
+		client, err := api.NewClient(api.Config{
+			Address: pi,
+		})
 
-	if err != nil {
-		return nil, fmt.Errorf("error creating Prometheus client: %v", err)
+		if err != nil {
+			return nil, fmt.Errorf("error creating Prometheus client: %v", err)
+		}
+
+		prometheusInstances = append(prometheusInstances, PrometheusInstance{
+			apiUrl:  v1.NewAPI(client),
+			address: pi,
+		})
 	}
 
-	v1Api := v1.NewAPI(client)
-	return &PrometheusScraper{api: v1Api,
+	return &PrometheusScraper{api: prometheusInstances,
 		metricRegistry:      NewKubePrometheusMetricNameRegistry(),
 		queryTimeout:        timeout,
-		rangeQuerySplitter:  NewRangeQuerySplitter(v1Api, splitInterval),
+		rangeQuerySplitter:  NewRangeQuerySplitter(splitInterval),
 		metricProbeTime:     metricProbeTime,
-		metricIngestionTime: metricIngestionTime}, nil
+		metricIngestionTime: metricIngestionTime,
+		logger:              logger}, nil
 }
 
 // GetAverageCPUUtilizationByWorkload returns the average CPU utilization for the given workload type and name in the
@@ -141,33 +193,87 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 		namespace,
 		workload)
 
-	result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, query, start, end, step)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)
+	var totalDataPoints []DataPoint
+	p8sSuccessfullyQueried := 0
+	if ps.api == nil {
+		return nil, fmt.Errorf("no apiurl for executing prometheus query")
 	}
-	if result.Type() != model.ValMatrix {
-		return nil, fmt.Errorf("unexpected result type: %v", result.Type())
-	}
+	for _, pi := range ps.api {
+		p8sQueryStartTime := time.Now()
+		result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi.apiUrl, query, start, end, step)
 
-	matrix := result.(model.Matrix)
-	if len(matrix) != 1 {
-		return nil, fmt.Errorf("unexpected no of time series: %v", len(matrix))
-	}
+		if err != nil {
+			ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
+			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, -1, 0)
+			continue
+		}
+		if result.Type() != model.ValMatrix {
+			ps.logger.Error(fmt.Errorf("unexpected result type: %v", result.Type()), "Result Type Error", "Instance", pi.address)
+			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, -1, 1)
+			continue
+		}
 
-	var dataPoints []DataPoint
-	for _, sample := range matrix[0].Values {
-		datapoint := DataPoint{sample.Timestamp.Time(), float64(sample.Value)}
-		if !sample.Timestamp.Time().IsZero() {
-			dataPoints = append(dataPoints, datapoint)
+		matrix := result.(model.Matrix)
+		p8sSuccessfullyQueried++
+		if len(matrix) != 1 {
+			ps.logger.Error(fmt.Errorf("unexpected no of time series: %v", len(matrix)), "Zero Datapoints Error", "Instance", pi.address)
+			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, 0, 1)
+			continue
+		}
+		var dataPoints []DataPoint
+		for _, sample := range matrix[0].Values {
+			datapoint := DataPoint{sample.Timestamp.Time(), float64(sample.Value)}
+			if !sample.Timestamp.Time().IsZero() {
+				dataPoints = append(dataPoints, datapoint)
+			}
+		}
+		logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, len(dataPoints), 1)
+
+		sort.SliceStable(dataPoints, func(i, j int) bool {
+			return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
+		})
+		totalDataPoints = aggregateMetrics(totalDataPoints, dataPoints)
+	}
+	totalDataPointsFetched.WithLabelValues(namespace, CPUUtilizationDataPointsQuery, workload).Set(float64(len(totalDataPoints)))
+	if totalDataPoints == nil {
+		return nil, fmt.Errorf("unable to getCPUUtlizationDataPoints metrics from any of the prometheus instances")
+	}
+	totalDataPoints = ps.interpolateMissingDataPoints(totalDataPoints, step)
+	return totalDataPoints, nil
+}
+
+func aggregateMetrics(dataPoints1 []DataPoint, dataPoints2 []DataPoint) []DataPoint {
+	var mergedDatapoints []DataPoint
+	index1, index2 := 0, 0
+
+	for index1 < len(dataPoints1) && index2 < len(dataPoints2) {
+		dp1 := dataPoints1[index1]
+		dp2 := dataPoints2[index2]
+
+		if dp1.Timestamp.Before(dp2.Timestamp) {
+			mergedDatapoints = append(mergedDatapoints, dp1)
+			index1++
+		} else if dp2.Timestamp.Before(dp1.Timestamp) {
+			mergedDatapoints = append(mergedDatapoints, dp2)
+			index2++
+		} else {
+			mergedDatapoints = append(mergedDatapoints, DataPoint{
+				Timestamp: dp1.Timestamp,
+				Value:     math.Max(dp1.Value, dp2.Value),
+			})
+			index1++
+			index2++
 		}
 	}
+	if index1 < len(dataPoints1) {
+		mergedDatapoints = append(mergedDatapoints, dataPoints1[index1:]...)
+	}
 
-	sort.SliceStable(dataPoints, func(i, j int) bool {
-		return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
-	})
-	dataPoints = ps.interpolateMissingDataPoints(dataPoints, step)
-	return dataPoints, nil
+	if index2 < len(dataPoints2) {
+		mergedDatapoints = append(mergedDatapoints, dataPoints2[index2:]...)
+	}
+
+	return mergedDatapoints
 }
 
 // GetCPUUtilizationBreachDataPoints returns the data points where avg CPU utilization for a workload goes above the
@@ -222,45 +328,63 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		workloadType,
 		workload)
 
-	result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, query, start, end, step)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute Prometheus query: %v", err)
+	var totalDataPoints []DataPoint
+	p8sSuccessfullyQueried := 0
+	if ps.api == nil {
+		return nil, fmt.Errorf("no apiurl for executing prometheus query")
 	}
-	if result.Type() != model.ValMatrix {
-		return nil, fmt.Errorf("unexpected result type: %v", result.Type())
+	for _, pi := range ps.api {
+		p8sQueryStartTime := time.Now()
+		result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi.apiUrl, query, start, end, step)
+		if err != nil {
+			ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
+			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1, 0)
+			continue
+		}
+		if result.Type() != model.ValMatrix {
+			ps.logger.Error(fmt.Errorf("unexpected result type: %v", result.Type()), "Result Type Error", "Instance", pi.address)
+			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1, 1)
+			continue
+		}
+		matrix := result.(model.Matrix)
+		p8sSuccessfullyQueried++
+		if len(matrix) != 1 {
+			// if no datapoints are returned which satisfy the query it can be considered that there's no breach to redLineUtilization
+			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, 0, 1)
+			continue
+		}
+		var dataPoints []DataPoint
+		for _, sample := range matrix[0].Values {
+			datapoint := DataPoint{sample.Timestamp.Time(), float64(sample.Value)}
+			if !sample.Timestamp.Time().IsZero() {
+				dataPoints = append(dataPoints, datapoint)
+			}
+		}
+		logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, len(dataPoints), 1)
+		sort.SliceStable(dataPoints, func(i, j int) bool {
+			return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
+		})
+		totalDataPoints = aggregateMetrics(totalDataPoints, dataPoints)
 	}
-	matrix := result.(model.Matrix)
-
-	if len(matrix) != 1 {
+	totalDataPointsFetched.WithLabelValues(namespace, BreachDataPointsQuery, workload).Set(float64(len(totalDataPoints)))
+	if totalDataPoints == nil {
 		// if no datapoints are returned which satisfy the query it can be considered that there's no breach to redLineUtilization
 		return nil, nil
 	}
-
-	var dataPoints []DataPoint
-	for _, sample := range matrix[0].Values {
-		datapoint := DataPoint{sample.Timestamp.Time(), float64(sample.Value)}
-		if !sample.Timestamp.Time().IsZero() {
-			dataPoints = append(dataPoints, datapoint)
-		}
-	}
-
-	sort.SliceStable(dataPoints, func(i, j int) bool {
-		return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
-	})
-	return dataPoints, nil
+	return totalDataPoints, nil
 }
 
 // RangeQuerySplitter splits a given queryRange into multiple range queries of width splitInterval. This is done to
 // avoid loading too many samples into P8s memory.
 type RangeQuerySplitter struct {
-	api           v1.API
 	splitInterval time.Duration
 }
 
-func NewRangeQuerySplitter(api v1.API, splitInterval time.Duration) *RangeQuerySplitter {
-	return &RangeQuerySplitter{api: api, splitInterval: splitInterval}
+func NewRangeQuerySplitter(splitInterval time.Duration) *RangeQuerySplitter {
+	return &RangeQuerySplitter{splitInterval: splitInterval}
 }
 func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
+	api v1.API,
 	query string,
 	start, end time.Time,
 	step time.Duration) (model.Value, error) {
@@ -285,7 +409,7 @@ func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
 		wg.Add(1)
 		go func(splitRange v1.Range) {
 			defer wg.Done()
-			partialResult, _, err := rqs.api.QueryRange(ctx, query, splitRange)
+			partialResult, _, err := api.QueryRange(ctx, query, splitRange)
 			if err != nil {
 				resultChan <- PrometheusQueryResult{nil, fmt.Errorf("failed to execute Prometheus query: %v", err)}
 				return
@@ -355,22 +479,33 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 		namespace,
 		workload)
 
-	result, _, err := ps.api.Query(ctx, query, time.Now())
-
-	if err != nil {
-		return 0.0, fmt.Errorf("failed to execute Prometheus query: %v", err)
+	podBootstrapTime := 0.0
+	if ps.api == nil {
+		return 0.0, fmt.Errorf("no apiurl for executing prometheus query")
 	}
-	if result.Type() != model.ValVector {
-		return 0.0, fmt.Errorf("unexpected result type: %v", result.Type())
+	for _, pi := range ps.api {
+		result, _, err := pi.apiUrl.Query(ctx, query, time.Now())
+
+		if err != nil {
+			ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
+			continue
+		}
+		if result.Type() != model.ValVector {
+			ps.logger.Error(fmt.Errorf("unexpected result type: %v", result.Type()), "Result Type Error", "Instance", pi.address)
+			continue
+		}
+
+		matrix := result.(model.Vector)
+		if len(matrix) != 1 {
+			ps.logger.Error(fmt.Errorf("unexpected no of time series: %v", len(matrix)), "Zero Datapoints Error", "Instance", pi.address)
+			continue
+		}
+
+		podBootstrapTime = math.Max(podBootstrapTime, float64(matrix[0].Value))
 	}
-	matrix := result.(model.Vector)
-
-	if len(matrix) != 1 {
-		return 0.0, fmt.Errorf("unexpected no of time series: %v", len(matrix))
+	if podBootstrapTime == 0.0 {
+		return 0.0, fmt.Errorf("unable to getPodReadyLatency metrics from any of the prometheus instances")
 	}
-
-	podBootstrapTime := float64(matrix[0].Value)
-
 	return podBootstrapTime, nil
 }
 
@@ -403,4 +538,11 @@ func (ps *PrometheusScraper) interpolateMissingDataPoints(dataPoints []DataPoint
 	}
 
 	return interpolatedData
+}
+
+func logP8sMetrics(p8sQueryStartTime time.Time, namespace string, query string, address string, workload string, dataPointsLength int, p8sInstanceSuccessfullyQueried int) {
+	p8sQueryLatency := time.Since(p8sQueryStartTime).Seconds()
+	prometheusQueryLatency.WithLabelValues(namespace, query, address, workload).Observe(p8sQueryLatency)
+	dataPointsFetched.WithLabelValues(namespace, query, address, workload).Set(float64(dataPointsLength))
+	p8sInstanceQueried.WithLabelValues(namespace, query, address, workload).Set(float64(p8sInstanceSuccessfullyQueried))
 }

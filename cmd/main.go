@@ -109,10 +109,11 @@ type Config struct {
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
 	EventCallIntegration     struct {
-		EventCalendarAPIEndpoint      string `yaml:"eventCalendarAPIEndpoint"`
-		NfrEventCompletedAPIEndpoint  string `yaml:"nfrEventCompletedAPIEndpoint"`
-		NfrEventInProgressAPIEndpoint string `yaml:"nfrEventInProgressAPIEndpoint"`
-		EventFetchWindowInHours       int    `yaml:"eventFetchWindowInHours"`
+		EventCalendarAPIEndpoint        string `yaml:"eventCalendarAPIEndpoint"`
+		NfrEventCompletedAPIEndpoint    string `yaml:"nfrEventCompletedAPIEndpoint"`
+		NfrEventInProgressAPIEndpoint   string `yaml:"nfrEventInProgressAPIEndpoint"`
+		EventFetchWindowInHours         int    `yaml:"eventFetchWindowInHours"`
+		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
 	} `yaml:"eventCallIntegration"`
 }
 
@@ -176,11 +177,14 @@ func main() {
 		agingPolicyTTL = 48 * time.Hour
 	}
 
-	scraper, err := metrics.NewPrometheusScraper(config.MetricsScraper.PrometheusUrl,
+	prometheusInstances := parseCommaSeparatedValues(config.MetricsScraper.PrometheusUrl)
+
+	scraper, err := metrics.NewPrometheusScraper(prometheusInstances,
 		time.Duration(config.MetricsScraper.QueryTimeoutSec)*time.Second,
 		time.Duration(config.MetricsScraper.QuerySplitIntervalHr)*time.Hour,
 		config.MetricIngestionTime,
 		config.MetricProbeTime,
+		logger,
 	)
 	if err != nil {
 		setupLog.Error(err, "unable to start prometheus scraper")
@@ -189,7 +193,8 @@ func main() {
 
 	var eventIntegrations []integration.EventIntegration
 	eventCalendarIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint,
-		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour, logger)
+		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour,
+		time.Duration(config.EventCallIntegration.EventScaleUpBufferPeriodInHours)*time.Hour, logger)
 
 	if err != nil {
 		setupLog.Error(err, "unable to start event calendar data fetcher")
@@ -198,7 +203,8 @@ func main() {
 
 	nfrEventIntegration, err := integration.NewNFREventDataFetcher(config.EventCallIntegration.NfrEventCompletedAPIEndpoint,
 		config.EventCallIntegration.NfrEventInProgressAPIEndpoint,
-		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour, logger)
+		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour,
+		time.Duration(config.EventCallIntegration.EventScaleUpBufferPeriodInHours)*time.Hour, logger)
 
 	if err != nil {
 		setupLog.Error(err, "unable to start nfr event data fetcher")
@@ -261,8 +267,8 @@ func main() {
 		config.BreachMonitor.CpuRedLine,
 		logger)
 
-	excludedNamespaces := parseNamespaces(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
-	includedNamespaces := parseNamespaces(config.PolicyRecommendationRegistrar.IncludedNamespaces)
+	excludedNamespaces := parseCommaSeparatedValues(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
+	includedNamespaces := parseCommaSeparatedValues(config.PolicyRecommendationRegistrar.IncludedNamespaces)
 
 	policyStore := policy.NewPolicyStore(mgr.GetClient())
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
@@ -320,14 +326,14 @@ func main() {
 	}()
 }
 
-func parseNamespaces(namespaces string) []string {
-	if namespaces == "" {
+func parseCommaSeparatedValues(givenConfig string) []string {
+	if givenConfig == "" {
 		return nil
 	}
-	splitNamespaces := strings.Split(namespaces, ",")
-	var namespaceList []string
-	for _, namespace := range splitNamespaces {
-		namespaceList = append(namespaceList, strings.TrimSpace(namespace))
+	splitValues := strings.Split(givenConfig, ",")
+	var parsedValues []string
+	for _, namespace := range splitValues {
+		parsedValues = append(parsedValues, strings.TrimSpace(namespace))
 	}
-	return namespaceList
+	return parsedValues
 }

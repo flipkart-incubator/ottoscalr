@@ -32,13 +32,15 @@ type NFREventDataFetcher struct {
 	NFREventInProgressAPIEndpoint string
 	NFREventCache                 []EventDetails
 	NFREventFetchDuration         time.Duration
+	NFREventScaleUpBuffer         time.Duration
 	logger                        logr.Logger
 	lock                          sync.RWMutex
 	ctx                           context.Context
 	Cancel                        context.CancelFunc
 }
 
-func NewNFREventDataFetcher(nfrEventCompletedAPIEndpoint string, nfrEventInProgressAPIEndpoint string, nfrEventFetchDuration time.Duration, logger logr.Logger) (*NFREventDataFetcher, error) {
+func NewNFREventDataFetcher(nfrEventCompletedAPIEndpoint string, nfrEventInProgressAPIEndpoint string, nfrEventFetchDuration time.Duration,
+	nfrEventScaleUpBuffer time.Duration, logger logr.Logger) (*NFREventDataFetcher, error) {
 	retryClient := retryablehttp.NewClient()
 	retryClient.RetryMax = 10
 
@@ -51,6 +53,7 @@ func NewNFREventDataFetcher(nfrEventCompletedAPIEndpoint string, nfrEventInProgr
 		NFREventInProgressAPIEndpoint: nfrEventInProgressAPIEndpoint,
 		NFREventCache:                 nil,
 		NFREventFetchDuration:         nfrEventFetchDuration,
+		NFREventScaleUpBuffer:         nfrEventScaleUpBuffer,
 		logger:                        logger,
 		lock:                          sync.RWMutex{},
 		ctx:                           ctx,
@@ -145,11 +148,12 @@ func (ne *NFREventDataFetcher) getNFREvents(apiEndpoint string, startTime time.T
 		eventDetail := EventDetails{
 			EventName: "nfr",
 			EventId:   events.EventKey,
-			StartTime: start,
+			StartTime: start.Add(-ne.NFREventScaleUpBuffer),
 			EndTime:   end,
 		}
 		eventDetails = append(eventDetails, eventDetail)
 	}
+	ne.logger.Info("List of outlier event intervals", "events", eventDetails)
 	return eventDetails, nil
 }
 
