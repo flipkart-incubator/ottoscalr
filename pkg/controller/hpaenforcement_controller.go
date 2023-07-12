@@ -23,7 +23,8 @@ import (
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/go-logr/logr"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
-	v1 "k8s.io/api/apps/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -117,11 +118,11 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 
 	policyreco := v1alpha1.PolicyRecommendation{}
 	if err := r.Get(ctx, req.NamespacedName, &policyreco); err != nil {
-		logger.V(0).Info("Error fetching PolicyRecommendation resource.")
+		logger.V(0).Error(err, "Error fetching PolicyRecommendation resource.")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if !isInitialized(policyreco.Status.Conditions) {
+	if !isInitialized(policyreco.Status.Conditions) || !isRecoGenerated(policyreco.Status.Conditions) {
 		logger.V(0).Info("Skipping policy enforcement as the policy recommendation is not initialized.")
 		return ctrl.Result{}, nil
 	}
@@ -130,7 +131,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 	if policyreco.Spec.WorkloadMeta.Kind == "Rollout" {
 		workload = &argov1alpha1.Rollout{}
 	} else if policyreco.Spec.WorkloadMeta.Kind == "Deployment" || policyreco.Spec.WorkloadMeta.Kind == "" {
-		workload = &v1.Deployment{}
+		workload = &appsv1.Deployment{}
 	} else {
 		logger.V(0).Info("Skipping policy enforcement due to unrecognizable target workload meta.")
 		return ctrl.Result{}, nil
@@ -176,7 +177,6 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		if err := r.deleteControllerManagedScaledObject(ctx, policyreco, workload, logger); err != nil {
 			return ctrl.Result{}, err
 		}
-
 		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.HPAEnforced, metav1.ConditionFalse, InvalidPolicyRecoReason, InvalidPolicyRecoMessage)
 		if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(HPAEnforcementCtrlName)); err != nil {
 			logger.Error(err, "Error updating the status of the policy reco object")
@@ -420,7 +420,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 				if err := r.List(context.Background(), policyRecos, &client.ListOptions{
 					FieldSelector: fields.OneTermEqualSelector(policyRecoOwnerField, owner.Name),
 					Namespace:     scaledObject.GetNamespace(),
-				}); err != nil && client.IgnoreNotFound(err) != nil {
+				}); err != nil {
 					return nil
 				}
 				requests := make([]reconcile.Request, 1)
@@ -440,16 +440,19 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	policyrecoEnqueueFunc := func(obj client.Object) []reconcile.Request {
+		mgr.GetLogger().Info("Updates to workload received.", "object", obj)
 		if obj.GetObjectKind().GroupVersionKind().Kind == "Deployment" || obj.GetObjectKind().GroupVersionKind().Kind == "Rollout" {
 			policyRecos := &v1alpha1.PolicyRecommendationList{}
 			if err := r.List(context.Background(), policyRecos, &client.ListOptions{
 				FieldSelector: fields.OneTermEqualSelector(policyRecoOwnerField, obj.GetName()),
 				Namespace:     obj.GetNamespace(),
 			}); err != nil && client.IgnoreNotFound(err) != nil {
+				mgr.GetLogger().Error(err, "Error fetching the policy recommendations list given the workload.")
 				return nil
 			}
 			var requests []reconcile.Request
 			for _, policyReco := range policyRecos.Items {
+				mgr.GetLogger().Info("Queueing policreco request", "policyreco", policyReco.TypeMeta.String())
 				requests = append(requests, reconcile.Request{
 					NamespacedName: types.NamespacedName{
 						Namespace: policyReco.Namespace,
@@ -476,14 +479,14 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(deletePredicate),
 		).
 		Watches(
-			&source.Kind{Type: &v1.Deployment{}},
+			&source.Kind{Type: &appsv1.Deployment{}},
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
-			builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})),
+			builder.WithPredicates(predicate.And(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{}), namespaceFilter)),
 		).
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
-			builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})),
+			builder.WithPredicates(predicate.And(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{}), namespaceFilter)),
 		).
 		WithEventFilter(namespaceFilter).
 		Complete(r)
@@ -530,37 +533,50 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 	if len(scaledObjects.Items) == 0 {
 		return nil
 	}
-	
+	logger.V(0).Info(fmt.Sprintf("Found %d scaledobject(s) for policyreco %s.", len(scaledObjects.Items), policyreco.Name))
+	logger.V(0).Info("Deleting the ScaledObject and resetting workload spec.replicas")
 	var maxPods int32
 	for _, scaledObject := range scaledObjects.Items {
 		maxPods = *scaledObject.Spec.MaxReplicaCount
-		r.Delete(ctx, &scaledObject)
-		logger.V(0).Info("Deleted ScaledObject for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "scaledobject.name", scaledObject.Name, "scaledobject.namespace", scaledObject.Namespace)
+		err := r.Delete(ctx, &scaledObject)
+		if err != nil {
+			logger.V(0).Error(err, "Error while deleting the scaledobject", "scaledobject", scaledObject)
+			return client.IgnoreNotFound(err)
+		}
+		logger.V(0).Info("Deleted ScaledObject for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "scaledobject.name", scaledObject.Name, "scaledobject.namespace", scaledObject.Namespace, "maxReplicas", *scaledObject.Spec.MaxReplicaCount)
 	}
 
 	var workloadPatch client.Object
 	if workload.GetObjectKind().GroupVersionKind().Kind == "Rollout" {
 		workloadPatch = &argov1alpha1.Rollout{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       workload.GetObjectKind().GroupVersionKind().Kind,
+				APIVersion: workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      workload.GetName(),
 				Namespace: workload.GetNamespace(),
 			},
-			Spec: argov1alpha1.RolloutSpec{Replicas: &maxPods},
 		}
 	} else if workload.GetObjectKind().GroupVersionKind().Kind == "Deployment" {
-		workloadPatch = &v1.Deployment{
+		workloadPatch = &appsv1.Deployment{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       workload.GetObjectKind().GroupVersionKind().Kind,
+				APIVersion: workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      workload.GetName(),
 				Namespace: workload.GetNamespace(),
 			},
-			Spec: v1.DeploymentSpec{Replicas: &maxPods},
 		}
 	} else {
 		logger.Error(err, "Unrecognized workload type")
 		return nil
 	}
 
-	if err := r.Patch(ctx, workloadPatch, client.Apply, client.ForceOwnership, client.FieldOwner(HPAEnforcementCtrlName)); err != nil {
+	scale := &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: maxPods}}
+	logger.V(0).Info("Patching the workload to update spec.replicas.", "workloadPatch", workloadPatch.DeepCopyObject(), "maxReplicas", maxPods)
+	if err := r.Client.SubResource("scale").Update(ctx, workloadPatch, client.WithSubResourceBody(scale)); err != nil {
 		logger.Error(err, "Error patching the workload")
 		return client.IgnoreNotFound(err)
 	}
