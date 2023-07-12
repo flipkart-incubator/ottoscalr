@@ -99,7 +99,8 @@ type Config struct {
 		IncludedNamespaces      string `yaml:"includedNamespaces"`
 		IsDryRun                *bool  `yaml:"isDryRun"`
 		WhitelistMode           *bool  `yaml:"whitelistMode"`
-	} `yaml:"HPAEnforcer"`
+		MinRequiredReplicas     int    `yaml:"minRequiredReplicas"`
+	} `yaml:"hpaEnforcer"`
 
 	PolicyRecommendationRegistrar struct {
 		RequeueDelayMs     int    `yaml:"requeueDelayMs"`
@@ -283,7 +284,7 @@ func main() {
 
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
-		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode)
+		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
 		os.Exit(1)

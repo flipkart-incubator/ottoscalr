@@ -78,11 +78,12 @@ type HPAEnforcementController struct {
 	ExcludedNamespaces      *[]string
 	IncludedNamespaces      *[]string
 	WhitelistMode           *bool
+	MinRequiredReplicas     int
 }
 
 func NewHPAEnforcementController(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder,
-	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool) (*HPAEnforcementController, error) {
+	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int) (*HPAEnforcementController, error) {
 	return &HPAEnforcementController{
 		Client:                  client,
 		Scheme:                  scheme,
@@ -92,6 +93,7 @@ func NewHPAEnforcementController(client client.Client,
 		ExcludedNamespaces:      excludedNamespaces,
 		IncludedNamespaces:      includedNamespaces,
 		WhitelistMode:           whitelistMode,
+		MinRequiredReplicas:     minRequiredReplicas,
 	}, nil
 }
 
@@ -169,7 +171,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, nil
 	}
 
-	if int32(policyreco.Spec.CurrentHPAConfiguration.Max) <= 3 || int32(policyreco.Spec.CurrentHPAConfiguration.Min) <= 3 || policyreco.Spec.CurrentHPAConfiguration.Min > policyreco.Spec.CurrentHPAConfiguration.Max {
+	if policyreco.Spec.CurrentHPAConfiguration.Max <= r.MinRequiredReplicas || policyreco.Spec.CurrentHPAConfiguration.Min <= r.MinRequiredReplicas || policyreco.Spec.CurrentHPAConfiguration.Min > policyreco.Spec.CurrentHPAConfiguration.Max {
 		logger.V(0).Info("Skipping enforcing autoscaling policy due to less max/min pods in the target reco generated.", "workload", workload, "namespace", workload.GetNamespace(), "kind", workload.GetObjectKind())
 		if err := r.deleteControllerManagedScaledObject(ctx, policyreco, workload, logger); err != nil {
 			return ctrl.Result{}, err
@@ -553,7 +555,7 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 		logger.Error(err, "Unrecognized workload type")
 		return nil
 	}
-	
+
 	if err := r.Patch(ctx, workloadPatch, client.Apply, client.ForceOwnership, client.FieldOwner(HPAEnforcementCtrlName)); err != nil {
 		logger.Error(err, "Error patching the workload")
 		return client.IgnoreNotFound(err)
