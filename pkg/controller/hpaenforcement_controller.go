@@ -18,11 +18,9 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
-	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/go-logr/logr"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	v1 "k8s.io/api/apps/v1"
@@ -68,9 +66,6 @@ var (
 )
 
 func init() {
-	//metrics.Registry.MustRegister(reconcileCounter, reconcileErroredCounter, targetRecoSLI,
-	//	policyRecoConditionsGauge, policyRecoTaskProgressReasonsGauge, policyRecoTargetMin, policyRecoTargetMax, policyRecoTargetUtil,
-	//	policyRecoCurrentMin, policyRecoCurrentMax, policyRecoCurrentUtil)
 }
 
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
@@ -298,14 +293,11 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 			return ctrl.Result{}, err
 		} else {
 			logger.V(0).Info(fmt.Sprintf("Result of the create or update operation is '%s\n'", result))
-			soString, _ := json.MarshalIndent(scaledObj, "", "   ")
-			logger.V(0).Info(fmt.Sprintf("ScaledObject created. %s\n", soString))
 		}
 
 	} else {
 		logger.V(0).Info("Skipping creating ScaledObject for workload as the controller is deployed in dryRun mode.", "workload", workload.GetName())
 		return ctrl.Result{}, nil
-		//	 TODO: log metric
 	}
 
 	statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.HPAEnforced, metav1.ConditionTrue, HPAEnforcedReason, HPAEnforcedMessage)
@@ -373,19 +365,15 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 
 	updatePredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			fmt.Println("Create event")
 			return true
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			fmt.Println("delete event")
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			fmt.Println("update event")
 			return true
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
-			fmt.Println("generic event")
 			return false
 		},
 	}
@@ -509,19 +497,15 @@ func (r *HPAEnforcementController) isWhitelistedNamespace(namespace string) bool
 		return false
 	}
 
-	fmt.Printf("Excluded ns list : %v\n", r.ExcludedNamespaces)
 	if r.ExcludedNamespaces != nil && len(*r.ExcludedNamespaces) > 0 {
 		for _, ns := range *r.ExcludedNamespaces {
 			if namespace == ns {
-				fmt.Println("Namespace in blacklist.")
 				return false
 			}
 		}
-		fmt.Println("Namespace not in blacklist.")
 		return true
 	}
 
-	fmt.Println("Namespace not in blacklist or whitelist.")
 	return true
 }
 
@@ -541,40 +525,39 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 		return err
 	}
 
+	var maxPods int32
 	for _, scaledObject := range scaledObjects.Items {
+		maxPods = *scaledObject.Spec.MaxReplicaCount
 		r.Delete(ctx, &scaledObject)
 		logger.V(0).Info("Deleted ScaledObject for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "scaledobject.name", scaledObject.Name, "scaledobject.namespace", scaledObject.Namespace)
 	}
 
-	if maxPods, ok := workload.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]; ok {
-		podCount, _ := strconv.Atoi(maxPods)
-		var workloadPatch client.Object
-		if workload.GetObjectKind().GroupVersionKind().Kind == "Rollout" {
-			podCount := int32(podCount)
-			workloadPatch = &argov1alpha1.Rollout{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      workload.GetName(),
-					Namespace: workload.GetNamespace(),
-				},
-				Spec: argov1alpha1.RolloutSpec{Replicas: &podCount},
-			}
-		} else if workload.GetObjectKind().GroupVersionKind().Kind == "Deployment" {
-			podCount := int32(podCount)
-			workloadPatch = &v1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      workload.GetName(),
-					Namespace: workload.GetNamespace(),
-				},
-				Spec: v1.DeploymentSpec{Replicas: &podCount},
-			}
-		} else {
-			logger.Error(err, "Unrecognized workload type")
-			return nil
+	var workloadPatch client.Object
+	if workload.GetObjectKind().GroupVersionKind().Kind == "Rollout" {
+		workloadPatch = &argov1alpha1.Rollout{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      workload.GetName(),
+				Namespace: workload.GetNamespace(),
+			},
+			Spec: argov1alpha1.RolloutSpec{Replicas: &maxPods},
 		}
-		if err := r.Patch(ctx, workloadPatch, client.Apply, client.ForceOwnership, client.FieldOwner(HPAEnforcementCtrlName)); err != nil {
-			logger.Error(err, "Error patching the workload")
-			return client.IgnoreNotFound(err)
+	} else if workload.GetObjectKind().GroupVersionKind().Kind == "Deployment" {
+		workloadPatch = &v1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      workload.GetName(),
+				Namespace: workload.GetNamespace(),
+			},
+			Spec: v1.DeploymentSpec{Replicas: &maxPods},
 		}
+	} else {
+		logger.Error(err, "Unrecognized workload type")
+		return nil
 	}
+	
+	if err := r.Patch(ctx, workloadPatch, client.Apply, client.ForceOwnership, client.FieldOwner(HPAEnforcementCtrlName)); err != nil {
+		logger.Error(err, "Error patching the workload")
+		return client.IgnoreNotFound(err)
+	}
+
 	return nil
 }
