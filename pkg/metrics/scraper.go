@@ -37,14 +37,14 @@ var (
 			Help: "Total Number of Datapoints fetched by quering p8s instances"}, []string{"namespace", "query", "workload"},
 	)
 
-	p8sInstancesSuccessfullyQueried = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{Name: "p8s_instances_successfully_queried",
-			Help: "Number of P8s instances which returned datapoints"}, []string{"namespace", "query", "workload"},
+	p8sInstanceQueried = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "p8s_instance_queried",
+			Help: "Number of P8s instances which returned datapoints"}, []string{"namespace", "query", "instance", "workload"},
 	)
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(prometheusQueryLatency, dataPointsFetched, totalDataPointsFetched, p8sInstancesSuccessfullyQueried)
+	p8smetrics.Registry.MustRegister(prometheusQueryLatency, dataPointsFetched, totalDataPointsFetched, p8sInstanceQueried)
 }
 
 type DataPoint struct {
@@ -204,12 +204,12 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 
 		if err != nil {
 			ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
-			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, -1)
+			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, -1, 0)
 			continue
 		}
 		if result.Type() != model.ValMatrix {
 			ps.logger.Error(fmt.Errorf("unexpected result type: %v", result.Type()), "Result Type Error", "Instance", pi.address)
-			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, -1)
+			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, -1, 1)
 			continue
 		}
 
@@ -217,7 +217,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 		p8sSuccessfullyQueried++
 		if len(matrix) != 1 {
 			ps.logger.Error(fmt.Errorf("unexpected no of time series: %v", len(matrix)), "Zero Datapoints Error", "Instance", pi.address)
-			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, 0)
+			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, 0, 1)
 			continue
 		}
 		var dataPoints []DataPoint
@@ -227,14 +227,13 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 				dataPoints = append(dataPoints, datapoint)
 			}
 		}
-		logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, len(dataPoints))
+		logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, len(dataPoints), 1)
 
 		sort.SliceStable(dataPoints, func(i, j int) bool {
 			return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
 		})
 		totalDataPoints = aggregateMetrics(totalDataPoints, dataPoints)
 	}
-	p8sInstancesSuccessfullyQueried.WithLabelValues(namespace, CPUUtilizationDataPointsQuery, workload).Set(float64(p8sSuccessfullyQueried))
 	totalDataPointsFetched.WithLabelValues(namespace, CPUUtilizationDataPointsQuery, workload).Set(float64(len(totalDataPoints)))
 	if totalDataPoints == nil {
 		return nil, fmt.Errorf("unable to getCPUUtlizationDataPoints metrics from any of the prometheus instances")
@@ -266,14 +265,12 @@ func aggregateMetrics(dataPoints1 []DataPoint, dataPoints2 []DataPoint) []DataPo
 			index2++
 		}
 	}
-	for index1 < len(dataPoints1) {
-		mergedDatapoints = append(mergedDatapoints, dataPoints1[index1])
-		index1++
+	if index1 < len(dataPoints1) {
+		mergedDatapoints = append(mergedDatapoints, dataPoints1[index1:]...)
 	}
 
-	for index2 < len(dataPoints2) {
-		mergedDatapoints = append(mergedDatapoints, dataPoints2[index2])
-		index2++
+	if index2 < len(dataPoints2) {
+		mergedDatapoints = append(mergedDatapoints, dataPoints2[index2:]...)
 	}
 
 	return mergedDatapoints
@@ -341,19 +338,19 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi.apiUrl, query, start, end, step)
 		if err != nil {
 			ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
-			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1)
+			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1, 0)
 			continue
 		}
 		if result.Type() != model.ValMatrix {
 			ps.logger.Error(fmt.Errorf("unexpected result type: %v", result.Type()), "Result Type Error", "Instance", pi.address)
-			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1)
+			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1, 1)
 			continue
 		}
 		matrix := result.(model.Matrix)
 		p8sSuccessfullyQueried++
 		if len(matrix) != 1 {
 			// if no datapoints are returned which satisfy the query it can be considered that there's no breach to redLineUtilization
-			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, 0)
+			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, 0, 1)
 			continue
 		}
 		var dataPoints []DataPoint
@@ -363,13 +360,12 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 				dataPoints = append(dataPoints, datapoint)
 			}
 		}
-		logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, len(dataPoints))
+		logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, len(dataPoints), 1)
 		sort.SliceStable(dataPoints, func(i, j int) bool {
 			return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
 		})
 		totalDataPoints = aggregateMetrics(totalDataPoints, dataPoints)
 	}
-	p8sInstancesSuccessfullyQueried.WithLabelValues(namespace, BreachDataPointsQuery, workload).Set(float64(p8sSuccessfullyQueried))
 	totalDataPointsFetched.WithLabelValues(namespace, BreachDataPointsQuery, workload).Set(float64(len(totalDataPoints)))
 	if totalDataPoints == nil {
 		// if no datapoints are returned which satisfy the query it can be considered that there's no breach to redLineUtilization
@@ -544,8 +540,9 @@ func (ps *PrometheusScraper) interpolateMissingDataPoints(dataPoints []DataPoint
 	return interpolatedData
 }
 
-func logP8sMetrics(p8sQueryStartTime time.Time, namespace string, query string, address string, workload string, dataPointsLength int) {
+func logP8sMetrics(p8sQueryStartTime time.Time, namespace string, query string, address string, workload string, dataPointsLength int, p8sInstanceSuccessfullyQueried int) {
 	p8sQueryLatency := time.Since(p8sQueryStartTime).Seconds()
 	prometheusQueryLatency.WithLabelValues(namespace, query, address, workload).Observe(p8sQueryLatency)
 	dataPointsFetched.WithLabelValues(namespace, query, address, workload).Set(float64(dataPointsLength))
+	p8sInstanceQueried.WithLabelValues(namespace, query, address, workload).Set(float64(p8sInstanceSuccessfullyQueried))
 }
