@@ -109,10 +109,11 @@ type Config struct {
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
 	EventCallIntegration     struct {
-		EventCalendarAPIEndpoint      string `yaml:"eventCalendarAPIEndpoint"`
-		NfrEventCompletedAPIEndpoint  string `yaml:"nfrEventCompletedAPIEndpoint"`
-		NfrEventInProgressAPIEndpoint string `yaml:"nfrEventInProgressAPIEndpoint"`
-		EventFetchWindowInHours       int    `yaml:"eventFetchWindowInHours"`
+		EventCalendarAPIEndpoint        string `yaml:"eventCalendarAPIEndpoint"`
+		NfrEventCompletedAPIEndpoint    string `yaml:"nfrEventCompletedAPIEndpoint"`
+		NfrEventInProgressAPIEndpoint   string `yaml:"nfrEventInProgressAPIEndpoint"`
+		EventFetchWindowInHours         int    `yaml:"eventFetchWindowInHours"`
+		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
 	} `yaml:"eventCallIntegration"`
 }
 
@@ -192,7 +193,8 @@ func main() {
 
 	var eventIntegrations []integration.EventIntegration
 	eventCalendarIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint,
-		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour, logger)
+		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour,
+		time.Duration(config.EventCallIntegration.EventScaleUpBufferPeriodInHours)*time.Hour, logger)
 
 	if err != nil {
 		setupLog.Error(err, "unable to start event calendar data fetcher")
@@ -201,7 +203,8 @@ func main() {
 
 	nfrEventIntegration, err := integration.NewNFREventDataFetcher(config.EventCallIntegration.NfrEventCompletedAPIEndpoint,
 		config.EventCallIntegration.NfrEventInProgressAPIEndpoint,
-		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour, logger)
+		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour,
+		time.Duration(config.EventCallIntegration.EventScaleUpBufferPeriodInHours)*time.Hour, logger)
 
 	if err != nil {
 		setupLog.Error(err, "unable to start nfr event data fetcher")
