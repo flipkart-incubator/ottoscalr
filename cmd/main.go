@@ -176,7 +176,7 @@ func main() {
 		agingPolicyTTL = 48 * time.Hour
 	}
 
-	prometheusInstances := parseGivenConfig(config.MetricsScraper.PrometheusUrl)
+	prometheusInstances := parseCommaSeparatedValues(config.MetricsScraper.PrometheusUrl)
 
 	scraper, err := metrics.NewPrometheusScraper(prometheusInstances,
 		time.Duration(config.MetricsScraper.QueryTimeoutSec)*time.Second,
@@ -264,8 +264,8 @@ func main() {
 		config.BreachMonitor.CpuRedLine,
 		logger)
 
-	excludedNamespaces := parseGivenConfig(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
-	includedNamespaces := parseGivenConfig(config.PolicyRecommendationRegistrar.IncludedNamespaces)
+	excludedNamespaces := parseCommaSeparatedValues(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
+	includedNamespaces := parseCommaSeparatedValues(config.PolicyRecommendationRegistrar.IncludedNamespaces)
 
 	policyStore := policy.NewPolicyStore(mgr.GetClient())
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
@@ -323,7 +323,7 @@ func main() {
 	}()
 }
 
-func parseGivenConfig(givenConfig string) []string {
+func parseCommaSeparatedValues(givenConfig string) []string {
 	if givenConfig == "" {
 		return nil
 	}
