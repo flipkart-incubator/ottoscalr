@@ -278,8 +278,8 @@ func main() {
 	excludedNamespaces := parseCommaSeparatedValues(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
 	includedNamespaces := parseCommaSeparatedValues(config.PolicyRecommendationRegistrar.IncludedNamespaces)
 
-	hpaEnforcerExcludedNamespaces := parseNamespaces(config.HPAEnforcer.ExcludedNamespaces)
-	hpaEnforcerIncludedNamespaces := parseNamespaces(config.HPAEnforcer.IncludedNamespaces)
+	hpaEnforcerExcludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.ExcludedNamespaces)
+	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
 
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
