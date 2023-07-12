@@ -4,6 +4,7 @@ import (
 	"context"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"math"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -89,25 +90,28 @@ var _ = Describe("PrometheusScraper", func() {
 
 			podCreatedTimeMetric.WithLabelValues("test-ns-1", "test-pod-1").Set(45)
 			podCreatedTimeMetric.WithLabelValues("test-ns-1", "test-pod-2").Set(55)
-			podCreatedTimeMetric.WithLabelValues("test-ns-1", "test-pod-3").Set(65)
+			podCreatedTimeMetric.WithLabelValues("test-ns-2", "test-pod-3").Set(65)
 			podCreatedTimeMetric.WithLabelValues("test-ns-2", "test-pod-4").Set(75)
+			podCreatedTimeMetric.WithLabelValues("test-ns-2", "test-pod-5").Set(80)
 
 			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-1").Set(50)
 			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-2").Set(70)
-			podReadyTimeMetric.WithLabelValues("test-ns-1", "test-pod-3").Set(80)
+			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-3").Set(80)
 			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-4").Set(100)
+			podReadyTimeMetric.WithLabelValues("test-ns-2", "test-pod-5").Set(120)
 
 			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-workload-1", "deployment").Set(1)
-			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-workload-2", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-3", "test-workload-3", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-workload-3", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-5", "test-workload-3", "deployment").Set(1)
 
 			//wait for the metric to be scraped - scraping interval is 1s
 			time.Sleep(2 * time.Second)
 
 			autoscalingLag1, err := scraper.GetACLByWorkload("test-ns-1", "test-workload-1")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(autoscalingLag1).To(Equal(time.Duration(35.0 * time.Second)))
+			Expect(autoscalingLag1).To(Equal(time.Duration(40.0 * time.Second)))
 
 			autoscalingLag2, err := scraper.GetACLByWorkload("test-ns-2", "test-workload-3")
 			Expect(err).NotTo(HaveOccurred())
@@ -484,5 +488,34 @@ var _ = Describe("RangeQuerySplitter", func() {
 		matrix := result.(model.Matrix)
 		Expect(len(matrix)).To(Equal(1))
 		Expect(len(matrix[0].Values)).To(Equal(6))
+	})
+})
+
+var _ = Describe("interpolateMissingDataPoints", func() {
+	It("should interpolate the missing data", func() {
+		dataPoints := []DataPoint{
+			{Timestamp: time.Now().Add(-30 * time.Minute), Value: 60},
+			{Timestamp: time.Now().Add(-29 * time.Minute), Value: 80},
+			{Timestamp: time.Now().Add(-28 * time.Minute), Value: 100},
+			{Timestamp: time.Now().Add(-27 * time.Minute), Value: 50},
+			{Timestamp: time.Now().Add(-26 * time.Minute), Value: 30},
+			{Timestamp: time.Now().Add(-25 * time.Minute), Value: 60},
+			{Timestamp: time.Now().Add(-24 * time.Minute), Value: 80},
+			{Timestamp: time.Now().Add(-20 * time.Minute), Value: 60},
+			{Timestamp: time.Now().Add(-19 * time.Minute), Value: 80},
+			{Timestamp: time.Now().Add(-18 * time.Minute), Value: 100},
+			{Timestamp: time.Now().Add(-17 * time.Minute), Value: 50},
+			{Timestamp: time.Now().Add(-16 * time.Minute), Value: 30},
+			{Timestamp: time.Now().Add(-9 * time.Minute), Value: 80},
+			{Timestamp: time.Now().Add(-8 * time.Minute), Value: 100},
+			{Timestamp: time.Now().Add(-7 * time.Minute), Value: 50},
+			{Timestamp: time.Now().Add(-6 * time.Minute), Value: 30},
+		}
+		dataPoints = scraper.interpolateMissingDataPoints(dataPoints, time.Minute)
+		Expect(len(dataPoints)).To(Equal(25))
+		Expect(dataPoints[7].Value).To(Equal(75.0))
+		Expect(dataPoints[8].Value).To(Equal(70.0))
+		Expect(math.Floor(dataPoints[15].Value*100) / 100).To(Equal(37.14))
+		Expect(math.Floor(dataPoints[20].Value*100) / 100).To(Equal(72.85))
 	})
 })

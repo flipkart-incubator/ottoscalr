@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
+	"github.com/go-logr/logr"
 	"sort"
 	"time"
 )
@@ -15,12 +16,14 @@ type OutlierInterval struct {
 
 type OutlierInterpolatorTransformer struct {
 	EventIntegration []integration.EventIntegration
+	logger           logr.Logger
 }
 
-func NewOutlierInterpolatorTransformer(eventIntegration []integration.EventIntegration) (*OutlierInterpolatorTransformer, error) {
+func NewOutlierInterpolatorTransformer(eventIntegration []integration.EventIntegration, logger logr.Logger) (*OutlierInterpolatorTransformer, error) {
 
 	return &OutlierInterpolatorTransformer{
 		EventIntegration: eventIntegration,
+		logger:           logger,
 	}, nil
 }
 
@@ -92,8 +95,9 @@ func (ot *OutlierInterpolatorTransformer) cleanOutliersAndInterpolate(dataPoints
 		newDataPoints = append(newDataPoints, dataPoint)
 	}
 	for _, interval := range intervals {
+		ot.logger.V(2).Info("Interpolating for interval: ", "start", interval.StartTime, "end", interval.EndTime)
 		startIndex := -1
-		endIndex := 0
+		endIndex := -1
 		for i := 0; i < len(newDataPoints); i++ {
 			if newDataPoints[i].Timestamp.After(interval.StartTime) && newDataPoints[i].Timestamp.Before(interval.EndTime) {
 				if startIndex == -1 {
@@ -103,8 +107,8 @@ func (ot *OutlierInterpolatorTransformer) cleanOutliersAndInterpolate(dataPoints
 			}
 		}
 
-		if startIndex == -1 && endIndex == 0 {
-			return newDataPoints
+		if startIndex == -1 && endIndex == -1 {
+			continue
 		}
 
 		if endIndex >= len(newDataPoints)-1 {

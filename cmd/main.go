@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
@@ -26,9 +27,11 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/transformer"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
+	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/spf13/viper"
 	"os"
 	"os/signal"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"syscall"
 	"time"
@@ -50,8 +53,9 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scaledTargetName = "spec.scaleTargetRef.name"
+	scheme           = runtime.NewScheme()
+	setupLog         = ctrl.Log.WithName("setup")
 )
 
 func init() {
@@ -114,10 +118,11 @@ type Config struct {
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
 	EventCallIntegration     struct {
-		EventCalendarAPIEndpoint string `yaml:"eventCalendarAPIEndpoint"`
-		EventFetchWindowInHours  int    `yaml:"eventFetchWindowInHours"`
+		EventCalendarAPIEndpoint      string `yaml:"eventCalendarAPIEndpoint"`
+		NfrEventCompletedAPIEndpoint  string `yaml:"nfrEventCompletedAPIEndpoint"`
+		NfrEventInProgressAPIEndpoint string `yaml:"nfrEventInProgressAPIEndpoint"`
+		EventFetchWindowInHours       int    `yaml:"eventFetchWindowInHours"`
 	} `yaml:"eventCallIntegration"`
-	NfrDataConfigMapName string `yaml:"nfrDataConfigMapName"`
 }
 
 func main() {
@@ -200,8 +205,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	nfrEventIntegration, err := integration.NewNFREventDataFetcher(mgr.GetClient(),
-		os.Getenv("DEPLOYMENT_NAMESPACE"), config.NfrDataConfigMapName)
+	nfrEventIntegration, err := integration.NewNFREventDataFetcher(config.EventCallIntegration.NfrEventCompletedAPIEndpoint,
+		config.EventCallIntegration.NfrEventInProgressAPIEndpoint,
+		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour, logger)
 
 	if err != nil {
 		setupLog.Error(err, "unable to start nfr event data fetcher")
@@ -213,7 +219,7 @@ func main() {
 	var metricsTransformer []metrics.MetricsTransformer
 
 	if *config.EnableMetricsTransformer == true {
-		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegrations)
+		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegrations, logger)
 		if err != nil {
 			setupLog.Error(err, "unable to start metrics transformer")
 			os.Exit(1)
@@ -309,6 +315,17 @@ func main() {
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &kedaapi.ScaledObject{}, scaledTargetName, func(obj client.Object) []string {
+		scaledObject := obj.(*kedaapi.ScaledObject)
+		if scaledObject.Spec.ScaleTargetRef.Name == "" {
+			return nil
+		}
+		return []string{scaledObject.Spec.ScaleTargetRef.Name}
+	}); err != nil {
+		setupLog.Error(err, "unable to index scaledobject")
 		os.Exit(1)
 	}
 
