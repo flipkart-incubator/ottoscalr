@@ -39,9 +39,12 @@ func TestMetrics(t *testing.T) {
 }
 
 var (
-	registry       *prometheus.Registry
-	metricsServer  *http.Server
-	metricsAddress string
+	registry        *prometheus.Registry
+	registry1       *prometheus.Registry
+	metricsServer   *http.Server
+	metricsServer1  *http.Server
+	metricsAddress  string
+	metricsAddress1 string
 
 	cpuUsageMetric *prometheus.GaugeVec
 
@@ -55,6 +58,16 @@ var (
 	podCreatedTimeMetric  *prometheus.GaugeVec
 	podReadyTimeMetric    *prometheus.GaugeVec
 
+	cpuUsageMetric1 *prometheus.GaugeVec
+
+	resourceLimitMetric1   *prometheus.GaugeVec
+	readyReplicasMetric1   *prometheus.GaugeVec
+	replicaSetOwnerMetric1 *prometheus.GaugeVec
+	hpaMaxReplicasMetric1  *prometheus.GaugeVec
+	hpaOwnerInfoMetric1    *prometheus.GaugeVec
+	podCreatedTimeMetric1  *prometheus.GaugeVec
+	podReadyTimeMetric1    *prometheus.GaugeVec
+
 	scraper *PrometheusScraper
 )
 
@@ -62,8 +75,16 @@ var _ = BeforeSuite(func() {
 	registry = prometheus.NewRegistry()
 	registerMetrics()
 
+	registry1 = prometheus.NewRegistry()
+	registerMetrics1()
+
 	client, err := api.NewClient(api.Config{
 		Address: "http://localhost:9090",
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	client1, err := api.NewClient(api.Config{
+		Address: "http://localhost:8080",
 	})
 
 	Expect(err).NotTo(HaveOccurred())
@@ -80,10 +101,20 @@ var _ = BeforeSuite(func() {
 	podReadyTimeMetric := "alm_kube_pod_ready_time"
 
 	api := v1.NewAPI(client)
+	api1 := v1.NewAPI(client1)
 	metricIngestionTime := 15.0
 	metricProbeTime := 15.0
 
-	scraper = &PrometheusScraper{api: api,
+	var v1Api []PrometheusInstance
+	v1Api = append(v1Api, PrometheusInstance{
+		apiUrl:  api,
+		address: "http://localhost:9090",
+	}, PrometheusInstance{
+		apiUrl:  api1,
+		address: "http://localhost:8080",
+	})
+
+	scraper = &PrometheusScraper{api: v1Api,
 		metricRegistry: &MetricNameRegistry{
 			utilizationMetric:     utilizationMetric,
 			podOwnerMetric:        podOwnerMetric,
@@ -96,7 +127,7 @@ var _ = BeforeSuite(func() {
 			podReadyTimeMetric:    podReadyTimeMetric,
 		},
 		queryTimeout:        30 * time.Second,
-		rangeQuerySplitter:  NewRangeQuerySplitter(api, 1*time.Second),
+		rangeQuerySplitter:  NewRangeQuerySplitter(1 * time.Second),
 		metricIngestionTime: metricIngestionTime,
 		metricProbeTime:     metricProbeTime,
 	}
@@ -104,12 +135,15 @@ var _ = BeforeSuite(func() {
 	go func() {
 		metricsAddress = "localhost:9091"
 		metricsServer = startMetricsServer(registry, metricsAddress)
+		metricsAddress1 = "localhost:9092"
+		metricsServer1 = startMetricsServer(registry1, metricsAddress1)
 		defer GinkgoRecover()
 	}()
 })
 
 var _ = AfterSuite(func() {
 	_ = metricsServer.Close()
+	_ = metricsServer1.Close()
 })
 
 func startMetricsServer(registry *prometheus.Registry, addr string) *http.Server {
@@ -185,4 +219,56 @@ func registerMetrics() {
 	registry.MustRegister(hpaOwnerInfoMetric)
 	registry.MustRegister(podCreatedTimeMetric)
 	registry.MustRegister(podReadyTimeMetric)
+}
+
+func registerMetrics1() {
+	cpuUsageMetric1 = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "node_namespace_pod_container_container_cpu_usage_seconds_total_sum_irate",
+		Help: "Test metric for container CPU usage",
+	}, []string{"namespace", "pod", "node", "container"})
+
+	resourceLimitMetric1 = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cluster_namespace_pod_cpu_active_kube_pod_container_resource_limits",
+		Help: "Test metric for container resource limits",
+	}, []string{"namespace", "pod", "node", "container"})
+
+	readyReplicasMetric1 = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_replicaset_status_ready_replicas",
+		Help: "Test metric for ready replicas in a replicaSet",
+	}, []string{"namespace", "replicaset"})
+
+	replicaSetOwnerMetric1 = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_replicaset_owner",
+		Help: "Test metric for replicaset owner",
+	}, []string{"namespace", "owner_kind", "owner_name", "replicaset"})
+
+	hpaMaxReplicasMetric1 = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_horizontalpodautoscaler_spec_max_replicas",
+		Help: "Test metric for hpa max replicas",
+	}, []string{"namespace", "horizontalpodautoscaler"})
+
+	hpaOwnerInfoMetric1 = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_horizontalpodautoscaler_info",
+		Help: "Test metric for hpa owner",
+	}, []string{"namespace", "horizontalpodautoscaler", "scaletargetref_kind", "scaletargetref_name"})
+
+	podCreatedTimeMetric1 = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_pod_created",
+		Help: "Test metric pod created",
+	}, []string{"namespace", "pod"})
+
+	podReadyTimeMetric1 = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "alm_kube_pod_ready_time",
+		Help: "Test metric pod ready",
+	}, []string{"namespace", "pod"})
+
+	registry1.MustRegister(cpuUsageMetric1)
+	registry1.MustRegister(kubePodOwnerMetric)
+	registry1.MustRegister(resourceLimitMetric1)
+	registry1.MustRegister(readyReplicasMetric1)
+	registry1.MustRegister(replicaSetOwnerMetric1)
+	registry1.MustRegister(hpaMaxReplicasMetric1)
+	registry1.MustRegister(hpaOwnerInfoMetric1)
+	registry1.MustRegister(podCreatedTimeMetric1)
+	registry1.MustRegister(podReadyTimeMetric1)
 }
