@@ -527,6 +527,10 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 		return err
 	}
 
+	if len(scaledObjects.Items) == 0 {
+		return nil
+	}
+	
 	var maxPods int32
 	for _, scaledObject := range scaledObjects.Items {
 		maxPods = *scaledObject.Spec.MaxReplicaCount
