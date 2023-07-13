@@ -3516,7 +3516,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
 
 			scaledObject = &kedaapi.ScaledObject{}
-			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), interval, 8*timeout).Should(Succeed())
+			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
 			Expect(scaledObject.OwnerReferences[0].Name).Should(Equal(deployment.Name))
@@ -3674,7 +3674,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
 
 			scaledObject = &kedaapi.ScaledObject{}
-			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), interval, 8*timeout).Should(Succeed())
+			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
 			Expect(scaledObject.OwnerReferences[0].Name).Should(Equal(deployment.Name))

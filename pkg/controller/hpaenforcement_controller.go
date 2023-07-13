@@ -537,13 +537,20 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 	logger.V(0).Info("Deleting the ScaledObject and resetting workload spec.replicas")
 	var maxPods int32
 	for _, scaledObject := range scaledObjects.Items {
-		maxPods = *scaledObject.Spec.MaxReplicaCount
+		if scaledObject.Spec.MaxReplicaCount != nil {
+			maxPods = *scaledObject.Spec.MaxReplicaCount
+		}
 		err := r.Delete(ctx, &scaledObject)
 		if err != nil {
 			logger.V(0).Error(err, "Error while deleting the scaledobject", "scaledobject", scaledObject)
 			return client.IgnoreNotFound(err)
 		}
 		logger.V(0).Info("Deleted ScaledObject for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "scaledobject.name", scaledObject.Name, "scaledobject.namespace", scaledObject.Namespace, "maxReplicas", *scaledObject.Spec.MaxReplicaCount)
+	}
+
+	if maxPods == 0 {
+		logger.Info("ScaledObject maxReplicas is not configured. Not resetting the workload.spec.replicas.")
+		return nil
 	}
 
 	var workloadPatch client.Object
