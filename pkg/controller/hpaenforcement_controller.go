@@ -23,6 +23,8 @@ import (
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/go-logr/logr"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,6 +66,23 @@ var (
 	InvalidPolicyRecoMessage      = "HPA config in the PolicyRecommendation doesn't qualify for the ScaledObject creation criteria."
 	HPAEnforcementDisabledReason  = "HPAEnforcementDisabled"
 	HPAEnforcementDisabledMessage = "HPA enforcement disabled for this workload"
+)
+
+var (
+	hpaenforcerReconcileCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "hpaenforcer_reconciled_count",
+			Help: "Number of policyrecos reconciled counter by HPAEnforcer"}, []string{"namespace", "policyreco"},
+	)
+
+	hpaenforcerScaledObjectUpdatedCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "hpaenforcer_scaledobjects_updated_count",
+			Help: "Number of scaled objects created/updated by HPAEnforcer"}, []string{"namespace", "policyreco", "scaledobject", "change"},
+	)
+
+	hpaenforcerScaledObjectDeletedCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "hpaenforcer_scaledobjects_deleted_count",
+			Help: "Number of scaled objects created/updated by HPAEnforcer"}, []string{"namespace", "policyreco", "scaledobject"},
+	)
 )
 
 func init() {
@@ -121,6 +140,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		logger.V(0).Error(err, "Error fetching PolicyRecommendation resource.")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	hpaenforcerReconcileCounter.WithLabelValues(policyreco.Namespace, policyreco.Name).Inc()
 
 	if !isInitialized(policyreco.Status.Conditions) || !isRecoGenerated(policyreco.Status.Conditions) {
 		logger.V(0).Info("Skipping policy enforcement as the policy recommendation is not initialized.")
@@ -299,6 +319,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 			logger.V(0).Error(err, "Error creating or updating scaledobject")
 			return ctrl.Result{}, err
 		} else {
+			hpaenforcerScaledObjectUpdatedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, scaledObj.Name, string(result)).Inc()
 			logger.V(0).Info(fmt.Sprintf("Result of the create or update operation is '%s\n'", result))
 		}
 
@@ -549,10 +570,12 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 			maxPods = *scaledObject.Spec.MaxReplicaCount
 		}
 		err := r.Delete(ctx, &scaledObject)
+		r.Recorder.Event(&policyreco, eventTypeNormal, "ScaledObjectDeleted", fmt.Sprintf("The ScaledObject '%s' has been deleted.", scaledObject.Name))
 		if err != nil {
 			logger.V(0).Error(err, "Error while deleting the scaledobject", "scaledobject", scaledObject)
 			return client.IgnoreNotFound(err)
 		}
+		hpaenforcerScaledObjectDeletedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, scaledObject.Name).Inc()
 		logger.V(0).Info("Deleted ScaledObject for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "scaledobject.name", scaledObject.Name, "scaledobject.namespace", scaledObject.Namespace, "maxReplicas", *scaledObject.Spec.MaxReplicaCount)
 	}
 
@@ -595,6 +618,6 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 		logger.Error(err, "Error patching the workload")
 		return client.IgnoreNotFound(err)
 	}
-
+	r.Recorder.Event(&policyreco, eventTypeNormal, "ScaledObjectDeleted", fmt.Sprintf("Workload has be rescaled to max replicas '%d' from the deleted scaledobject.", maxPods))
 	return nil
 }
