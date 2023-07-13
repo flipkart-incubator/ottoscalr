@@ -448,7 +448,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 
 	policyrecoEnqueueFunc := func(obj client.Object) []reconcile.Request {
 		mgr.GetLogger().Info("Deployment/Rollout change predicated invoked.")
-		mgr.GetLogger().Info("Updates to workload received.", "object", obj, "kind", obj.GetObjectKind())
+		mgr.GetLogger().Info("Updates to workload received.", "object", obj.GetName())
 		// since there's no support in controller runtime to figure out the Kind of the obj skipping the checks https://github.com/kubernetes-sigs/controller-runtime/issues/1735
 		// this predicate is used only for Deployment/Rollout changes, so a Kind check should not be necessary
 		policyRecos := &v1alpha1.PolicyRecommendationList{}
