@@ -199,7 +199,9 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 					logger.Error(err, "Error updating the status of the policy reco object")
 					return ctrl.Result{}, client.IgnoreNotFound(err)
 				}
+				return ctrl.Result{}, nil
 			}
+			// else continue with scaledobject creation
 		} else {
 			logger.V(0).Info("HPA enforcement is disabled for this workload as it's not marked with ottoscalr.io/enable-hpa-enforcement: true . Skipping.", "workload", workload, "namespace", workload.GetNamespace(), "kind", workload.GetObjectKind())
 			if err := r.deleteControllerManagedScaledObject(ctx, policyreco, workload, logger); err != nil {
@@ -210,6 +212,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 				logger.Error(err, "Error updating the status of the policy reco object")
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
+			return ctrl.Result{}, nil
 		}
 	} else {
 		if v, ok := workload.GetAnnotations()[hpaEnforcementDisabledAnnotation]; ok {
@@ -223,7 +226,9 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 					logger.Error(err, "Error updating the status of the policy reco object")
 					return ctrl.Result{}, client.IgnoreNotFound(err)
 				}
+				return ctrl.Result{}, nil
 			}
+			// else continue with scaledobject creation
 		}
 	}
 
@@ -410,6 +415,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	enqueueFunc := func(obj client.Object) []reconcile.Request {
+		mgr.GetLogger().Info("ScaledObject delete predicate invoked.")
 		scaledObject := obj.(*kedaapi.ScaledObject)
 		if len(scaledObject.OwnerReferences) == 0 {
 			return nil
@@ -432,37 +438,39 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 						},
 					})
 				}
+				mgr.GetLogger().Info("Requeing policyrecos")
 				return requests
 			}
 		}
-
+		mgr.GetLogger().Info("Not requeuing any policyreco.", "object", obj)
 		return nil
 	}
 
 	policyrecoEnqueueFunc := func(obj client.Object) []reconcile.Request {
-		mgr.GetLogger().Info("Updates to workload received.", "object", obj)
-		if obj.GetObjectKind().GroupVersionKind().Kind == "Deployment" || obj.GetObjectKind().GroupVersionKind().Kind == "Rollout" {
-			policyRecos := &v1alpha1.PolicyRecommendationList{}
-			if err := r.List(context.Background(), policyRecos, &client.ListOptions{
-				FieldSelector: fields.OneTermEqualSelector(policyRecoOwnerField, obj.GetName()),
-				Namespace:     obj.GetNamespace(),
-			}); err != nil && client.IgnoreNotFound(err) != nil {
-				mgr.GetLogger().Error(err, "Error fetching the policy recommendations list given the workload.")
-				return nil
-			}
-			var requests []reconcile.Request
-			for _, policyReco := range policyRecos.Items {
-				mgr.GetLogger().Info("Queueing policreco request", "policyreco", policyReco.TypeMeta.String())
-				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Namespace: policyReco.Namespace,
-						Name:      policyReco.Name,
-					},
-				})
-			}
-			return requests
+		mgr.GetLogger().Info("Deployment/Rollout change predicated invoked.")
+		mgr.GetLogger().Info("Updates to workload received.", "object", obj, "kind", obj.GetObjectKind())
+		// since there's no support in controller runtime to figure out the Kind of the obj skipping the checks https://github.com/kubernetes-sigs/controller-runtime/issues/1735
+		// this predicate is used only for Deployment/Rollout changes, so a Kind check should not be necessary
+		policyRecos := &v1alpha1.PolicyRecommendationList{}
+		if err := r.List(context.Background(), policyRecos, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(policyRecoOwnerField, obj.GetName()),
+			Namespace:     obj.GetNamespace(),
+		}); err != nil {
+			mgr.GetLogger().Error(err, "Error fetching the policy recommendations list given the workload.")
+			return nil
 		}
-		return nil
+		var requests []reconcile.Request
+		for _, policyReco := range policyRecos.Items {
+			mgr.GetLogger().Info("Queueing policreco request", "policyreco", policyReco.TypeMeta.String())
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: policyReco.Namespace,
+					Name:      policyReco.Name,
+				},
+			})
+		}
+		mgr.GetLogger().Info("Reconcile reqs", "reqs", requests)
+		return requests
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
