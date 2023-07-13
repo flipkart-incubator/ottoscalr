@@ -15,6 +15,7 @@ periodicTrigger:
   pollingIntervalMin: 360
 policyRecommendationController:
   maxConcurrentReconciles: 1
+  policyExpiryAge: 48h
 policyRecommendationRegistrar:
   requeueDelayMs: 500
 cpuUtilizationBasedRecommender:
@@ -22,3 +23,12 @@ cpuUtilizationBasedRecommender:
   stepSec: 30
   minTarget: 10
   maxTarget: 60
+metricIngestionTime: 15.0
+metricProbeTime: 15.0
+enableMetricsTransformer: false
+eventCallIntegration:
+  eventCalendarAPIEndpoint: "http://10.83.36.132/fk-event-calendar-service/v1/eventCalendar/search"
+  eventFetchWindowInHours: "1"
+nfrDataConfigMapName: "nfr-data-config"
+
+

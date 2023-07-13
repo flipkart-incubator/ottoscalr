@@ -31,4 +31,5 @@ vendor/
 
 #Prometheus data
 data
+data1
 *.gz
