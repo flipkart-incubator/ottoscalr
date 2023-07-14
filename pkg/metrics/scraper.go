@@ -527,7 +527,6 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 		result, _, err := pi.apiUrl.Query(ctx, query, time.Now())
 
 		if err != nil {
-			fmt.Println("failed to execute Prometheus query")
 			ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
 			continue
 		}
@@ -538,13 +537,11 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 
 		matrix := result.(model.Vector)
 		if len(matrix) != 1 {
-			fmt.Println("unexpected no of time series")
 			ps.logger.Error(fmt.Errorf("unexpected no of time series: %v", len(matrix)), "Zero Datapoints Error", "Instance", pi.address)
 			continue
 		}
 
 		podBootstrapTime = math.Max(podBootstrapTime, float64(matrix[0].Value))
-		fmt.Println("Fetched Bootstrap Time from ", pi.address, podBootstrapTime)
 	}
 	if podBootstrapTime == 0.0 {
 		return 0.0, fmt.Errorf("unable to getPodReadyLatency metrics from any of the prometheus instances")
