@@ -88,6 +88,7 @@ var (
 
 func init() {
 	metrics.Registry.MustRegister(hpaenforcerScaledObjectUpdatedCounter, hpaenforcerScaledObjectDeletedCounter, hpaenforcerReconcileCounter)
+}
 
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
 type HPAEnforcementController struct {
