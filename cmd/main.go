@@ -93,6 +93,15 @@ type Config struct {
 		PolicyExpiryAge         string `yaml:"policyExpiryAge"`
 	} `yaml:"policyRecommendationController"`
 
+	HPAEnforcer struct {
+		MaxConcurrentReconciles int    `yaml:"maxConcurrentReconciles"`
+		ExcludedNamespaces      string `yaml:"excludedNamespaces"`
+		IncludedNamespaces      string `yaml:"includedNamespaces"`
+		IsDryRun                *bool  `yaml:"isDryRun"`
+		WhitelistMode           *bool  `yaml:"whitelistMode"`
+		MinRequiredReplicas     int    `yaml:"minRequiredReplicas"`
+	} `yaml:"hpaEnforcer"`
+
 	PolicyRecommendationRegistrar struct {
 		RequeueDelayMs     int    `yaml:"requeueDelayMs"`
 		ExcludedNamespaces string `yaml:"excludedNamespaces"`
@@ -114,6 +123,7 @@ type Config struct {
 		NfrEventInProgressAPIEndpoint   string `yaml:"nfrEventInProgressAPIEndpoint"`
 		EventFetchWindowInHours         int    `yaml:"eventFetchWindowInHours"`
 		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
+		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
 }
 
@@ -211,7 +221,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	eventIntegrations = append(eventIntegrations, eventCalendarIntegration, nfrEventIntegration)
+	customEventIntegration, err := integration.NewCustomEventDataFetcher(mgr.GetClient(),
+		os.Getenv("DEPLOYMENT_NAMESPACE"), config.EventCallIntegration.CustomEventDataConfigMapName, logger)
+
+	if err != nil {
+		setupLog.Error(err, "unable to start custom event data fetcher")
+		os.Exit(1)
+	}
+
+	eventIntegrations = append(eventIntegrations, eventCalendarIntegration, nfrEventIntegration, customEventIntegration)
 
 	var metricsTransformer []metrics.MetricsTransformer
 
@@ -269,6 +287,23 @@ func main() {
 
 	excludedNamespaces := parseCommaSeparatedValues(config.PolicyRecommendationRegistrar.ExcludedNamespaces)
 	includedNamespaces := parseCommaSeparatedValues(config.PolicyRecommendationRegistrar.IncludedNamespaces)
+
+	hpaEnforcerExcludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.ExcludedNamespaces)
+	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
+
+	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
+		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
+		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas)
+	if err != nil {
+		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
+		os.Exit(1)
+	}
+
+	if err = hpaEnforcementController.
+		SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "HPAEnforcementController")
+		os.Exit(1)
+	}
 
 	policyStore := policy.NewPolicyStore(mgr.GetClient())
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),

@@ -92,6 +92,9 @@ const (
 
 	//Breach Condition
 	HasBreached PolicyRecommendationConditionType = "HasBreached"
+
+	// HPA Enforced condition
+	HPAEnforced PolicyRecommendationConditionType = "HPAEnforced"
 )
 
 //+kubebuilder:object:root=true
