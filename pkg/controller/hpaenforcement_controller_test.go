@@ -3235,6 +3235,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 					},
 				}}
 			Expect(k8sClient.Status().Update(context.TODO(), updatedPolicyReco)).To(Succeed())
+			time.Sleep(2 * time.Second)
 			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{
 				Namespace: HPAEnforcerPolicyRecoNamespace,
 				Name:      HPAEnforcerPolicyRecoName,

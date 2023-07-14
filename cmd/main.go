@@ -123,6 +123,7 @@ type Config struct {
 		NfrEventInProgressAPIEndpoint   string `yaml:"nfrEventInProgressAPIEndpoint"`
 		EventFetchWindowInHours         int    `yaml:"eventFetchWindowInHours"`
 		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
+		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
 }
 
@@ -220,7 +221,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	eventIntegrations = append(eventIntegrations, eventCalendarIntegration, nfrEventIntegration)
+	customEventIntegration, err := integration.NewCustomEventDataFetcher(mgr.GetClient(),
+		os.Getenv("DEPLOYMENT_NAMESPACE"), config.EventCallIntegration.CustomEventDataConfigMapName, logger)
+
+	if err != nil {
+		setupLog.Error(err, "unable to start custom event data fetcher")
+		os.Exit(1)
+	}
+
+	eventIntegrations = append(eventIntegrations, eventCalendarIntegration, nfrEventIntegration, customEventIntegration)
 
 	var metricsTransformer []metrics.MetricsTransformer
 
