@@ -194,46 +194,64 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 		workload)
 
 	var totalDataPoints []DataPoint
-	p8sSuccessfullyQueried := 0
 	if ps.api == nil {
 		return nil, fmt.Errorf("no apiurl for executing prometheus query")
 	}
+
+	resultChanLength := len(ps.api) + 5 //Added some buffer
+	resultChan := make(chan []DataPoint, resultChanLength)
+	var wg sync.WaitGroup
 	for _, pi := range ps.api {
-		p8sQueryStartTime := time.Now()
-		result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi.apiUrl, query, start, end, step)
 
-		if err != nil {
-			ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
-			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, -1, 0)
-			continue
-		}
-		if result.Type() != model.ValMatrix {
-			ps.logger.Error(fmt.Errorf("unexpected result type: %v", result.Type()), "Result Type Error", "Instance", pi.address)
-			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, -1, 1)
-			continue
-		}
+		wg.Add(1)
+		go func(pi PrometheusInstance) {
+			defer wg.Done()
 
-		matrix := result.(model.Matrix)
-		p8sSuccessfullyQueried++
-		if len(matrix) != 1 {
-			ps.logger.Error(fmt.Errorf("unexpected no of time series: %v", len(matrix)), "Zero Datapoints Error", "Instance", pi.address)
-			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, 0, 1)
-			continue
-		}
-		var dataPoints []DataPoint
-		for _, sample := range matrix[0].Values {
-			datapoint := DataPoint{sample.Timestamp.Time(), float64(sample.Value)}
-			if !sample.Timestamp.Time().IsZero() {
-				dataPoints = append(dataPoints, datapoint)
+			p8sQueryStartTime := time.Now()
+			result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi.apiUrl, query, start, end, step)
+
+			if err != nil {
+				ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
+				logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, -1, 0)
+				resultChan <- nil
+				return
 			}
-		}
-		logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, len(dataPoints), 1)
+			if result.Type() != model.ValMatrix {
+				ps.logger.Error(fmt.Errorf("unexpected result type: %v", result.Type()), "Result Type Error", "Instance", pi.address)
+				logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, -1, 1)
+				resultChan <- nil
+				return
+			}
 
-		sort.SliceStable(dataPoints, func(i, j int) bool {
-			return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
-		})
-		totalDataPoints = aggregateMetrics(totalDataPoints, dataPoints)
+			matrix := result.(model.Matrix)
+			if len(matrix) != 1 {
+				ps.logger.Error(fmt.Errorf("unexpected no of time series: %v", len(matrix)), "Zero Datapoints Error", "Instance", pi.address)
+				logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, 0, 1)
+				resultChan <- nil
+				return
+			}
+			var dataPoints []DataPoint
+			for _, sample := range matrix[0].Values {
+				datapoint := DataPoint{sample.Timestamp.Time(), float64(sample.Value)}
+				if !sample.Timestamp.Time().IsZero() {
+					dataPoints = append(dataPoints, datapoint)
+				}
+			}
+			logP8sMetrics(p8sQueryStartTime, namespace, CPUUtilizationDataPointsQuery, pi.address, workload, len(dataPoints), 1)
+
+			sort.SliceStable(dataPoints, func(i, j int) bool {
+				return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
+			})
+			resultChan <- dataPoints
+		}(pi)
 	}
+	wg.Wait()
+	close(resultChan)
+
+	for p8sQueryResult := range resultChan {
+		totalDataPoints = aggregateMetrics(totalDataPoints, p8sQueryResult)
+	}
+
 	totalDataPointsFetched.WithLabelValues(namespace, CPUUtilizationDataPointsQuery, workload).Set(float64(len(totalDataPoints)))
 	if totalDataPoints == nil {
 		return nil, fmt.Errorf("unable to getCPUUtlizationDataPoints metrics from any of the prometheus instances")
@@ -328,49 +346,71 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		workloadType,
 		workload)
 
+	resultChanLength := len(ps.api) + 5 //Added some buffer
+	resultChan := make(chan []DataPoint, resultChanLength)
+	var wg sync.WaitGroup
+
 	var totalDataPoints []DataPoint
-	p8sSuccessfullyQueried := 0
 	if ps.api == nil {
 		return nil, fmt.Errorf("no apiurl for executing prometheus query")
 	}
 	for _, pi := range ps.api {
-		p8sQueryStartTime := time.Now()
-		result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi.apiUrl, query, start, end, step)
-		if err != nil {
-			ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
-			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1, 0)
-			continue
-		}
-		if result.Type() != model.ValMatrix {
-			ps.logger.Error(fmt.Errorf("unexpected result type: %v", result.Type()), "Result Type Error", "Instance", pi.address)
-			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1, 1)
-			continue
-		}
-		matrix := result.(model.Matrix)
-		p8sSuccessfullyQueried++
-		if len(matrix) != 1 {
-			// if no datapoints are returned which satisfy the query it can be considered that there's no breach to redLineUtilization
-			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, 0, 1)
-			continue
-		}
-		var dataPoints []DataPoint
-		for _, sample := range matrix[0].Values {
-			datapoint := DataPoint{sample.Timestamp.Time(), float64(sample.Value)}
-			if !sample.Timestamp.Time().IsZero() {
-				dataPoints = append(dataPoints, datapoint)
+
+		wg.Add(1)
+		go func(pi PrometheusInstance) {
+			defer wg.Done()
+			p8sQueryStartTime := time.Now()
+			result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi.apiUrl, query, start, end, step)
+			if err != nil {
+				ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
+				logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1, 0)
+				resultChan <- nil
+				return
 			}
-		}
-		logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, len(dataPoints), 1)
-		sort.SliceStable(dataPoints, func(i, j int) bool {
-			return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
-		})
-		totalDataPoints = aggregateMetrics(totalDataPoints, dataPoints)
+			if result.Type() != model.ValMatrix {
+				ps.logger.Error(fmt.Errorf("unexpected result type: %v", result.Type()), "Result Type Error", "Instance", pi.address)
+				logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1, 1)
+				resultChan <- nil
+				return
+			}
+			matrix := result.(model.Matrix)
+			if len(matrix) != 1 {
+				// if no datapoints are returned which satisfy the query it can be considered that there's no breach to redLineUtilization
+				ps.logger.Info("no Breach dataPoints found with the p8s instance", "Instance", pi.address)
+				logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, 0, 1)
+				resultChan <- nil
+				return
+			}
+			var dataPoints []DataPoint
+			for _, sample := range matrix[0].Values {
+				datapoint := DataPoint{sample.Timestamp.Time(), float64(sample.Value)}
+				if !sample.Timestamp.Time().IsZero() {
+					dataPoints = append(dataPoints, datapoint)
+				}
+			}
+			logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, len(dataPoints), 1)
+			sort.SliceStable(dataPoints, func(i, j int) bool {
+				return dataPoints[i].Timestamp.Before(dataPoints[j].Timestamp)
+			})
+
+			resultChan <- dataPoints
+		}(pi)
 	}
+
+	wg.Wait()
+	close(resultChan)
+
+	for p8sQueryResult := range resultChan {
+		totalDataPoints = aggregateMetrics(totalDataPoints, p8sQueryResult)
+	}
+
 	totalDataPointsFetched.WithLabelValues(namespace, BreachDataPointsQuery, workload).Set(float64(len(totalDataPoints)))
 	if totalDataPoints == nil {
 		// if no datapoints are returned which satisfy the query it can be considered that there's no breach to redLineUtilization
+		ps.logger.Info("no Breach dataPoints found in any of the p8s instance", "Namespace", namespace, "Workload", workload)
 		return nil, nil
 	}
+	ps.logger.Info("Breach dataPoints found..", "Namespace", namespace, "Workload", workload)
 	return totalDataPoints, nil
 }
 
