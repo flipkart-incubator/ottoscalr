@@ -17,14 +17,14 @@ import (
 )
 
 var (
-	breachCounter = promauto.NewCounterVec(
-		prometheus.CounterOpts{Name: "breachanalyzer_breached_counter",
+	breachGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "breachanalyzer_breached",
 			Help: "Number of breaches counter"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
 	)
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(breachCounter)
+	p8smetrics.Registry.MustRegister(breachGauge)
 }
 
 type BreachAnalyzer struct {
@@ -94,9 +94,10 @@ func (pi *BreachAnalyzer) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Pol
 			logger.V(0).Error(err3, "Error fetching the previous policy.")
 			return nil, err
 		}
-		breachCounter.WithLabelValues(wm.Namespace, currentPolicyReco.Name, wm.Kind, wm.Name).Inc()
+		breachGauge.WithLabelValues(wm.Namespace, currentPolicyReco.Name, wm.Kind, wm.Name).Set(1)
 		return PolicyFromCR(saferPolicy), nil
 	}
+	breachGauge.WithLabelValues(wm.Namespace, currentPolicyReco.Name, wm.Kind, wm.Name).Set(0)
 	return nil, nil
 }
 

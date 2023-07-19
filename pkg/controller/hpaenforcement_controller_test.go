@@ -182,6 +182,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(BeTrue())
 
 			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
@@ -417,6 +418,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(BeTrue())
 
 			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
@@ -1160,7 +1162,25 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			updatedPolicyRecoString, _ = json.MarshalIndent(updatedPolicyReco, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
 
+			updatedPolicyReco = &v1alpha1.PolicyRecommendation{}
+			Eventually(func() bool {
+				err := k8sClient.Get(context.TODO(), types.NamespacedName{
+					Namespace: HPAEnforcerPolicyRecoNamespace,
+					Name:      HPAEnforcerPolicyRecoName,
+				}, updatedPolicyReco)
+				if err != nil {
+					return false
+				}
+				for _, v := range updatedPolicyReco.Status.Conditions {
+					if v.Type == string(v1alpha1.HPAEnforced) {
+						return true
+					}
+				}
+				return false
+			}, timeout, interval).Should(BeTrue())
+
 			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
@@ -3059,6 +3079,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
 
 			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
@@ -3276,6 +3297,23 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, updatedPolicyReco)).To(Succeed())
 			updatedPolicyRecoString, _ = json.MarshalIndent(updatedPolicyReco, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
+
+			updatedPolicyReco = &v1alpha1.PolicyRecommendation{}
+			Eventually(func() bool {
+				err := k8sClient.Get(context.TODO(), types.NamespacedName{
+					Namespace: HPAEnforcerPolicyRecoNamespace,
+					Name:      HPAEnforcerPolicyRecoName,
+				}, updatedPolicyReco)
+				if err != nil {
+					return false
+				}
+				for _, v := range updatedPolicyReco.Status.Conditions {
+					if v.Type == string(v1alpha1.HPAEnforced) {
+						return true
+					}
+				}
+				return false
+			}, timeout, interval).Should(BeTrue())
 
 			scaledObject = &kedaapi.ScaledObject{}
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
