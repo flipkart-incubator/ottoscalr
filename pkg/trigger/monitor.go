@@ -20,7 +20,7 @@ import (
 
 var (
 	breachGauge = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{Name: "breachmonitor_breached_counter",
+		prometheus.GaugeOpts{Name: "breachmonitor_breached",
 			Help: "Number of breaches detected counter"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
 	)
 	timeToMitigateLatency = promauto.NewHistogramVec(
