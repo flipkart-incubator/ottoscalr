@@ -85,6 +85,7 @@ type PrometheusScraper struct {
 
 type MetricNameRegistry struct {
 	utilizationMetric     string
+	readyPodsMetric       string
 	podOwnerMetric        string
 	resourceLimitMetric   string
 	readyReplicasMetric   string
@@ -111,6 +112,7 @@ func (ps *PrometheusScraper) GetACLByWorkload(namespace string, workload string)
 
 func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
 	cpuUtilizationMetric := "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate"
+	readyPodsMetric := "kube_pod_status_ready"
 	podOwnerMetric := "namespace_workload_pod:kube_pod_owner:relabel"
 	resourceLimitMetric := "cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits"
 	readyReplicasMetric := "kube_replicaset_status_ready_replicas"
@@ -129,6 +131,7 @@ func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
 		hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
 		podCreatedTimeMetric:  podCreatedTimeMetric,
 		podReadyTimeMetric:    podReadyTimeMetric,
+		readyPodsMetric:       readyPodsMetric,
 	}
 }
 
@@ -183,11 +186,14 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	query := fmt.Sprintf("sum(%s"+
-		"{namespace=\"%s\"} * on (namespace,pod) group_left(workload, workload_type)"+
+	query := fmt.Sprintf("sum((sum by (namespace, pod) (%s{namespace=\"%s\"}) * on (namespace, pod) "+
+		"(%s{namespace=\"%s\", condition=\"true\"} == 1))"+
+		"* on (namespace,pod) group_left(workload, workload_type)"+
 		"%s{namespace=\"%s\", workload=\"%s\","+
 		" workload_type=\"deployment\"}) by(namespace, workload, workload_type)",
 		ps.metricRegistry.utilizationMetric,
+		namespace,
+		ps.metricRegistry.readyPodsMetric,
 		namespace,
 		ps.metricRegistry.podOwnerMetric,
 		namespace,

@@ -23,6 +23,11 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-node-2", "test-container-1").Set(5)
 			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(20)
 
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-2", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-2", "test-pod-4", "true").Set(1)
+
 			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-workload-1", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-workload-2", "deployment").Set(1)
@@ -45,6 +50,11 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-node-2", "test-container-1").Set(3)
 			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(16)
 
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-2", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-2", "test-pod-4", "true").Set(1)
+
 			//wait for the metric to be scraped - scraping interval is 1s
 			time.Sleep(5 * time.Second)
 
@@ -54,6 +64,11 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-node-2", "test-container-1").Set(4)
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-node-2", "test-container-1").Set(12)
 			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(15)
+
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-2", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-2", "test-pod-4", "true").Set(1)
 
 			//wait for the metric to be scraped - scraping interval is 1s
 			time.Sleep(5 * time.Second)
@@ -68,6 +83,11 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-node-2", "test-container-1").Set(12)
 			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(15)
 
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-2", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-2", "test-pod-4", "true").Set(1)
+
 			//wait for the metric to be scraped - scraping interval is 1s
 			time.Sleep(5 * time.Second)
 
@@ -81,6 +101,94 @@ var _ = Describe("PrometheusScraper", func() {
 
 			Expect(dataPoints[0].Value).To(Equal(26.0))
 			Expect(dataPoints[len(dataPoints)-1].Value).To(Equal(9.0))
+		})
+
+		It("should return correct data points when some pods are not ready", func() {
+
+			By("creating a metric before queryRange window")
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-node-1", "test-container-1").Set(4)
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-node-2", "test-container-1").Set(3)
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-node-2", "test-container-1").Set(5)
+			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(20)
+
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-2", "true").Set(0)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-2", "test-pod-4", "true").Set(0)
+
+			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-workload-1", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-workload-2", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-workload-3", "deployment").Set(1)
+
+			//wait for the metric to be scraped - scraping interval is 1s
+			time.Sleep(5 * time.Second)
+
+			start := time.Now().Add(1 * time.Second)
+
+			By("creating first metric inside queryRange window")
+
+			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-workload-1", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-workload-2", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-workload-3", "deployment").Set(1)
+
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-node-1", "test-container-1").Set(12)
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-node-2", "test-container-1").Set(14)
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-node-2", "test-container-1").Set(3)
+			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(16)
+
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-2", "true").Set(0)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-2", "test-pod-4", "true").Set(0)
+
+			//wait for the metric to be scraped - scraping interval is 1s
+			time.Sleep(5 * time.Second)
+
+			By("creating second metric inside queryRange window")
+
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-node-1", "test-container-1").Set(5)
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-node-2", "test-container-1").Set(4)
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-node-2", "test-container-1").Set(12)
+			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(15)
+
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-2", "true").Set(0)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-2", "test-pod-4", "true").Set(0)
+
+			//wait for the metric to be scraped - scraping interval is 1s
+			time.Sleep(5 * time.Second)
+
+			// data points after this should be outside the query range
+			end := time.Now()
+
+			By("creating metric after queryRange window")
+
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-1", "test-node-1", "test-container-1").Set(23)
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-2", "test-node-2", "test-container-1").Set(12)
+			cpuUsageMetric.WithLabelValues("test-ns-1", "test-pod-3", "test-node-2", "test-container-1").Set(12)
+			cpuUsageMetric.WithLabelValues("test-ns-2", "test-pod-4", "test-node-4", "test-container-1").Set(15)
+
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-2", "true").Set(0)
+			readyPodMetric.WithLabelValues("test-ns-1", "test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-ns-2", "test-pod-4", "true").Set(0)
+
+			//wait for the metric to be scraped - scraping interval is 1s
+			time.Sleep(5 * time.Second)
+
+			dataPoints, err := scraper.GetAverageCPUUtilizationByWorkload("test-ns-1",
+				"test-workload-1", start, end, time.Second)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dataPoints).ToNot(BeEmpty())
+
+			//since metrics could have been scraped multiple times, we just check the first and last value
+			Expect(len(dataPoints) >= 2).To(BeTrue())
+
+			Expect(dataPoints[0].Value).To(Equal(12.0))
+			Expect(dataPoints[len(dataPoints)-1].Value).To(Equal(5.0))
 		})
 	})
 
@@ -138,6 +246,11 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("dep-test-ns-1", "dep-test-pod-2", "dep-test-node-2", "dep-test-container-1").Set(3)
 			cpuUsageMetric.WithLabelValues("dep-test-ns-1", "dep-test-pod-3", "dep-test-node-2", "dep-test-container-1").Set(5)
 			cpuUsageMetric.WithLabelValues("dep-test-ns-2", "dep-test-pod-4", "dep-test-node-4", "dep-test-container-1").Set(3)
+
+			readyPodMetric.WithLabelValues("dep-test-ns-1", "dep-test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("dep-test-ns-1", "dep-test-pod-2", "true").Set(0)
+			readyPodMetric.WithLabelValues("dep-test-ns-1", "dep-test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("dep-test-ns-2", "dep-test-pod-4", "true").Set(0)
 
 			kubePodOwnerMetric.WithLabelValues("dep-test-ns-1", "dep-test-pod-1", "dep-1", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("dep-test-ns-1", "dep-test-pod-2", "dep-1", "deployment").Set(1)
@@ -280,6 +393,11 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-2", "ro-test-node-2", "ro-test-container-1").Set(3)
 			cpuUsageMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-3", "ro-test-node-2", "ro-test-container-1").Set(5)
 			cpuUsageMetric.WithLabelValues("ro-test-ns-2", "ro-test-pod-4", "ro-test-node-4", "ro-test-container-1").Set(3)
+
+			readyPodMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-2", "true").Set(0)
+			readyPodMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("ro-test-ns-2", "ro-test-pod-4", "true").Set(0)
 
 			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-1", "ro-1", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-2", "ro-1", "deployment").Set(1)
@@ -430,6 +548,16 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-2", "test-node-2", "test-container-1").Set(3)
 			cpuUsageMetric1.WithLabelValues("test-nsp-1", "test-pod-3", "test-node-2", "test-container-1").Set(5)
 			cpuUsageMetric1.WithLabelValues("test-nsp-2", "test-pod-4", "test-node-4", "test-container-1").Set(20)
+
+			readyPodMetric.WithLabelValues("test-nsp-1", "test-pod-1", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-nsp-1", "test-pod-2", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-nsp-1", "test-pod-3", "true").Set(1)
+			readyPodMetric.WithLabelValues("test-nsp-2", "test-pod-4", "true").Set(1)
+
+			readyPodMetric1.WithLabelValues("test-nsp-1", "test-pod-1", "true").Set(1)
+			readyPodMetric1.WithLabelValues("test-nsp-1", "test-pod-2", "true").Set(1)
+			readyPodMetric1.WithLabelValues("test-nsp-1", "test-pod-3", "true").Set(1)
+			readyPodMetric1.WithLabelValues("test-nsp-2", "test-pod-4", "true").Set(1)
 
 			kubePodOwnerMetric.WithLabelValues("test-nsp-1", "test-pod-1", "test-workload-1", "deployment").Set(1)
 			kubePodOwnerMetric.WithLabelValues("test-nsp-1", "test-pod-2", "test-workload-1", "deployment").Set(1)
