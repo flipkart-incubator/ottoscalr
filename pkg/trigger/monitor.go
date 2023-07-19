@@ -19,8 +19,8 @@ import (
 )
 
 var (
-	breachCounter = promauto.NewCounterVec(
-		prometheus.CounterOpts{Name: "breachmonitor_breached_counter",
+	breachGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "breachmonitor_breached_counter",
 			Help: "Number of breaches detected counter"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
 	)
 	timeToMitigateLatency = promauto.NewHistogramVec(
@@ -30,7 +30,7 @@ var (
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(breachCounter, timeToMitigateLatency)
+	p8smetrics.Registry.MustRegister(breachGauge, timeToMitigateLatency)
 }
 
 const (
@@ -244,9 +244,10 @@ func (m *Monitor) monitorBreaches() {
 				if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
 					m.logger.Error(err, "Error updating the status of the policy reco object")
 				}
-				breachCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Inc()
+				breachGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Set(1)
 				m.handlerFunc(m.workload)
 			} else {
+				breachGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Set(0)
 				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionFalse, NoBreachDetectedReason, NoBreachDetectedMessage, lastTransitionTime)
 				if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
 					m.logger.Error(err, "Error updating the status of the policy reco object")
