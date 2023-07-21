@@ -25,8 +25,11 @@ import (
 
 var (
 	getAverageCPUUtilizationQueryLatency = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{Name: "get_avg_cpu_utilization_query_latency_seconds",
-			Help: "Time to execute utilization datapoint query in seconds"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
+		prometheus.HistogramOpts{
+			Name:    "get_avg_cpu_utilization_query_latency_seconds",
+			Help:    "Time to execute utilization datapoint query in seconds",
+			Buckets: append(prometheus.DefBuckets, 15, 20, 50, 100),
+		}, []string{"namespace", "policyreco", "workloadKind", "workload"},
 	)
 )
 

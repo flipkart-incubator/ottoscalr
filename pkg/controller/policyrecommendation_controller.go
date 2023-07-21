@@ -54,8 +54,11 @@ var (
 			Help: "Number of policyrecos reconcile errored counter"}, []string{"namespace", "policyreco"},
 	)
 	targetRecoSLI = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{Name: "policyreco_reconciler_targetreco_slo_days",
-			Help: "Time taken for a policy reco to achieve the target reco in days"}, []string{"namespace", "policyreco"},
+		prometheus.HistogramOpts{
+			Name:    "policyreco_reconciler_targetreco_slo_days",
+			Help:    "Time taken for a policy reco to achieve the target reco in days",
+			Buckets: []float64{1, 2, 3, 5, 7, 10, 15, 20, 25, 28},
+		}, []string{"namespace", "policyreco"},
 	)
 	policyRecoConditionsGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{Name: "policyreco_reconciler_conditions",
