@@ -154,22 +154,22 @@ type TimerEvent struct {
 func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPoint,
 	acl time.Duration,
 	targetUtilization int,
-	perPodResources float64, maxReplicas int) ([]metrics.DataPoint, int, int, error) {
+	perPodResources float64, maxReplicas int, minReplicas int) ([]metrics.DataPoint, int, error) {
 
 	targetUtilization = int(math.Floor(float64(targetUtilization) * 1.1))
 
 	if len(dataPoints) == 0 {
-		return []metrics.DataPoint{}, 0, 0, nil
+		return []metrics.DataPoint{}, 0, nil
 	}
 	if targetUtilization < 1 || targetUtilization > 100 {
-		return []metrics.DataPoint{}, 0, 0, errors.New(fmt.Sprintf("Invalid value of target utilization: %v."+
+		return []metrics.DataPoint{}, 0, errors.New(fmt.Sprintf("Invalid value of target utilization: %v."+
 			" Value should be between 1 and 100", targetUtilization))
 	}
 
 	simulatedDataPoints := make([]metrics.DataPoint, len(dataPoints))
 
-	currentReplicas := math.Min(float64(maxReplicas), math.Ceil((dataPoints[0].Value*100)/float64(targetUtilization)/perPodResources))
-	minReplicas := currentReplicas
+	currentReplicas := math.Min(float64(maxReplicas), math.Max(float64(minReplicas), math.Ceil((dataPoints[0].Value*100)/float64(targetUtilization)/perPodResources)))
+	calculatedMinReplicas := math.Ceil((dataPoints[0].Value * 100) / float64(targetUtilization) / perPodResources)
 	currentResources := currentReplicas * perPodResources
 	readyResources := currentResources
 
@@ -186,8 +186,8 @@ func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPo
 			readyResources += readyResourcesTimerList[0].Delta
 			readyResourcesTimerList = readyResourcesTimerList[1:]
 		}
-		newReplicas := math.Min(float64(maxReplicas), math.Ceil((100*dp.Value)/float64(targetUtilization)/perPodResources))
-		minReplicas = math.Min(newReplicas, minReplicas)
+		newReplicas := math.Min(float64(maxReplicas), math.Max(float64(minReplicas), math.Ceil((100*dp.Value)/float64(targetUtilization)/perPodResources)))
+		calculatedMinReplicas = math.Min(calculatedMinReplicas, math.Ceil((100*dp.Value)/float64(targetUtilization)/perPodResources))
 
 		newResources := newReplicas * perPodResources
 		currentResources = newResources
@@ -214,7 +214,7 @@ func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPo
 		simulatedDataPoints[i+1] = metrics.DataPoint{Timestamp: dp.Timestamp, Value: availableResources}
 	}
 
-	return simulatedDataPoints, int(minReplicas), maxReplicas, nil
+	return simulatedDataPoints, int(calculatedMinReplicas), nil
 }
 
 func (c *CpuUtilizationBasedRecommender) hasNoBreachOccurred(original, simulated []metrics.DataPoint) bool {
@@ -231,32 +231,61 @@ func (c *CpuUtilizationBasedRecommender) findOptimalTargetUtilization(dataPoints
 	minTarget,
 	maxTarget int,
 	perPodResources float64, maxReplicas int) (int, int, int, error) {
-	low := minTarget
-	high := maxTarget
-	minReplicas := 0
 
-	for low <= high {
-		mid := low + (high-low)/2
-		target := mid
+	optimalTargetThreshold := 0
+	optimalMin := 0
+	cost := 0.0
+
+	minReplicas := 3
+	for ; minReplicas <= maxReplicas; minReplicas++ {
+		calculatedMin := 0
+		low := minTarget
+		high := maxTarget
 		var simulatedHPAList []metrics.DataPoint
-		var err error
-		simulatedHPAList, minReplicas, maxReplicas, err = c.simulateHPA(dataPoints, acl, target, perPodResources, maxReplicas)
-		if err != nil {
-			c.logger.Error(err, "Error while simulating HPA")
-			return -1, minReplicas, maxReplicas, err
-		}
+		for low <= high {
+			mid := low + (high-low)/2
+			target := mid
+			var err error
+			simulatedHPAList, calculatedMin, err = c.simulateHPA(dataPoints, acl, target, perPodResources, maxReplicas, minReplicas)
+			if err != nil {
+				c.logger.Error(err, "Error while simulating HPA")
+				return -1, minReplicas, maxReplicas, err
+			}
 
-		if c.hasNoBreachOccurred(dataPoints, simulatedHPAList) {
-			low = mid + 1
-		} else {
-			high = mid - 1
+			if c.hasNoBreachOccurred(dataPoints, simulatedHPAList) {
+				low = mid + 1
+			} else {
+				high = mid - 1
+			}
+		}
+		if high >= minTarget && calculatedMin <= minReplicas {
+			if len(simulatedHPAList) > 0 {
+				newCost := c.costFunction(maxReplicas, simulatedHPAList, perPodResources)
+				if float64(newCost) >= cost {
+					optimalMin = minReplicas
+					optimalTargetThreshold = high
+					cost = newCost
+				}
+			}
 		}
 	}
 
-	if high < minTarget {
+	if optimalTargetThreshold < minTarget || cost == 0.0 {
 		return 0, 0, 0, unableToRecommendError
 	}
-	return high, minReplicas, maxReplicas, nil
+	return optimalTargetThreshold, optimalMin, maxReplicas, nil
+}
+
+func (c *CpuUtilizationBasedRecommender) costFunction(maxReplicas int, simulated []metrics.DataPoint, perPodResources float64) float64 {
+	savings := 0.0
+	for _, dp := range simulated {
+		sm := dp.Value / c.redLineUtil
+		savings += (float64(maxReplicas) * perPodResources) - sm
+	}
+
+	savings = savings / (float64(maxReplicas) * perPodResources)
+	savings = savings / float64(len(simulated))
+	return savings * 100.0
 }
 
 func (c *CpuUtilizationBasedRecommender) getContainerCPULimitsSum(namespace, objectKind, objectName string) (float64,

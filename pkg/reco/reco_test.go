@@ -84,7 +84,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 
 		Context("with valid inputs", func() {
 			It("should simulate HPA correctly", func() {
-				simulatedDataPoints, min, max, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2, 23)
+				simulatedDataPoints, min, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2, 23, 12)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(simulatedDataPoints).ToNot(BeNil())
@@ -96,7 +96,6 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 					Expect(simulatedDataPoint.Value).To(Equal(expectedSimulatedResources[i]))
 				}
 				Expect(min).To(Equal(12))
-				Expect(max).To(Equal(23))
 			})
 		})
 
@@ -104,7 +103,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			It("should handle empty dataPoints", func() {
 				dataPoints = []metrics.DataPoint{}
 
-				simulatedDataPoints, _, _, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2, 24)
+				simulatedDataPoints, _, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2, 24, 12)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(simulatedDataPoints).ToNot(BeNil())
 				Expect(len(simulatedDataPoints)).To(Equal(0))
@@ -113,7 +112,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			It("should handle zero targetUtilization", func() {
 				targetUtilization = 0
 
-				_, _, _, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2, 24)
+				_, _, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2, 24, 12)
 				Expect(err).To(HaveOccurred())
 			})
 		})
