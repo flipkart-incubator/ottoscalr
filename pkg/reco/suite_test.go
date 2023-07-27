@@ -38,8 +38,10 @@ var (
 	minTarget              = 10
 	maxTarget              = 60
 	fakeScraper            metrics.Scraper
+	fakeScraper1           metrics.Scraper
 	recommender            *CpuUtilizationBasedRecommender
 	recommender1           *CpuUtilizationBasedRecommender
+	recommender2           *CpuUtilizationBasedRecommender
 	fakeMetricsTransformer []metrics.MetricsTransformer
 	store                  *policy.PolicyStore
 	policyAge              = 1 * time.Second
@@ -186,6 +188,14 @@ var _ = BeforeSuite(func() {
 		{Timestamp: time.Now().Add(-6 * time.Minute), Value: 30},
 	}, []metrics.DataPoint{{Timestamp: time.Now(), Value: 1.3}}, 5*time.Minute)
 
+	fakeScraper1 = newFakeScraper([]metrics.DataPoint{
+		{Timestamp: time.Now().Add(-10 * time.Minute), Value: 0},
+		{Timestamp: time.Now().Add(-9 * time.Minute), Value: 90},
+		{Timestamp: time.Now().Add(-8 * time.Minute), Value: 100},
+		{Timestamp: time.Now().Add(-7 * time.Minute), Value: 100},
+		{Timestamp: time.Now().Add(-6 * time.Minute), Value: 100},
+	}, []metrics.DataPoint{{Timestamp: time.Now(), Value: 1.3}}, 5*time.Minute)
+
 	fakeMetricsTransformer = append(fakeMetricsTransformer, &FakeMetricsTransformer{})
 
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
@@ -193,6 +203,9 @@ var _ = BeforeSuite(func() {
 
 	recommender1 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
 		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, logger)
+
+	recommender2 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
+		metricWindow, fakeScraper1, fakeMetricsTransformer, metricStep, minTarget, maxTarget, logger)
 
 	safestPolicy = &ottoscaleriov1alpha1.Policy{
 		ObjectMeta: metav1.ObjectMeta{Name: "safest-policy"},
