@@ -401,6 +401,25 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
+			newObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
+			oldObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
+
+			var newHPAEnforcedCondition, oldHPAEnforcedCondition metav1.Condition
+			for _, condition := range newObj.Status.Conditions {
+				if condition.Type == string(v1alpha1.HPAEnforced) {
+					newHPAEnforcedCondition = condition
+				}
+			}
+			for _, condition := range oldObj.Status.Conditions {
+				if condition.Type == string(v1alpha1.HPAEnforced) {
+					oldHPAEnforcedCondition = condition
+				}
+			}
+
+			// This ensures that the updates to conditions managed by this controller don't fork recursive updates on the policyrecos
+			if conditionChanged(oldHPAEnforcedCondition, newHPAEnforcedCondition) {
+				return false
+			}
 			return true
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
@@ -521,6 +540,15 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		WithEventFilter(namespaceFilter).
 		Complete(r)
+}
+
+func conditionChanged(oldCond metav1.Condition, newCond metav1.Condition) bool {
+	if oldCond.Type != newCond.Type || oldCond.Status != newCond.Status || oldCond.Reason != newCond.Reason ||
+		!oldCond.LastTransitionTime.Equal(&newCond.LastTransitionTime) || oldCond.Message != newCond.Message ||
+		oldCond.ObservedGeneration != newCond.ObservedGeneration {
+		return true
+	}
+	return false
 }
 
 func (r *HPAEnforcementController) isWhitelistedNamespace(namespace string) bool {
