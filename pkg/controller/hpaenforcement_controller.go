@@ -531,12 +531,12 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&source.Kind{Type: &appsv1.Deployment{}},
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
-			builder.WithPredicates(predicate.And(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{}), namespaceFilter)),
+			builder.WithPredicates(predicate.And(predicate.AnnotationChangedPredicate{}, namespaceFilter)),
 		).
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
-			builder.WithPredicates(predicate.And(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{}), namespaceFilter)),
+			builder.WithPredicates(predicate.And(predicate.AnnotationChangedPredicate{}, namespaceFilter)),
 		).
 		WithEventFilter(namespaceFilter).
 		Complete(r)
