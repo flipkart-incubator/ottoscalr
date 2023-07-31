@@ -21,6 +21,7 @@ import (
 	"fmt"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/go-logr/logr"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/prometheus/client_golang/prometheus"
@@ -427,6 +428,35 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		},
 	}
 
+	maxPodsAnnotationChangedPredicate := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			newObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
+			oldObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
+
+			var newMaxPods, oldMaxPods string
+			newMaxPods, _ = newObj.Annotations[reco.OttoscalrMaxPodAnnotation]
+			oldMaxPods, _ = oldObj.Annotations[reco.OttoscalrMaxPodAnnotation]
+
+			annotationChangedPredicate := predicate.AnnotationChangedPredicate{}
+
+			if annotationChangedPredicate.Update(e) {
+				if newMaxPods != oldMaxPods {
+					return true
+				}
+			}
+			return false
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+
 	namespaceFilter := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return r.isWhitelistedNamespace(e.Object.GetNamespace())
@@ -531,12 +561,12 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&source.Kind{Type: &appsv1.Deployment{}},
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
-			builder.WithPredicates(predicate.And(predicate.AnnotationChangedPredicate{}, namespaceFilter)),
+			builder.WithPredicates(predicate.And(maxPodsAnnotationChangedPredicate, namespaceFilter)),
 		).
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
-			builder.WithPredicates(predicate.And(predicate.AnnotationChangedPredicate{}, namespaceFilter)),
+			builder.WithPredicates(predicate.And(maxPodsAnnotationChangedPredicate, namespaceFilter)),
 		).
 		WithEventFilter(namespaceFilter).
 		Complete(r)
