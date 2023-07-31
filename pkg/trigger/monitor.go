@@ -226,22 +226,15 @@ func (m *Monitor) monitorBreaches() {
 						lastBreachedTime = condition.LastTransitionTime.Time
 					} else {
 						breachedInPast = false
-						lastBreachedTime = condition.LastTransitionTime.Time
 					}
 				}
 			}
 			var statusPatch *ottoscaleriov1alpha1.PolicyRecommendation
 			breached, _ := HasBreached(log.IntoContext(context.Background(), m.logger), start, end, m.workloadType, m.workload, m.metricScraper, m.cpuRedLine, m.metricStep)
-			var lastTransitionTime time.Time
-			if breached == breachedInPast {
-				lastTransitionTime = lastBreachedTime
-			} else {
-				lastTransitionTime = time.Now()
-			}
 			if breached {
 				m.recorder.Event(&policyreco, eventTypeWarning, "BreachDetected", "A breach has been detected for the current policy")
 				if !breachedInPast {
-					statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionTrue, BreachDetectedReason, BreachDetectedMessage, lastTransitionTime)
+					statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionTrue, BreachDetectedReason, BreachDetectedMessage, time.Now())
 					if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
 						m.logger.Error(err, "Error updating the status of the policy reco object")
 					}
@@ -251,7 +244,7 @@ func (m *Monitor) monitorBreaches() {
 			} else {
 				breachGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Set(0)
 				if breachedInPast {
-					statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionFalse, NoBreachDetectedReason, NoBreachDetectedMessage, lastTransitionTime)
+					statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionFalse, NoBreachDetectedReason, NoBreachDetectedMessage, time.Now())
 					if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
 						m.logger.Error(err, "Error updating the status of the policy reco object")
 					}
