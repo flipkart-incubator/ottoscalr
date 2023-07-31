@@ -182,6 +182,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(BeTrue())
 
 			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
@@ -417,6 +418,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(BeTrue())
 
 			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
@@ -1178,6 +1180,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(BeTrue())
 
 			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
@@ -3076,6 +3079,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
 
 			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
