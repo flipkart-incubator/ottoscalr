@@ -240,19 +240,21 @@ func (m *Monitor) monitorBreaches() {
 			}
 			if breached {
 				m.recorder.Event(&policyreco, eventTypeWarning, "BreachDetected", "A breach has been detected for the current policy")
-				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionTrue, BreachDetectedReason, BreachDetectedMessage, lastTransitionTime)
-				if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
-					m.logger.Error(err, "Error updating the status of the policy reco object")
+				if !breachedInPast {
+					statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionTrue, BreachDetectedReason, BreachDetectedMessage, lastTransitionTime)
+					if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
+						m.logger.Error(err, "Error updating the status of the policy reco object")
+					}
 				}
 				breachGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Set(1)
 				m.handlerFunc(m.workload)
 			} else {
 				breachGauge.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Set(0)
-				statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionFalse, NoBreachDetectedReason, NoBreachDetectedMessage, lastTransitionTime)
-				if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
-					m.logger.Error(err, "Error updating the status of the policy reco object")
-				}
 				if breachedInPast {
+					statusPatch = m.createBreachCondition(ottoscaleriov1alpha1.HasBreached, metav1.ConditionFalse, NoBreachDetectedReason, NoBreachDetectedMessage, lastTransitionTime)
+					if err := m.k8sClient.Status().Patch(context.Background(), statusPatch, client.Apply, getSubresourcePatchOptions(BreachStatusManager)); err != nil {
+						m.logger.Error(err, "Error updating the status of the policy reco object")
+					}
 					mitigationLatency := time.Since(lastBreachedTime).Seconds()
 					timeToMitigateLatency.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Observe(mitigationLatency)
 				}
