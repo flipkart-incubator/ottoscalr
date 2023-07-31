@@ -403,7 +403,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			newObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
-			oldObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
+			oldObj := e.ObjectOld.(*v1alpha1.PolicyRecommendation)
 
 			var newHPAEnforcedCondition, oldHPAEnforcedCondition metav1.Condition
 			for _, condition := range newObj.Status.Conditions {
@@ -436,12 +436,12 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			newObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
-			oldObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
+			newObj := e.ObjectNew
+			oldObj := e.ObjectOld
 
 			var newMaxPods, oldMaxPods string
-			newMaxPods, _ = newObj.Annotations[reco.OttoscalrMaxPodAnnotation]
-			oldMaxPods, _ = oldObj.Annotations[reco.OttoscalrMaxPodAnnotation]
+			newMaxPods, _ = newObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
+			oldMaxPods, _ = oldObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
 
 			annotationChangedPredicate := predicate.AnnotationChangedPredicate{}
 
