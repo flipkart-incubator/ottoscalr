@@ -21,6 +21,7 @@ import (
 	"fmt"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/go-logr/logr"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/prometheus/client_golang/prometheus"
@@ -402,7 +403,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			newObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
-			oldObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
+			oldObj := e.ObjectOld.(*v1alpha1.PolicyRecommendation)
 
 			var newHPAEnforcedCondition, oldHPAEnforcedCondition metav1.Condition
 			for _, condition := range newObj.Status.Conditions {
@@ -421,6 +422,35 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 				return false
 			}
 			return true
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+
+	_ = predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			newObj := e.ObjectNew
+			oldObj := e.ObjectOld
+
+			var newMaxPods, oldMaxPods string
+			newMaxPods, _ = newObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
+			oldMaxPods, _ = oldObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
+
+			annotationChangedPredicate := predicate.AnnotationChangedPredicate{}
+
+			if annotationChangedPredicate.Update(e) {
+				if newMaxPods != oldMaxPods {
+					return true
+				}
+			}
+			return false
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
 			return false

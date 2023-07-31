@@ -376,7 +376,7 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 			matrix := result.(model.Matrix)
 			if len(matrix) != 1 {
 				// if no datapoints are returned which satisfy the query it can be considered that there's no breach to redLineUtilization
-				ps.logger.Info("no Breach dataPoints found with the p8s instance", "Instance", pi.address)
+				ps.logger.V(2).Info("no Breach dataPoints found with the p8s instance", "Instance", pi.address)
 				logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, 0, 1)
 				resultChan <- nil
 				return
