@@ -629,7 +629,10 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 		if scaledObject.Spec.MaxReplicaCount != nil {
 			maxPods = *scaledObject.Spec.MaxReplicaCount
 		}
-		err := r.Delete(ctx, &scaledObject)
+		deletePropagationPolicy := metav1.DeletePropagationForeground
+		err := r.Delete(ctx, &scaledObject, &client.DeleteOptions{
+			PropagationPolicy: &deletePropagationPolicy,
+		})
 		r.Recorder.Event(&policyreco, eventTypeNormal, "ScaledObjectDeleted", fmt.Sprintf("The ScaledObject '%s' has been deleted.", scaledObject.Name))
 		if err != nil {
 			logger.V(0).Error(err, "Error while deleting the scaledobject", "scaledobject", scaledObject)
