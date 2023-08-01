@@ -3657,6 +3657,9 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(Equal(initialMax))
 
 			scaledObject = &kedaapi.ScaledObject{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)).Should(Succeed())
+			scaledObject.Finalizers = nil
+			Expect(k8sClient.Update(context.TODO(), scaledObject)).Should(Succeed())
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).ShouldNot(Succeed())
 		})
 
@@ -3830,6 +3833,9 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(Equal(initialMax))
 
 			scaledObject = &kedaapi.ScaledObject{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)).Should(Succeed())
+			scaledObject.Finalizers = nil
+			Expect(k8sClient.Update(context.TODO(), scaledObject)).Should(Succeed())
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).ShouldNot(Succeed())
 
 		})
@@ -3996,6 +4002,9 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(Equal(initialMax))
 
 			scaledObject = &kedaapi.ScaledObject{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)).Should(Succeed())
+			scaledObject.Finalizers = nil
+			Expect(k8sClient.Update(context.TODO(), scaledObject)).Should(Succeed())
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).ShouldNot(Succeed())
 		})
 
@@ -4183,6 +4192,9 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(Equal(initialMax))
 
 			scaledObject = &kedaapi.ScaledObject{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)).Should(Succeed())
+			scaledObject.Finalizers = nil
+			Expect(k8sClient.Update(context.TODO(), scaledObject)).Should(Succeed())
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).ShouldNot(Succeed())
 		})
 
@@ -4391,6 +4403,9 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(Equal(initialMax))
 
 			scaledObject = &kedaapi.ScaledObject{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)).Should(Succeed())
+			scaledObject.Finalizers = nil
+			Expect(k8sClient.Update(context.TODO(), scaledObject)).Should(Succeed())
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).ShouldNot(Succeed())
 		})
 
@@ -4565,6 +4580,9 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(Equal(initialMax))
 
 			scaledObject = &kedaapi.ScaledObject{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)).Should(Succeed())
+			scaledObject.Finalizers = nil
+			Expect(k8sClient.Update(context.TODO(), scaledObject)).Should(Succeed())
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).ShouldNot(Succeed())
 
 		})
@@ -4732,6 +4750,9 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(Equal(initialMax))
 
 			scaledObject = &kedaapi.ScaledObject{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)).Should(Succeed())
+			scaledObject.Finalizers = nil
+			Expect(k8sClient.Update(context.TODO(), scaledObject)).Should(Succeed())
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).ShouldNot(Succeed())
 		})
 
@@ -4920,6 +4941,9 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			}, timeout, interval).Should(Equal(initialMax))
 
 			scaledObject = &kedaapi.ScaledObject{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)).Should(Succeed())
+			scaledObject.Finalizers = nil
+			Expect(k8sClient.Update(context.TODO(), scaledObject)).Should(Succeed())
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).ShouldNot(Succeed())
 		})
 
