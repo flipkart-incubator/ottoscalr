@@ -119,8 +119,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		return nil, err
 	}
 
-	maxReplicas, err := c.getMaxPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
-
+	workloadMaxReplicas, err := c.getMaxPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
 	if err != nil {
 		c.logger.Error(err, "Error while getting getMaxPods")
 		return nil, err
@@ -130,8 +129,11 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		acl,
 		c.minTarget,
 		c.maxTarget,
-		perPodResources, maxReplicas)
+		perPodResources, workloadMaxReplicas)
 	if err != nil {
+		if errors.Is(err, unableToRecommendError) {
+			return &v1alpha1.HPAConfiguration{Min: workloadMaxReplicas, Max: workloadMaxReplicas, TargetMetricValue: c.minTarget}, nil
+		}
 		c.logger.Error(err, "Error while executing findOptimalTargetUtilization")
 		return nil, err
 	}

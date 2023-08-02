@@ -800,4 +800,284 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			Expect(hpaConfig.Max).To(Equal(30))
 		})
 	})
+
+	Describe("Recommend", func() {
+
+		var (
+			deploymentNamespace = "default"
+			deploymentName      = "test-deployment"
+			deployment          *appsv1.Deployment
+			deploymentPod       *corev1.Pod
+		)
+
+		BeforeEach(func() {
+			deployment = &appsv1.Deployment{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      deploymentName,
+					Namespace: deploymentNamespace,
+					Annotations: map[string]string{
+						"ottoscalr.io/max-pods": "30",
+					},
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "container-1",
+									Image: "container-image",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU: resource.MustParse("8"),
+										},
+									},
+								},
+								{
+									Name:  "container-2",
+									Image: "container-image",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU: resource.MustParse("0.2"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+
+			deploymentPod = &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment-pod",
+					Namespace: deploymentNamespace,
+					Labels: map[string]string{
+						"app": "test-app",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "container-1",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("8"),
+								},
+							},
+						},
+						{
+							Name:  "container-2",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("0.2"),
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err = k8sClient.Create(ctx, deploymentPod)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+			err = k8sClient.Delete(ctx, deploymentPod)
+			Expect(err).ToNot(HaveOccurred())
+
+		})
+		It("should return recommend the optimal HPA configuration", func() {
+
+			workloadSpec := WorkloadMeta{
+				Name:      deploymentName,
+				Namespace: deploymentNamespace,
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Deployment",
+					APIVersion: "apps/v1",
+				},
+			}
+			hpaConfig, err := recommender.Recommend(context.TODO(), workloadSpec)
+
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(hpaConfig.TargetMetricValue).To(Equal(48))
+			Expect(hpaConfig.Min).To(Equal(7))
+			Expect(hpaConfig.Max).To(Equal(30))
+		})
+
+		It("should return recommend the no op HPA configuration when unable to find a reco", func() {
+
+			workloadSpec := WorkloadMeta{
+				Name:      deploymentName,
+				Namespace: deploymentNamespace,
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Deployment",
+					APIVersion: "apps/v1",
+				},
+			}
+			hpaConfig, err := recommender2.Recommend(context.TODO(), workloadSpec)
+
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(hpaConfig.TargetMetricValue).To(Equal(10))
+			Expect(hpaConfig.Min).To(Equal(30))
+			Expect(hpaConfig.Max).To(Equal(30))
+		})
+
+	})
+
+	Describe("Recommend when no max-pods annotation present", func() {
+
+		var (
+			deploymentNamespace = "default"
+			deploymentName      = "test-deployment-abcd"
+			deployment          *appsv1.Deployment
+			deploymentPod       *corev1.Pod
+		)
+
+		BeforeEach(func() {
+			replicas := new(int32)
+			*replicas = 25
+			deployment = &appsv1.Deployment{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      deploymentName,
+					Namespace: deploymentNamespace,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+					Replicas: replicas,
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "container-1",
+									Image: "container-image",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU: resource.MustParse("8"),
+										},
+									},
+								},
+								{
+									Name:  "container-2",
+									Image: "container-image",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU: resource.MustParse("0.2"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+
+			deploymentPod = &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment-pod",
+					Namespace: deploymentNamespace,
+					Labels: map[string]string{
+						"app": "test-app",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "container-1",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("8"),
+								},
+							},
+						},
+						{
+							Name:  "container-2",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("0.2"),
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err = k8sClient.Create(ctx, deploymentPod)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+			err = k8sClient.Delete(ctx, deploymentPod)
+			Expect(err).ToNot(HaveOccurred())
+
+		})
+
+		It("should return recommend the no op HPA configuration when unable to find a reco", func() {
+
+			workloadSpec := WorkloadMeta{
+				Name:      deploymentName,
+				Namespace: deploymentNamespace,
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Deployment",
+					APIVersion: "apps/v1",
+				},
+			}
+			hpaConfig, err := recommender2.Recommend(context.TODO(), workloadSpec)
+
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(hpaConfig.TargetMetricValue).To(Equal(10))
+			Expect(hpaConfig.Min).To(Equal(25))
+			Expect(hpaConfig.Max).To(Equal(25))
+		})
+
+	})
 })
