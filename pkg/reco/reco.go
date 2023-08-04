@@ -125,7 +125,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		return nil, err
 	}
 
-	optimalTargetUtil, minReplicas, maxReplicas, err := c.findOptimalTargetUtilization(dataPoints,
+	optimalTargetUtil, minReplicas, maxReplicas, err := c.findOptimalHPAConfigurations(dataPoints,
 		acl,
 		c.minTarget,
 		c.maxTarget,
@@ -228,7 +228,7 @@ func (c *CpuUtilizationBasedRecommender) hasNoBreachOccurred(original, simulated
 	return true
 }
 
-func (c *CpuUtilizationBasedRecommender) findOptimalTargetUtilization(dataPoints []metrics.DataPoint,
+func (c *CpuUtilizationBasedRecommender) findOptimalHPAConfigurations(dataPoints []metrics.DataPoint,
 	acl time.Duration,
 	minTarget,
 	maxTarget int,
@@ -236,7 +236,7 @@ func (c *CpuUtilizationBasedRecommender) findOptimalTargetUtilization(dataPoints
 
 	optimalTargetThreshold := 0
 	optimalMin := 0
-	cost := 0.0
+	savings := 0.0
 
 	minReplicas := 3
 	for ; minReplicas <= maxReplicas; minReplicas++ {
@@ -262,23 +262,23 @@ func (c *CpuUtilizationBasedRecommender) findOptimalTargetUtilization(dataPoints
 		}
 		if high >= minTarget && calculatedMin <= minReplicas {
 			if len(simulatedHPAList) > 0 {
-				newCost := c.costFunction(maxReplicas, simulatedHPAList, perPodResources)
-				if float64(newCost) >= cost {
+				newSavings := c.calculateSavings(maxReplicas, simulatedHPAList, perPodResources)
+				if newSavings >= savings {
 					optimalMin = minReplicas
 					optimalTargetThreshold = high
-					cost = newCost
+					savings = newSavings
 				}
 			}
 		}
 	}
 
-	if optimalTargetThreshold < minTarget || cost == 0.0 {
+	if optimalTargetThreshold < minTarget || savings == 0.0 {
 		return 0, 0, 0, unableToRecommendError
 	}
 	return optimalTargetThreshold, optimalMin, maxReplicas, nil
 }
 
-func (c *CpuUtilizationBasedRecommender) costFunction(maxReplicas int, simulated []metrics.DataPoint, perPodResources float64) float64 {
+func (c *CpuUtilizationBasedRecommender) calculateSavings(maxReplicas int, simulated []metrics.DataPoint, perPodResources float64) float64 {
 	savings := 0.0
 	for _, dp := range simulated {
 		sm := dp.Value / c.redLineUtil
