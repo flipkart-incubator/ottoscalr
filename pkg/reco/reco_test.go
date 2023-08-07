@@ -31,7 +31,13 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			maxTarget := 60
 			perPodResources := 8.2
 
-			optimalTarget, min, max, err := recommender.findOptimalTargetUtilization(
+			totalDataPoints := int(recommender.metricWindow.Seconds()) / int(recommender.metricStep.Seconds())
+
+			fmt.Println(totalDataPoints)
+			percentageOfDataPointsFetched := (len(dataPoints) / totalDataPoints) * 100
+			fmt.Println(percentageOfDataPointsFetched)
+
+			optimalTarget, min, max, err := recommender.findOptimalHPAConfigurations(
 				dataPoints, acl, minTarget, maxTarget, perPodResources, 24)
 
 			Expect(err).To(Not(HaveOccurred()))
@@ -1077,6 +1083,38 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			Expect(hpaConfig.TargetMetricValue).To(Equal(10))
 			Expect(hpaConfig.Min).To(Equal(25))
 			Expect(hpaConfig.Max).To(Equal(25))
+		})
+
+	})
+
+	Describe("When there is not enough cpu utilization metrics", func() {
+
+		var (
+			deploymentNamespace = "default"
+			deploymentName      = "test-deployment-abcd"
+		)
+
+		It("should not generate recommendation", func() {
+
+			workloadSpec := WorkloadMeta{
+				Name:      deploymentName,
+				Namespace: deploymentNamespace,
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Deployment",
+					APIVersion: "apps/v1",
+				},
+			}
+			totalDataPoints := int(recommender3.metricWindow.Seconds()) / int(recommender3.metricStep.Seconds())
+			Expect(totalDataPoints).To(Equal(80640))
+
+			dataPoints, _ := recommender3.scraper.GetAverageCPUUtilizationByWorkload(deploymentName, deploymentName, time.Now(), time.Now(), recommender3.metricStep)
+			Expect(len(dataPoints)).To(Equal(5))
+			percentageOfDataPointsFetched := (float64(len(dataPoints)) / float64(totalDataPoints)) * 100
+			Expect(percentageOfDataPointsFetched).To(Equal(0.006200396825396825))
+			_, err := recommender3.Recommend(context.TODO(), workloadSpec)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("metric Source doesn't has required number of metrics to generate recommendation"))
 		})
 
 	})

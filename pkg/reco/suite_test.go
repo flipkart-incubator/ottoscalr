@@ -31,23 +31,25 @@ var (
 	ctx           context.Context
 	cancel        context.CancelFunc
 
-	logger                 logr.Logger
-	redLineUtil            = 0.85
-	metricWindow           = 1 * time.Hour
-	metricStep             = 5 * time.Minute
-	minTarget              = 10
-	maxTarget              = 60
-	fakeScraper            metrics.Scraper
-	fakeScraper1           metrics.Scraper
-	recommender            *CpuUtilizationBasedRecommender
-	recommender1           *CpuUtilizationBasedRecommender
-	recommender2           *CpuUtilizationBasedRecommender
-	fakeMetricsTransformer []metrics.MetricsTransformer
-	store                  *policy.PolicyStore
-	policyAge              = 1 * time.Second
-	mockRecommender        *Recommender
-	mockPolicyIterator     *PolicyIterator
-	mockPolicy             *Policy
+	logger                       logr.Logger
+	redLineUtil                  = 0.85
+	metricWindow                 = 1 * time.Hour
+	metricStep                   = 5 * time.Minute
+	minTarget                    = 10
+	maxTarget                    = 60
+	minPercentageMetricsRequired = 5
+	fakeScraper                  metrics.Scraper
+	fakeScraper1                 metrics.Scraper
+	recommender                  *CpuUtilizationBasedRecommender
+	recommender1                 *CpuUtilizationBasedRecommender
+	recommender2                 *CpuUtilizationBasedRecommender
+	recommender3                 *CpuUtilizationBasedRecommender
+	fakeMetricsTransformer       []metrics.MetricsTransformer
+	store                        *policy.PolicyStore
+	policyAge                    = 1 * time.Second
+	mockRecommender              *Recommender
+	mockPolicyIterator           *PolicyIterator
+	mockPolicy                   *Policy
 )
 
 var safestPolicy, policy1, policy2 *ottoscaleriov1alpha1.Policy
@@ -190,22 +192,25 @@ var _ = BeforeSuite(func() {
 
 	fakeScraper1 = newFakeScraper([]metrics.DataPoint{
 		{Timestamp: time.Now().Add(-10 * time.Minute), Value: 0},
-		{Timestamp: time.Now().Add(-9 * time.Minute), Value: 90},
-		{Timestamp: time.Now().Add(-8 * time.Minute), Value: 100},
-		{Timestamp: time.Now().Add(-7 * time.Minute), Value: 100},
-		{Timestamp: time.Now().Add(-6 * time.Minute), Value: 100},
+		{Timestamp: time.Now().Add(-9 * time.Minute), Value: 500},
+		{Timestamp: time.Now().Add(-8 * time.Minute), Value: 600},
+		{Timestamp: time.Now().Add(-7 * time.Minute), Value: 600},
+		{Timestamp: time.Now().Add(-6 * time.Minute), Value: 600},
 	}, []metrics.DataPoint{{Timestamp: time.Now(), Value: 1.3}}, 5*time.Minute)
 
 	fakeMetricsTransformer = append(fakeMetricsTransformer, &FakeMetricsTransformer{})
 
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
-		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, logger)
 
 	recommender1 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, logger)
 
 	recommender2 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		metricWindow, fakeScraper1, fakeMetricsTransformer, metricStep, minTarget, maxTarget, logger)
+		metricWindow, fakeScraper1, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, logger)
+
+	recommender3 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
+		28*24*time.Hour, fakeScraper1, fakeMetricsTransformer, 30*time.Second, minTarget, maxTarget, minPercentageMetricsRequired, logger)
 
 	safestPolicy = &ottoscaleriov1alpha1.Policy{
 		ObjectMeta: metav1.ObjectMeta{Name: "safest-policy"},

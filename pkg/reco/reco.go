@@ -45,15 +45,16 @@ const (
 )
 
 type CpuUtilizationBasedRecommender struct {
-	k8sClient          client.Client
-	redLineUtil        float64
-	metricWindow       time.Duration
-	scraper            metrics.Scraper
-	metricsTransformer []metrics.MetricsTransformer
-	metricStep         time.Duration
-	minTarget          int
-	maxTarget          int
-	logger             logr.Logger
+	k8sClient                    client.Client
+	redLineUtil                  float64
+	metricWindow                 time.Duration
+	scraper                      metrics.Scraper
+	metricsTransformer           []metrics.MetricsTransformer
+	metricStep                   time.Duration
+	minTarget                    int
+	maxTarget                    int
+	minPercentageMetricsRequired int
+	logger                       logr.Logger
 }
 
 func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
@@ -64,17 +65,19 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 	metricStep time.Duration,
 	minTarget int,
 	maxTarget int,
+	minPercentageMetricsRequired int,
 	logger logr.Logger) *CpuUtilizationBasedRecommender {
 	return &CpuUtilizationBasedRecommender{
-		k8sClient:          k8sClient,
-		redLineUtil:        redLineUtil,
-		metricWindow:       metricWindow,
-		scraper:            scraper,
-		metricsTransformer: metricsTransformer,
-		metricStep:         metricStep,
-		minTarget:          minTarget,
-		maxTarget:          maxTarget,
-		logger:             logger,
+		k8sClient:                    k8sClient,
+		redLineUtil:                  redLineUtil,
+		metricWindow:                 metricWindow,
+		scraper:                      scraper,
+		metricsTransformer:           metricsTransformer,
+		metricStep:                   metricStep,
+		minTarget:                    minTarget,
+		maxTarget:                    maxTarget,
+		minPercentageMetricsRequired: minPercentageMetricsRequired,
+		logger:                       logger,
 	}
 }
 
@@ -96,6 +99,14 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	}
 	cpuUtilizationQueryLatency := time.Since(utilizationQueryStartTime).Seconds()
 	getAverageCPUUtilizationQueryLatency.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name, workloadMeta.Kind, workloadMeta.Name).Observe(cpuUtilizationQueryLatency)
+
+	totalDataPoints := int(c.metricWindow.Seconds()) / int(c.metricStep.Seconds())
+	percentageOfDataPointsFetched := (float64(len(dataPoints)) / float64(totalDataPoints)) * 100
+	if int(percentageOfDataPointsFetched) < c.minPercentageMetricsRequired {
+		err = fmt.Errorf("metric Source doesn't has required number of metrics to generate recommendation")
+		c.logger.Error(err, "Error while checking minimum availability of metrics required to generate recommendation")
+		return nil, err
+	}
 
 	if c.metricsTransformer != nil {
 		for _, transformers := range c.metricsTransformer {
