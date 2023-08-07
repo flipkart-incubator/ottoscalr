@@ -31,12 +31,6 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			maxTarget := 60
 			perPodResources := 8.2
 
-			totalDataPoints := int(recommender.metricWindow.Seconds()) / int(recommender.metricStep.Seconds())
-
-			fmt.Println(totalDataPoints)
-			percentageOfDataPointsFetched := (len(dataPoints) / totalDataPoints) * 100
-			fmt.Println(percentageOfDataPointsFetched)
-
 			optimalTarget, min, max, err := recommender.findOptimalHPAConfigurations(
 				dataPoints, acl, minTarget, maxTarget, perPodResources, 24)
 
