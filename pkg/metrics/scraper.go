@@ -41,10 +41,20 @@ var (
 		prometheus.GaugeOpts{Name: "p8s_instance_queried",
 			Help: "Number of P8s instances which returned datapoints"}, []string{"namespace", "query", "instance", "workload"},
 	)
+
+	p8sQueryErrorCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "p8s_query_error_count",
+			Help: "P8s error counter"}, []string{"query", "p8sinstance"},
+	)
+
+	p8sQuerySuccessCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "p8s_query_success_count",
+			Help: "P8s error counter"}, []string{"query", "p8sinstance"},
+	)
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(prometheusQueryLatency, dataPointsFetched, totalDataPointsFetched, p8sInstanceQueried)
+	p8smetrics.Registry.MustRegister(prometheusQueryLatency, dataPointsFetched, totalDataPointsFetched, p8sInstanceQueried, p8sQueryErrorCount, p8sQuerySuccessCount)
 }
 
 type DataPoint struct {
@@ -208,7 +218,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 			defer wg.Done()
 
 			p8sQueryStartTime := time.Now()
-			result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi.apiUrl, query, start, end, step)
+			result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi, query, start, end, step)
 
 			if err != nil {
 				ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
@@ -360,7 +370,7 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		go func(pi PrometheusInstance) {
 			defer wg.Done()
 			p8sQueryStartTime := time.Now()
-			result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi.apiUrl, query, start, end, step)
+			result, err := ps.rangeQuerySplitter.QueryRangeByInterval(ctx, pi, query, start, end, step)
 			if err != nil {
 				ps.logger.Error(err, "failed to execute Prometheus query", "Instance", pi.address)
 				logP8sMetrics(p8sQueryStartTime, namespace, BreachDataPointsQuery, pi.address, workload, -1, 0)
@@ -424,11 +434,12 @@ func NewRangeQuerySplitter(splitInterval time.Duration) *RangeQuerySplitter {
 	return &RangeQuerySplitter{splitInterval: splitInterval}
 }
 func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
-	api v1.API,
+	pi PrometheusInstance,
 	query string,
 	start, end time.Time,
 	step time.Duration) (model.Value, error) {
 
+	api := pi.apiUrl
 	var resultMatrix model.Matrix
 
 	resultChanLength := int(end.Sub(start).Hours()/rqs.splitInterval.Hours()) + 50 //Added some buffer
@@ -451,6 +462,7 @@ func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
 			defer wg.Done()
 			partialResult, _, err := api.QueryRange(ctx, query, splitRange)
 			if err != nil {
+				p8sQueryErrorCount.WithLabelValues(query, pi.address).Inc()
 				resultChan <- PrometheusQueryResult{nil, fmt.Errorf("failed to execute Prometheus query: %v", err)}
 				return
 			}
@@ -461,6 +473,7 @@ func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
 			}
 
 			partialMatrix := partialResult.(model.Matrix)
+			p8sQuerySuccessCount.WithLabelValues(query, pi.address).Inc()
 			resultChan <- PrometheusQueryResult{partialMatrix, nil}
 
 		}(splitRange)
