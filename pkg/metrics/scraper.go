@@ -54,7 +54,7 @@ var (
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(prometheusQueryLatency, dataPointsFetched, totalDataPointsFetched, p8sInstanceQueried)
+	p8smetrics.Registry.MustRegister(prometheusQueryLatency, dataPointsFetched, totalDataPointsFetched, p8sInstanceQueried, p8sQueryErrorCount, p8sQuerySuccessCount)
 }
 
 type DataPoint struct {
