@@ -31,6 +31,12 @@ var (
 			Buckets: append(prometheus.DefBuckets, 15, 20, 50, 100),
 		}, []string{"namespace", "policyreco", "workloadKind", "workload"},
 	)
+
+	minPercentageOfDataPointsPresent = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "minimum_percentage_of_datapoints_present",
+			Help: "Boolean to show if min percentage of datapoints is present to generate recommendation"},
+		[]string{"namespace", "workload"},
+	)
 )
 
 func init() {
@@ -100,13 +106,21 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	cpuUtilizationQueryLatency := time.Since(utilizationQueryStartTime).Seconds()
 	getAverageCPUUtilizationQueryLatency.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name, workloadMeta.Kind, workloadMeta.Name).Observe(cpuUtilizationQueryLatency)
 
+	workloadMaxReplicas, err := c.getMaxPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	if err != nil {
+		c.logger.Error(err, "Error while getting getMaxPods")
+		return nil, err
+	}
+
 	totalDataPoints := int(c.metricWindow.Seconds()) / int(c.metricStep.Seconds())
 	percentageOfDataPointsFetched := (float64(len(dataPoints)) / float64(totalDataPoints)) * 100
 	if int(percentageOfDataPointsFetched) < c.minPercentageMetricsRequired {
+		minPercentageOfDataPointsPresent.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(float64(0))
 		err = fmt.Errorf("metric Source doesn't has required number of metrics to generate recommendation")
-		c.logger.Error(err, "Error while checking minimum availability of metrics required to generate recommendation")
-		return nil, err
+		c.logger.Error(err, "Setting the recommendation to no operation policy")
+		return &v1alpha1.HPAConfiguration{Min: workloadMaxReplicas, Max: workloadMaxReplicas, TargetMetricValue: c.minTarget}, nil
 	}
+	minPercentageOfDataPointsPresent.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(float64(1))
 
 	if c.metricsTransformer != nil {
 		for _, transformers := range c.metricsTransformer {
@@ -127,12 +141,6 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	perPodResources, err := c.getContainerCPULimitsSum(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
 	if err != nil {
 		c.logger.Error(err, "Error while getting getContainerCPULimitsSum")
-		return nil, err
-	}
-
-	workloadMaxReplicas, err := c.getMaxPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
-	if err != nil {
-		c.logger.Error(err, "Error while getting getMaxPods")
 		return nil, err
 	}
 

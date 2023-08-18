@@ -109,11 +109,11 @@ type Config struct {
 	} `yaml:"policyRecommendationRegistrar"`
 
 	CpuUtilizationBasedRecommender struct {
-		MetricWindowInDays           int `yaml:"metricWindowInDays"`
-		StepSec                      int `yaml:"stepSec"`
-		MinTarget                    int `yaml:"minTarget"`
-		MaxTarget                    int `yaml:"minTarget"`
-		MinPercentageMetricsRequired int `yaml:"minPercentageMetricsRequired"`
+		MetricWindowInDays         int `yaml:"metricWindowInDays"`
+		StepSec                    int `yaml:"stepSec"`
+		MinTarget                  int `yaml:"minTarget"`
+		MaxTarget                  int `yaml:"minTarget"`
+		MetricsPercentageThreshold int `yaml:"metricsPercentageThreshold"`
 	} `yaml:"cpuUtilizationBasedRecommender"`
 	MetricIngestionTime      float64 `yaml:"metricIngestionTime"`
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
@@ -252,7 +252,7 @@ func main() {
 		time.Duration(config.CpuUtilizationBasedRecommender.StepSec)*time.Second,
 		config.CpuUtilizationBasedRecommender.MinTarget,
 		config.CpuUtilizationBasedRecommender.MaxTarget,
-		config.CpuUtilizationBasedRecommender.MinPercentageMetricsRequired,
+		config.CpuUtilizationBasedRecommender.MetricsPercentageThreshold,
 		logger)
 
 	breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
