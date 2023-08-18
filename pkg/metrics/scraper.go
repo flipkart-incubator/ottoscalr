@@ -44,12 +44,12 @@ var (
 
 	p8sQueryErrorCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{Name: "p8s_query_error_count",
-			Help: "P8s error counter"}, []string{"query", "p8sinstance"},
+			Help: "P8s error counter"}, []string{"p8sinstance"},
 	)
 
 	p8sQuerySuccessCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{Name: "p8s_query_success_count",
-			Help: "P8s error counter"}, []string{"query", "p8sinstance"},
+			Help: "P8s error counter"}, []string{"p8sinstance"},
 	)
 )
 
@@ -462,7 +462,7 @@ func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
 			defer wg.Done()
 			partialResult, _, err := api.QueryRange(ctx, query, splitRange)
 			if err != nil {
-				p8sQueryErrorCount.WithLabelValues(query, pi.address).Inc()
+				p8sQueryErrorCount.WithLabelValues(pi.address).Inc()
 				resultChan <- PrometheusQueryResult{nil, fmt.Errorf("failed to execute Prometheus query: %v", err)}
 				return
 			}
@@ -473,7 +473,7 @@ func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
 			}
 
 			partialMatrix := partialResult.(model.Matrix)
-			p8sQuerySuccessCount.WithLabelValues(query, pi.address).Inc()
+			p8sQuerySuccessCount.WithLabelValues(pi.address).Inc()
 			resultChan <- PrometheusQueryResult{partialMatrix, nil}
 
 		}(splitRange)
