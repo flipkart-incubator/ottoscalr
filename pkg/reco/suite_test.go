@@ -190,10 +190,10 @@ var _ = BeforeSuite(func() {
 
 	fakeScraper1 = newFakeScraper([]metrics.DataPoint{
 		{Timestamp: time.Now().Add(-10 * time.Minute), Value: 0},
-		{Timestamp: time.Now().Add(-9 * time.Minute), Value: 90},
-		{Timestamp: time.Now().Add(-8 * time.Minute), Value: 100},
-		{Timestamp: time.Now().Add(-7 * time.Minute), Value: 100},
-		{Timestamp: time.Now().Add(-6 * time.Minute), Value: 100},
+		{Timestamp: time.Now().Add(-9 * time.Minute), Value: 500},
+		{Timestamp: time.Now().Add(-8 * time.Minute), Value: 600},
+		{Timestamp: time.Now().Add(-7 * time.Minute), Value: 600},
+		{Timestamp: time.Now().Add(-6 * time.Minute), Value: 600},
 	}, []metrics.DataPoint{{Timestamp: time.Now(), Value: 1.3}}, 5*time.Minute)
 
 	fakeMetricsTransformer = append(fakeMetricsTransformer, &FakeMetricsTransformer{})
