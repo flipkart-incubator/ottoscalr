@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM jfrog.fkinternal.com/alm/golang:1.19-buster as builder
+FROM jfrog.fkinternal.com/alm/ottoscalr/golang:1.19-buster as builder
 ARG TARGETOS
 ARG TARGETARCH
 
