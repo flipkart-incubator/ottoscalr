@@ -1086,9 +1086,105 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 		var (
 			deploymentNamespace = "default"
 			deploymentName      = "test-deployment-abcd"
+			deployment          *appsv1.Deployment
+			deploymentPod       *corev1.Pod
 		)
 
-		It("should not generate recommendation", func() {
+		BeforeEach(func() {
+			replicas := new(int32)
+			*replicas = 25
+			deployment = &appsv1.Deployment{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      deploymentName,
+					Namespace: deploymentNamespace,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+					Replicas: replicas,
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "container-1",
+									Image: "container-image",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU: resource.MustParse("8"),
+										},
+									},
+								},
+								{
+									Name:  "container-2",
+									Image: "container-image",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU: resource.MustParse("0.2"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+
+			deploymentPod = &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment-pod",
+					Namespace: deploymentNamespace,
+					Labels: map[string]string{
+						"app": "test-app",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "container-1",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("8"),
+								},
+							},
+						},
+						{
+							Name:  "container-2",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("0.2"),
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err = k8sClient.Create(ctx, deploymentPod)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should not generate recommendation and recommend the no op policy", func() {
 
 			workloadSpec := WorkloadMeta{
 				Name:      deploymentName,
@@ -1105,10 +1201,12 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			Expect(len(dataPoints)).To(Equal(5))
 			percentageOfDataPointsFetched := (float64(len(dataPoints)) / float64(totalDataPoints)) * 100
 			Expect(percentageOfDataPointsFetched).To(Equal(0.006200396825396825))
-			_, err := recommender3.Recommend(context.TODO(), workloadSpec)
+			hpaConfig, err := recommender3.Recommend(context.TODO(), workloadSpec)
 
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("metric Source doesn't has required number of metrics to generate recommendation"))
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(hpaConfig.TargetMetricValue).To(Equal(10))
+			Expect(hpaConfig.Min).To(Equal(25))
+			Expect(hpaConfig.Max).To(Equal(25))
 		})
 
 	})
