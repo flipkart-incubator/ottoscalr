@@ -23,7 +23,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 				Min:       10,
 				Threshold: 50,
 				Max:       20,
-			}).WithPolicyIterator(&MockNoOpPI{}).WithMinRequiredReplicas(3).Build()
+			}).WithPolicyIterator(&MockNoOpPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).Build()
 			Expect(recoWorkflow).NotTo(BeNil())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(recoWorkflowBuilder.logger).NotTo(BeNil())
@@ -40,9 +40,9 @@ var _ = Describe("RecommendationWorkflow", func() {
 
 			recoWorkflow, err := recoWorkflowBuilder.WithRecommender(&MockRecommender{
 				Min:       10,
-				Threshold: 50,
+				Threshold: 18,
 				Max:       20,
-			}).WithMinRequiredReplicas(3).Build()
+			}).WithMinRequiredReplicas(3).WithPolicyStore(store).Build()
 			Expect(recoWorkflow).NotTo(BeNil())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(recoWorkflowBuilder.logger).NotTo(BeNil())
@@ -57,15 +57,17 @@ var _ = Describe("RecommendationWorkflow", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(targetConfig).NotTo(BeNil())
 			Expect(nextConfig).NotTo(BeNil())
-			Expect(policy).To(BeNil())
+			Expect(policy).To(Equal(&Policy{Name: policy1.Name, RiskIndex: policy1.Spec.RiskIndex,
+				MinReplicaPercentageCut: policy1.Spec.MinReplicaPercentageCut,
+				TargetUtilization:       policy1.Spec.TargetUtilization}))
 
 			Expect(targetConfig.Max).To(Equal(20))
 			Expect(targetConfig.Min).To(Equal(10))
-			Expect(targetConfig.TargetMetricValue).To(Equal(50))
+			Expect(targetConfig.TargetMetricValue).To(Equal(18))
 
 			Expect(nextConfig.Max).To(Equal(20))
 			Expect(nextConfig.Min).To(Equal(10))
-			Expect(nextConfig.TargetMetricValue).To(Equal(50))
+			Expect(nextConfig.TargetMetricValue).To(Equal(18))
 		})
 	})
 
@@ -104,7 +106,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 				Min:       10,
 				Threshold: 50,
 				Max:       20,
-			}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).Build()
+			}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).Build()
 			Expect(recoWorkflow).NotTo(BeNil())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(recoWorkflowBuilder.logger).NotTo(BeNil())
@@ -151,7 +153,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 					Min:       10,
 					Threshold: 50,
 					Max:       20,
-				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).Build()
+				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).Build()
 				Expect(recoWorkflow).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(recoWorkflowBuilder.logger).NotTo(BeNil())
@@ -174,7 +176,9 @@ var _ = Describe("RecommendationWorkflow", func() {
 				Expect(nextConfig.Min).To(Equal(10))
 				Expect(nextConfig.TargetMetricValue).To(Equal(50))
 
-				Expect(policy).To(BeNil())
+				Expect(policy).To(Equal(&Policy{Name: policy2.Name, RiskIndex: policy2.Spec.RiskIndex,
+					MinReplicaPercentageCut: policy2.Spec.MinReplicaPercentageCut,
+					TargetUtilization:       policy2.Spec.TargetUtilization}))
 
 			})
 		})
@@ -196,7 +200,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 					Min:       1,
 					Threshold: 50,
 					Max:       2,
-				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).Build()
+				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).Build()
 				Expect(recoWorkflow).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
 				_, targetConfig, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
@@ -227,7 +231,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 					Min:       6,
 					Threshold: 50,
 					Max:       10,
-				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).Build()
+				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).Build()
 				Expect(recoWorkflow).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
 				_, targetConfig, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
@@ -257,7 +261,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 					Min:       1,
 					Threshold: 50,
 					Max:       20,
-				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).Build()
+				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).Build()
 				Expect(recoWorkflow).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
 				_, targetConfig, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{

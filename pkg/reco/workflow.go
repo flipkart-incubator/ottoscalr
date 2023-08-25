@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -41,6 +42,7 @@ type Recommender interface {
 type RecommendationWorkflowImpl struct {
 	recommender         Recommender
 	policyIterators     map[string]PolicyIterator
+	policyStore         policy.Store
 	logger              logr.Logger
 	minRequiredReplicas int
 }
@@ -85,6 +87,11 @@ func (b *RecoWorkflowBuilder) WithMinRequiredReplicas(minRequiredReplicas int) *
 	return b
 }
 
+func (b *RecoWorkflowBuilder) WithPolicyStore(policyStore policy.Store) *RecoWorkflowBuilder {
+	b.policyStore = policyStore
+	return b
+}
+
 func (b *RecoWorkflowBuilder) Build() (RecommendationWorkflow, error) {
 	var zeroValLogger logr.Logger
 	if b.logger == zeroValLogger {
@@ -101,6 +108,7 @@ func (b *RecoWorkflowBuilder) Build() (RecommendationWorkflow, error) {
 		policyIterators:     b.policyIterators,
 		logger:              b.logger,
 		minRequiredReplicas: b.minRequiredReplicas,
+		policyStore:         b.policyStore,
 	}, nil
 }
 
@@ -146,13 +154,17 @@ func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMe
 
 	}
 
-	nextConfig, policyToApply := generateNextRecoConfig(targetRecoConfig, nextPolicy, wm)
+	nextConfig, policyToApply := rw.generateNextRecoConfig(targetRecoConfig, nextPolicy, wm)
 	return nextConfig, targetRecoConfig, policyToApply, nil
 }
 
-func generateNextRecoConfig(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *Policy) {
+func (rw *RecommendationWorkflowImpl) generateNextRecoConfig(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *Policy) {
 	if shouldApplyReco(config, policy) {
-		return config, nil
+		policies, err := rw.policyStore.GetSortedPolicies()
+		if err != nil {
+			return config, nil
+		}
+		return config, findClosestSafePolicy(config, policies)
 	} else {
 		recoConfig, _ := createRecoConfigFromPolicy(policy, config, wm)
 		return recoConfig, policy
@@ -214,4 +226,15 @@ func transformTargetRecoConfig(targetRecoConfig *v1alpha1.HPAConfiguration, minR
 		minReplicas = minRequiredReplicas
 	}
 	return &v1alpha1.HPAConfiguration{Min: minReplicas, Max: maxReplicas, TargetMetricValue: targetRecoConfig.TargetMetricValue}
+}
+
+func findClosestSafePolicy(config *v1alpha1.HPAConfiguration, policies *v1alpha1.PolicyList) *Policy {
+	var closestSafePolicy v1alpha1.Policy
+
+	for _, pc := range policies.Items {
+		if pc.Spec.MinReplicaPercentageCut == 100 && pc.Spec.TargetUtilization <= config.TargetMetricValue {
+			closestSafePolicy = pc
+		}
+	}
+	return PolicyFromCR(&closestSafePolicy)
 }
