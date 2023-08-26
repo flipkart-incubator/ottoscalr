@@ -114,7 +114,7 @@ func NewPolicyRecommendationReconciler(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder,
 	maxConcurrentReconciles int, minRequiredReplicas int, recommender reco.Recommender, policyStore policy.Store, policyIterators ...reco.PolicyIterator) (*PolicyRecommendationReconciler, error) {
 	recoWfBuilder := reco.NewRecommendationWorkflowBuilder().
-		WithRecommender(recommender).WithMinRequiredReplicas(minRequiredReplicas).WithPolicyStore(policyStore)
+		WithRecommender(recommender).WithMinRequiredReplicas(minRequiredReplicas).WithPolicyStore(policyStore).WithK8sClient(client)
 	for _, pi := range policyIterators {
 		recoWfBuilder = recoWfBuilder.WithPolicyIterator(pi)
 	}
