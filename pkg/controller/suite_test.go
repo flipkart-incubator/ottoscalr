@@ -127,7 +127,7 @@ var _ = BeforeSuite(func() {
 
 	policyRecoReconciler, err := NewPolicyRecommendationReconciler(k8sManager.GetClient(),
 		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(PolicyRecoWorkflowCtrlName),
-		1, 3, recommender, reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
+		1, 3, recommender, newFakePolicyStore(), reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
 		reco.NewAgingPolicyIterator(k8sManager.GetClient(), policyAge))
 	Expect(err).NotTo(HaveOccurred())
 	err = policyRecoReconciler.
@@ -185,7 +185,7 @@ func newFakePolicyStore() *FakePolicyStore {
 			Spec: ottoscaleriov1alpha1.PolicySpec{
 				IsDefault:               false,
 				RiskIndex:               1,
-				MinReplicaPercentageCut: 80,
+				MinReplicaPercentageCut: 100,
 				TargetUtilization:       10,
 			},
 		},
@@ -264,7 +264,7 @@ func (ps *FakePolicyStore) GetPreviousPolicyByName(name string) (*ottoscaleriov1
 func (ps *FakePolicyStore) GetSortedPolicies() (*ottoscaleriov1alpha1.PolicyList,
 	error) {
 	return &ottoscaleriov1alpha1.PolicyList{
-		Items: nil,
+		Items: ps.policies,
 	}, nil
 }
 
