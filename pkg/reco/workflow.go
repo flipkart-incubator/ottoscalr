@@ -203,7 +203,6 @@ func createRecoConfigFromPolicy(policy *Policy, recoConfig *v1alpha1.HPAConfigur
 func (rw *RecommendationWorkflowImpl) shouldApplyReco(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) (bool, *Policy, error) {
 	closestPolicy, err := rw.findClosestSafePolicy(config)
 	if err != nil {
-		//TODO: needs to be revisited
 		return false, nil, fmt.Errorf("error finding closest safe policy for config: %v", config)
 	}
 	if policy == nil {
