@@ -201,15 +201,15 @@ func createRecoConfigFromPolicy(policy *Policy, recoConfig *v1alpha1.HPAConfigur
 
 // Determines whether the recommendation should take precedence over the nextPolicy
 func (rw *RecommendationWorkflowImpl) shouldApplyReco(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) (bool, *Policy, error) {
+	if config == nil {
+		return false, nil, nil
+	}
 	closestPolicy, err := rw.findClosestSafePolicy(config)
 	if err != nil {
 		return false, nil, fmt.Errorf("error finding closest safe policy for config: %v", config)
 	}
 	if policy == nil {
 		return true, closestPolicy, nil
-	}
-	if config == nil {
-		return false, nil, nil
 	}
 	var policyReco v1alpha1.PolicyRecommendation
 	err = rw.k8sClient.Get(context.Background(), types.NamespacedName{
