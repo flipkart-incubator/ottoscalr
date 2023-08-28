@@ -3,16 +3,21 @@ package reco
 import (
 	"context"
 	"errors"
+	"fmt"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	golog "log"
 	"math"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
+	"strconv"
 	"time"
 )
 
@@ -39,8 +44,10 @@ type Recommender interface {
 }
 
 type RecommendationWorkflowImpl struct {
+	k8sClient           client.Client
 	recommender         Recommender
 	policyIterators     map[string]PolicyIterator
+	policyStore         policy.Store
 	logger              logr.Logger
 	minRequiredReplicas int
 }
@@ -85,22 +92,37 @@ func (b *RecoWorkflowBuilder) WithMinRequiredReplicas(minRequiredReplicas int) *
 	return b
 }
 
+func (b *RecoWorkflowBuilder) WithPolicyStore(policyStore policy.Store) *RecoWorkflowBuilder {
+	b.policyStore = policyStore
+	return b
+}
+
+func (b *RecoWorkflowBuilder) WithK8sClient(k8sClient client.Client) *RecoWorkflowBuilder {
+	b.k8sClient = k8sClient
+	return b
+}
+
 func (b *RecoWorkflowBuilder) Build() (RecommendationWorkflow, error) {
 	var zeroValLogger logr.Logger
 	if b.logger == zeroValLogger {
 		b.logger = zap.New()
 	}
 	if b.recommender == nil && b.policyIterators == nil {
-		return nil, errors.New("Both recommender and policy iterators can't be nil")
+		return nil, errors.New("both recommender and policy iterators can't be nil")
+	}
+	if b.policyStore == nil || b.k8sClient == nil {
+		return nil, errors.New("policy store or k8sClient can't be nil")
 	}
 	if b.minRequiredReplicas == 0 {
 		b.minRequiredReplicas = 3
 	}
 	return &RecommendationWorkflowImpl{
+		k8sClient:           b.k8sClient,
 		recommender:         b.recommender,
 		policyIterators:     b.policyIterators,
 		logger:              b.logger,
 		minRequiredReplicas: b.minRequiredReplicas,
+		policyStore:         b.policyStore,
 	}, nil
 }
 
@@ -146,16 +168,23 @@ func (rw *RecommendationWorkflowImpl) Execute(ctx context.Context, wm WorkloadMe
 
 	}
 
-	nextConfig, policyToApply := generateNextRecoConfig(targetRecoConfig, nextPolicy, wm)
+	nextConfig, policyToApply, err := rw.generateNextRecoConfig(targetRecoConfig, nextPolicy, wm)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	return nextConfig, targetRecoConfig, policyToApply, nil
 }
 
-func generateNextRecoConfig(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *Policy) {
-	if shouldApplyReco(config, policy) {
-		return config, nil
+func (rw *RecommendationWorkflowImpl) generateNextRecoConfig(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, *Policy, error) {
+	applyReco, closestSafePolicy, err := rw.shouldApplyReco(config, policy, wm)
+	if err != nil {
+		return nil, nil, err
+	}
+	if applyReco {
+		return config, closestSafePolicy, nil
 	} else {
 		recoConfig, _ := createRecoConfigFromPolicy(policy, config, wm)
-		return recoConfig, policy
+		return recoConfig, policy, nil
 	}
 }
 
@@ -171,19 +200,31 @@ func createRecoConfigFromPolicy(policy *Policy, recoConfig *v1alpha1.HPAConfigur
 }
 
 // Determines whether the recommendation should take precedence over the nextPolicy
-func shouldApplyReco(config *v1alpha1.HPAConfiguration, policy *Policy) bool {
-	if policy == nil {
-		return true
-	}
+func (rw *RecommendationWorkflowImpl) shouldApplyReco(config *v1alpha1.HPAConfiguration, policy *Policy, wm WorkloadMeta) (bool, *Policy, error) {
 	if config == nil {
-		return false
+		return false, nil, nil
+	}
+	closestPolicy, err := rw.findClosestSafePolicy(config)
+	if err != nil {
+		return false, nil, fmt.Errorf("error finding closest safe policy for config: %v", config)
+	}
+	if policy == nil {
+		return true, closestPolicy, nil
+	}
+	var policyReco v1alpha1.PolicyRecommendation
+	err = rw.k8sClient.Get(context.Background(), types.NamespacedName{
+		Name:      wm.Name,
+		Namespace: wm.Namespace}, &policyReco)
+
+	if err != nil {
+		return false, nil, fmt.Errorf("error getting the policyreco: %s,namespace: %s, %v", wm.Name, wm.Namespace, err)
 	}
 
-	// Returns true if the reco is safer than the policy
-	if policy.MinReplicaPercentageCut == 100 && config.TargetMetricValue < policy.TargetUtilization {
-		return true
-	} else { // Policy is safer than the reco or we've exhausted the list of policies and the last (most aggressive) policy is safer than the reco config
-		return false
+	targetRecoAchieved := isTargetRecommendationAchieved(&policyReco)
+	if (policy.RiskIndex > closestPolicy.RiskIndex) || (targetRecoAchieved && policy.RiskIndex == closestPolicy.RiskIndex) {
+		return true, closestPolicy, nil
+	} else {
+		return false, nil, nil
 	}
 }
 
@@ -214,4 +255,40 @@ func transformTargetRecoConfig(targetRecoConfig *v1alpha1.HPAConfiguration, minR
 		minReplicas = minRequiredReplicas
 	}
 	return &v1alpha1.HPAConfiguration{Min: minReplicas, Max: maxReplicas, TargetMetricValue: targetRecoConfig.TargetMetricValue}
+}
+
+func (rw *RecommendationWorkflowImpl) findClosestSafePolicy(config *v1alpha1.HPAConfiguration) (*Policy, error) {
+	policies, err := rw.policyStore.GetSortedPolicies()
+	if err != nil {
+		return nil, err
+	}
+	var closestSafePolicy *v1alpha1.Policy
+
+	for _, pc := range policies.Items {
+		if pc.Spec.MinReplicaPercentageCut == 100 && (pc.Spec.TargetUtilization <= config.TargetMetricValue) {
+			// pc is a loop variable and should not assign address of loop variable
+			candidatePolicy := pc
+			closestSafePolicy = &candidatePolicy
+		}
+
+	}
+
+	if closestSafePolicy == nil {
+		return nil, errors.New("closest safe policy not found")
+	}
+	return PolicyFromCR(closestSafePolicy), nil
+}
+
+func isTargetRecommendationAchieved(policyreco *v1alpha1.PolicyRecommendation) bool {
+	if policyreco == nil {
+		return false
+	}
+	targetAchieved := false
+	for _, condition := range policyreco.Status.Conditions {
+		if condition.Type == string(v1alpha1.TargetRecoAchieved) {
+			targetAchieved, _ = strconv.ParseBool(string(condition.Status))
+			return targetAchieved
+		}
+	}
+	return targetAchieved
 }
