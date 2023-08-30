@@ -112,9 +112,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		return nil, err
 	}
 
-	totalDataPoints := int(c.metricWindow.Seconds()) / int(c.metricStep.Seconds())
-	percentageOfDataPointsFetched := (float64(len(dataPoints)) / float64(totalDataPoints)) * 100
-	if int(percentageOfDataPointsFetched) < c.metricsPercentageThreshold {
+	if !c.isMetricsAboveThreshold(dataPoints) {
 		minPercentageOfDataPointsPresent.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(float64(0))
 		err = fmt.Errorf("metric Source doesn't has required number of metrics to generate recommendation")
 		c.logger.Error(err, "Setting the recommendation to no operation policy")
@@ -414,4 +412,13 @@ func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind
 	}
 
 	return maxPods, nil
+}
+
+func (c *CpuUtilizationBasedRecommender) isMetricsAboveThreshold(dataPoints []metrics.DataPoint) bool {
+	totalDataPoints := int(c.metricWindow.Seconds()) / int(c.metricStep.Seconds())
+	percentageOfDataPointsFetched := (float64(len(dataPoints)) / float64(totalDataPoints)) * 100
+	if int(percentageOfDataPointsFetched) < c.metricsPercentageThreshold {
+		return false
+	}
+	return true
 }
