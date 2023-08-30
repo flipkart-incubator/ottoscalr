@@ -31,6 +31,12 @@ var (
 			Buckets: append(prometheus.DefBuckets, 15, 20, 50, 100),
 		}, []string{"namespace", "policyreco", "workloadKind", "workload"},
 	)
+
+	minPercentageOfDataPointsPresent = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "minimum_percentage_of_datapoints_present",
+			Help: "Boolean to show if min percentage of datapoints is present to generate recommendation"},
+		[]string{"namespace", "workload"},
+	)
 )
 
 func init() {
@@ -45,15 +51,16 @@ const (
 )
 
 type CpuUtilizationBasedRecommender struct {
-	k8sClient          client.Client
-	redLineUtil        float64
-	metricWindow       time.Duration
-	scraper            metrics.Scraper
-	metricsTransformer []metrics.MetricsTransformer
-	metricStep         time.Duration
-	minTarget          int
-	maxTarget          int
-	logger             logr.Logger
+	k8sClient                  client.Client
+	redLineUtil                float64
+	metricWindow               time.Duration
+	scraper                    metrics.Scraper
+	metricsTransformer         []metrics.MetricsTransformer
+	metricStep                 time.Duration
+	minTarget                  int
+	maxTarget                  int
+	metricsPercentageThreshold int
+	logger                     logr.Logger
 }
 
 func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
@@ -64,17 +71,19 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 	metricStep time.Duration,
 	minTarget int,
 	maxTarget int,
+	metricsPercentageThreshold int,
 	logger logr.Logger) *CpuUtilizationBasedRecommender {
 	return &CpuUtilizationBasedRecommender{
-		k8sClient:          k8sClient,
-		redLineUtil:        redLineUtil,
-		metricWindow:       metricWindow,
-		scraper:            scraper,
-		metricsTransformer: metricsTransformer,
-		metricStep:         metricStep,
-		minTarget:          minTarget,
-		maxTarget:          maxTarget,
-		logger:             logger,
+		k8sClient:                  k8sClient,
+		redLineUtil:                redLineUtil,
+		metricWindow:               metricWindow,
+		scraper:                    scraper,
+		metricsTransformer:         metricsTransformer,
+		metricStep:                 metricStep,
+		minTarget:                  minTarget,
+		maxTarget:                  maxTarget,
+		metricsPercentageThreshold: metricsPercentageThreshold,
+		logger:                     logger,
 	}
 }
 
@@ -97,6 +106,20 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	cpuUtilizationQueryLatency := time.Since(utilizationQueryStartTime).Seconds()
 	getAverageCPUUtilizationQueryLatency.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name, workloadMeta.Kind, workloadMeta.Name).Observe(cpuUtilizationQueryLatency)
 
+	workloadMaxReplicas, err := c.getMaxPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	if err != nil {
+		c.logger.Error(err, "Error while getting getMaxPods")
+		return nil, err
+	}
+
+	if !c.isMetricsAboveThreshold(dataPoints) {
+		minPercentageOfDataPointsPresent.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(float64(0))
+		err = fmt.Errorf("metric Source doesn't has required number of metrics to generate recommendation")
+		c.logger.Error(err, "Setting the recommendation to no operation policy")
+		return &v1alpha1.HPAConfiguration{Min: workloadMaxReplicas, Max: workloadMaxReplicas, TargetMetricValue: c.minTarget}, nil
+	}
+	minPercentageOfDataPointsPresent.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(float64(1))
+
 	if c.metricsTransformer != nil {
 		for _, transformers := range c.metricsTransformer {
 			dataPoints, err = transformers.Transform(start, end, dataPoints)
@@ -116,12 +139,6 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	perPodResources, err := c.getContainerCPULimitsSum(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
 	if err != nil {
 		c.logger.Error(err, "Error while getting getContainerCPULimitsSum")
-		return nil, err
-	}
-
-	workloadMaxReplicas, err := c.getMaxPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
-	if err != nil {
-		c.logger.Error(err, "Error while getting getMaxPods")
 		return nil, err
 	}
 
@@ -395,4 +412,13 @@ func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind
 	}
 
 	return maxPods, nil
+}
+
+func (c *CpuUtilizationBasedRecommender) isMetricsAboveThreshold(dataPoints []metrics.DataPoint) bool {
+	totalDataPoints := int(c.metricWindow.Seconds()) / int(c.metricStep.Seconds())
+	percentageOfDataPointsFetched := (float64(len(dataPoints)) / float64(totalDataPoints)) * 100
+	if int(percentageOfDataPointsFetched) < c.metricsPercentageThreshold {
+		return false
+	}
+	return true
 }
