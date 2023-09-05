@@ -276,6 +276,14 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)
 	}
+
+	deploymentReconciler := controller.NewDeploymentController(mgr.GetClient(), mgr.GetScheme())
+	if err = deploymentReconciler.
+		SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DeploymentController")
+		os.Exit(1)
+	}
+
 	triggerHandler := trigger.NewK8sTriggerHandler(mgr.GetClient(), logger)
 	triggerHandler.Start()
 
