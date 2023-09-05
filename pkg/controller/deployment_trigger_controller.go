@@ -25,18 +25,18 @@ import (
 )
 
 const (
-	DeploymentCtrlName = "DeploymentController"
+	DeploymentTriggerCtrlName = "DeploymentTriggerController"
 )
 
-type DeploymentController struct {
+type DeploymentTriggerController struct {
 	Client client.Client
 	Scheme *runtime.Scheme
 }
 
-func NewDeploymentController(client client.Client,
+func NewDeploymentTriggerController(client client.Client,
 	scheme *runtime.Scheme,
-) *DeploymentController {
-	return &DeploymentController{
+) *DeploymentTriggerController {
+	return &DeploymentTriggerController{
 		Client: client,
 		Scheme: scheme,
 	}
@@ -49,10 +49,10 @@ func NewDeploymentController(client client.Client,
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
 
 // TODO neerajb Handle the deletion of workloads. We should reregister the monitors.
-func (r *DeploymentController) Reconcile(ctx context.Context,
+func (r *DeploymentTriggerController) Reconcile(ctx context.Context,
 	request ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger = logger.WithValues("request", request).WithName(PolicyRecoRegistrarCtrlName)
+	logger = logger.WithValues("request", request).WithName(DeploymentTriggerCtrlName)
 
 	// Check if Rollout is enqueued
 	rollout := argov1alpha1.Rollout{}
@@ -85,7 +85,7 @@ func (r *DeploymentController) Reconcile(ctx context.Context,
 	return ctrl.Result{}, nil
 }
 
-func (r *DeploymentController) requeuePolicyRecommendation(ctx context.Context,
+func (r *DeploymentTriggerController) requeuePolicyRecommendation(ctx context.Context,
 	object client.Object,
 	scheme *runtime.Scheme,
 	logger logr.Logger) error {
@@ -105,7 +105,7 @@ func (r *DeploymentController) requeuePolicyRecommendation(ctx context.Context,
 	policyRecommendation.Spec.QueuedForExecution = &trueBool
 	policyRecommendation.Spec.QueuedForExecutionAt = &now
 
-	err = r.Client.Update(context.TODO(), policyRecommendation, client.FieldOwner(DeploymentCtrlName))
+	err = r.Client.Update(context.TODO(), policyRecommendation, client.FieldOwner(DeploymentTriggerCtrlName))
 	if err != nil {
 		logger.Error(err, "Error while updating policyRecommendation.", "workloadName", object.GetName(), "workloadNamespace", object.GetNamespace())
 		return err
@@ -115,7 +115,7 @@ func (r *DeploymentController) requeuePolicyRecommendation(ctx context.Context,
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *DeploymentController) SetupWithManager(mgr ctrl.Manager) error {
+func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
 	fmt.Println("Deployment Manager setup")
 	annotationUpdatePredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
@@ -149,7 +149,7 @@ func (r *DeploymentController) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		Named(DeploymentCtrlName).
+		Named(DeploymentTriggerCtrlName).
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),

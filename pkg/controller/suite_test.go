@@ -53,15 +53,15 @@ var (
 	ctx        context.Context
 	cancel     context.CancelFunc
 
-	queuedAllRecos                = false
-	recommender                   *MockRecommender
-	deploymentControllerEnv       *testutil.TestEnvironment
-	excludedNamespaces            []string
-	includedNamespaces            []string
-	hpaEnforcerExcludedNamespaces *[]string
-	hpaEnforcerIncludedNamespaces *[]string
-	hpaEnforcerIsDryRun           *bool
-	whitelistMode                 *bool
+	queuedAllRecos                 = false
+	recommender                    *MockRecommender
+	deploymentTriggerControllerEnv *testutil.TestEnvironment
+	excludedNamespaces             []string
+	includedNamespaces             []string
+	hpaEnforcerExcludedNamespaces  *[]string
+	hpaEnforcerIncludedNamespaces  *[]string
+	hpaEnforcerIsDryRun            *bool
+	whitelistMode                  *bool
 )
 
 const policyAge = 1 * time.Second
@@ -97,16 +97,16 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
-	deploymentControllerEnv = testutil.SetupEnvironment()
-	k8sClient1, err = client.New(deploymentControllerEnv.Cfg, client.Options{Scheme: scheme.Scheme})
+	deploymentTriggerControllerEnv = testutil.SetupEnvironment()
+	k8sClient1, err = client.New(deploymentTriggerControllerEnv.Cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient1).NotTo(BeNil())
-	k8sManager1, err := ctrl.NewManager(deploymentControllerEnv.Cfg, ctrl.Options{
+	k8sManager1, err := ctrl.NewManager(deploymentTriggerControllerEnv.Cfg, ctrl.Options{
 		Scheme:             scheme.Scheme,
 		MetricsBindAddress: "0.0.0.0:0",
 	})
 	Expect(err).ToNot(HaveOccurred())
-	err = (&DeploymentController{
+	err = (&DeploymentTriggerController{
 		Client: k8sManager1.GetClient(),
 		Scheme: k8sManager1.GetScheme(),
 	}).SetupWithManager(k8sManager1)
@@ -183,7 +183,7 @@ var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 	err := testutil.TeardownSingletonEnvironment()
 	Expect(err).NotTo(HaveOccurred())
-	err = testutil.TeardownEnvironment(deploymentControllerEnv)
+	err = testutil.TeardownEnvironment(deploymentTriggerControllerEnv)
 	Expect(err).NotTo(HaveOccurred())
 })
 
