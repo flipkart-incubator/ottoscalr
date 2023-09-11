@@ -40,7 +40,7 @@ var (
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(getAverageCPUUtilizationQueryLatency)
+	p8smetrics.Registry.MustRegister(getAverageCPUUtilizationQueryLatency, minPercentageOfDataPointsPresent)
 }
 
 var unableToRecommendError = errors.New("Unable to generate recommendation without any breaches.")
