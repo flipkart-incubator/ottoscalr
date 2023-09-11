@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -111,9 +112,9 @@ type PolicyRecommendationReconciler struct {
 
 func NewPolicyRecommendationReconciler(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder,
-	maxConcurrentReconciles int, minRequiredReplicas int, recommender reco.Recommender, policyIterators ...reco.PolicyIterator) (*PolicyRecommendationReconciler, error) {
+	maxConcurrentReconciles int, minRequiredReplicas int, recommender reco.Recommender, policyStore policy.Store, policyIterators ...reco.PolicyIterator) (*PolicyRecommendationReconciler, error) {
 	recoWfBuilder := reco.NewRecommendationWorkflowBuilder().
-		WithRecommender(recommender).WithMinRequiredReplicas(minRequiredReplicas)
+		WithRecommender(recommender).WithMinRequiredReplicas(minRequiredReplicas).WithPolicyStore(policyStore).WithK8sClient(client)
 	for _, pi := range policyIterators {
 		recoWfBuilder = recoWfBuilder.WithPolicyIterator(pi)
 	}

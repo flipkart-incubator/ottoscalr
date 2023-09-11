@@ -255,7 +255,7 @@ func (c *CpuUtilizationBasedRecommender) findOptimalHPAConfigurations(dataPoints
 	optimalMin := 0
 	savings := 0.0
 
-	minReplicas := 3
+	minReplicas := 1
 	for ; minReplicas <= maxReplicas; minReplicas++ {
 		calculatedMin := 0
 		low := minTarget

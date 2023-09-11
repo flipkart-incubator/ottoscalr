@@ -579,8 +579,8 @@ var _ = Describe("RangeQuerySplitter", func() {
 		}
 
 		splitter := NewRangeQuerySplitter(splitDuration)
-
-		result, err := splitter.QueryRangeByInterval(context.TODO(), mockApi, query, start, end, step)
+		pi := PrometheusInstance{apiUrl: mockApi, address: ""}
+		result, err := splitter.QueryRangeByInterval(context.TODO(), pi, query, start, end, step)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.Type()).To(Equal(model.ValMatrix))
 
