@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-type singletonEnvironment struct {
+type TestEnvironment struct {
 	Cfg     *rest.Config
 	TestEnv *envtest.Environment
 	Ctx     context.Context
@@ -16,35 +16,61 @@ type singletonEnvironment struct {
 }
 
 var (
-	instance *singletonEnvironment
-	once     sync.Once
+	envInstance *TestEnvironment
+	once        sync.Once
 )
 
-func getInstance() *singletonEnvironment {
+func getSingletonInstance() *TestEnvironment {
 	once.Do(func() {
-		instance = &singletonEnvironment{}
-		instance.TestEnv = &envtest.Environment{
+		envInstance = &TestEnvironment{}
+		envInstance.TestEnv = &envtest.Environment{
 			CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases"),
 				filepath.Join("..", "testconfig")},
 			ErrorIfCRDPathMissing: true,
 		}
-		cfg, err := instance.TestEnv.Start()
+		cfg, err := envInstance.TestEnv.Start()
 		if err != nil {
 			panic(err)
 		}
-		instance.Cfg = cfg
-		instance.Ctx, instance.Cancel = context.WithCancel(context.TODO())
+		envInstance.Cfg = cfg
+		envInstance.Ctx, envInstance.Cancel = context.WithCancel(context.TODO())
 	})
-	return instance
+	return envInstance
 }
 
-func SetupEnvironment() (*rest.Config, context.Context, context.CancelFunc) {
-	envInstance := getInstance()
+func SetupSingletonEnvironment() (*rest.Config, context.Context, context.CancelFunc) {
+	envInstance := getSingletonInstance()
 	return envInstance.Cfg, envInstance.Ctx, envInstance.Cancel
 }
 
-func TeardownEnvironment() error {
-	envInstance := getInstance()
+func TeardownSingletonEnvironment() error {
+	envInstance := getSingletonInstance()
+	if envInstance.TestEnv != nil {
+		err := envInstance.TestEnv.Stop()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func SetupEnvironment() *TestEnvironment {
+	testEnvInstance := &TestEnvironment{}
+	testEnvInstance.TestEnv = &envtest.Environment{
+		CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "testconfig")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, err := testEnvInstance.TestEnv.Start()
+	if err != nil {
+		panic(err)
+	}
+	testEnvInstance.Cfg = cfg
+	testEnvInstance.Ctx, testEnvInstance.Cancel = context.WithCancel(context.TODO())
+	return testEnvInstance
+}
+
+func TeardownEnvironment(envInstance *TestEnvironment) error {
 	if envInstance.TestEnv != nil {
 		err := envInstance.TestEnv.Stop()
 		if err != nil {

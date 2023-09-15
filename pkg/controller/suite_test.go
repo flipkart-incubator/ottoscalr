@@ -47,19 +47,21 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	cfg       *rest.Config
-	k8sClient client.Client
-	ctx       context.Context
-	cancel    context.CancelFunc
+	cfg        *rest.Config
+	k8sClient  client.Client
+	k8sClient1 client.Client
+	ctx        context.Context
+	cancel     context.CancelFunc
 
-	queuedAllRecos                = false
-	recommender                   *MockRecommender
-	excludedNamespaces            []string
-	includedNamespaces            []string
-	hpaEnforcerExcludedNamespaces *[]string
-	hpaEnforcerIncludedNamespaces *[]string
-	hpaEnforcerIsDryRun           *bool
-	whitelistMode                 *bool
+	queuedAllRecos                 = false
+	recommender                    *MockRecommender
+	deploymentTriggerControllerEnv *testutil.TestEnvironment
+	excludedNamespaces             []string
+	includedNamespaces             []string
+	hpaEnforcerExcludedNamespaces  *[]string
+	hpaEnforcerIncludedNamespaces  *[]string
+	hpaEnforcerIsDryRun            *bool
+	whitelistMode                  *bool
 )
 
 const policyAge = 1 * time.Second
@@ -78,7 +80,7 @@ var _ = BeforeSuite(func() {
 	By("bootstrapping test environment")
 	var err error
 	// cfg is defined in this file globally.
-	cfg, ctx, cancel = testutil.SetupEnvironment()
+	cfg, ctx, cancel = testutil.SetupSingletonEnvironment()
 	Expect(cfg).NotTo(BeNil())
 
 	err = rolloutv1alpha1.AddToScheme(scheme.Scheme)
@@ -94,6 +96,21 @@ var _ = BeforeSuite(func() {
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
+
+	deploymentTriggerControllerEnv = testutil.SetupEnvironment()
+	k8sClient1, err = client.New(deploymentTriggerControllerEnv.Cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(k8sClient1).NotTo(BeNil())
+	k8sManager1, err := ctrl.NewManager(deploymentTriggerControllerEnv.Cfg, ctrl.Options{
+		Scheme:             scheme.Scheme,
+		MetricsBindAddress: "0.0.0.0:0",
+	})
+	Expect(err).ToNot(HaveOccurred())
+	err = (&DeploymentTriggerController{
+		Client: k8sManager1.GetClient(),
+		Scheme: k8sManager1.GetScheme(),
+	}).SetupWithManager(k8sManager1)
+	Expect(err).ToNot(HaveOccurred())
 
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:             scheme.Scheme,
@@ -154,12 +171,19 @@ var _ = BeforeSuite(func() {
 		err = k8sManager.Start(ctx)
 		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
 	}()
+	go func() {
+		defer GinkgoRecover()
+		err = k8sManager1.Start(ctx)
+		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
+	}()
 })
 
 var _ = AfterSuite(func() {
 	cancel()
 	By("tearing down the test environment")
-	err := testutil.TeardownEnvironment()
+	err := testutil.TeardownSingletonEnvironment()
+	Expect(err).NotTo(HaveOccurred())
+	err = testutil.TeardownEnvironment(deploymentTriggerControllerEnv)
 	Expect(err).NotTo(HaveOccurred())
 })
 
