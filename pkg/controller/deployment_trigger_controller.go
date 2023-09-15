@@ -48,7 +48,6 @@ func NewDeploymentTriggerController(client client.Client,
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
 
-// TODO neerajb Handle the deletion of workloads. We should reregister the monitors.
 func (r *DeploymentTriggerController) Reconcile(ctx context.Context,
 	request ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
