@@ -29,13 +29,13 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/spf13/viper"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"syscall"
 	"time"
-
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -276,6 +276,14 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendation")
 		os.Exit(1)
 	}
+
+	deploymentTriggerReconciler := controller.NewDeploymentTriggerController(mgr.GetClient(), mgr.GetScheme())
+	if err = deploymentTriggerReconciler.
+		SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DeploymentController")
+		os.Exit(1)
+	}
+
 	triggerHandler := trigger.NewK8sTriggerHandler(mgr.GetClient(), logger)
 	triggerHandler.Start()
 

@@ -42,7 +42,7 @@ func TestMetrics(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	cfg, ctx, _ = testutil.SetupEnvironment()
+	cfg, ctx, _ = testutil.SetupSingletonEnvironment()
 	Expect(cfg).NotTo(BeNil())
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())

@@ -39,7 +39,7 @@ var _ = BeforeSuite(func() {
 
 	var err error
 	// cfg is defined in this file globally.
-	cfg, ctx, cancel = testutil.SetupEnvironment()
+	cfg, ctx, cancel = testutil.SetupSingletonEnvironment()
 	Expect(cfg).NotTo(BeNil())
 
 	err = ottoscaleriov1alpha1.AddToScheme(scheme.Scheme)
@@ -59,6 +59,6 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	cancel()
 	By("tearing down the test environment")
-	err := testutil.TeardownEnvironment()
+	err := testutil.TeardownSingletonEnvironment()
 	Expect(err).NotTo(HaveOccurred())
 })
