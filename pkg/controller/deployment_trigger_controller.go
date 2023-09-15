@@ -98,7 +98,7 @@ func (r *DeploymentTriggerController) requeuePolicyRecommendation(ctx context.Co
 	}, policyRecommendation)
 	if err != nil {
 		logger.Error(err, "Error while getting policyRecommendation.", "workloadName", object.GetName(), "workloadNamespace", object.GetNamespace())
-		return err
+		return client.IgnoreNotFound(err)
 	}
 
 	policyRecommendation.Spec.QueuedForExecution = &trueBool
