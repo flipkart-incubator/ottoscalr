@@ -42,9 +42,14 @@ type PolicyStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Cluster
 
 // Policy is the Schema for the policies API
+// +kubebuilder:printcolumn:name="Default",type=boolean,JSONPath=`.spec.isDefault`
+// +kubebuilder:printcolumn:name="RiskIndex",type=integer,JSONPath=`.spec.riskIndex`
+// +kubebuilder:printcolumn:name="ReplicaPercCut",type=integer,JSONPath=`.spec.minReplicaPercentageCut`
+// +kubebuilder:printcolumn:name="TargetUtil",type=integer,JSONPath=`.spec.targetUtilization`
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:resource:shortName=opolicy,scope=Cluster
 type Policy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
