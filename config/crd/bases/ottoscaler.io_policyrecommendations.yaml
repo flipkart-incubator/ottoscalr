@@ -12,10 +12,25 @@ spec:
     kind: PolicyRecommendation
     listKind: PolicyRecommendationList
     plural: policyrecommendations
+    shortNames:
+    - policyreco
     singular: policyrecommendation
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.targetHPAConfig.max
+      name: Max
+      type: integer
+    - jsonPath: .spec.targetHPAConfig.min
+      name: Min
+      type: integer
+    - jsonPath: .spec.targetHPAConfig.targetMetricValue
+      name: Util
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: PolicyRecommendation is the Schema for the policyrecommendations
