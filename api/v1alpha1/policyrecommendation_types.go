@@ -63,6 +63,11 @@ type PolicyRecommendationStatus struct {
 //+kubebuilder:subresource:status
 
 // PolicyRecommendation is the Schema for the policyrecommendations API
+// +kubebuilder:printcolumn:name="Max",type=integer,JSONPath=`.spec.targetHPAConfig.max`
+// +kubebuilder:printcolumn:name="Min",type=integer,JSONPath=`.spec.targetHPAConfig.min`
+// +kubebuilder:printcolumn:name="Util",type=integer,JSONPath=`.spec.targetHPAConfig.targetMetricValue`
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:resource:shortName=policyreco
 type PolicyRecommendation struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
