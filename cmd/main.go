@@ -25,6 +25,7 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
+	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
 	"github.com/flipkart-incubator/ottoscalr/pkg/transformer"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
@@ -243,7 +244,11 @@ func main() {
 
 		metricsTransformer = append(metricsTransformer, outlierInterpolatorTransformer)
 	}
-
+	clientsRegistry := registry.NewDeploymentClientRegistryBuilder().
+		WithK8sClient(mgr.GetClient()).
+		WithCustomDeploymentClient(registry.DeploymentGVK).
+		WithCustomDeploymentClient(registry.RolloutGVK).
+		Build()
 	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
@@ -253,6 +258,7 @@ func main() {
 		config.CpuUtilizationBasedRecommender.MinTarget,
 		config.CpuUtilizationBasedRecommender.MaxTarget,
 		config.CpuUtilizationBasedRecommender.MetricsPercentageThreshold,
+		*clientsRegistry,
 		logger)
 
 	breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
@@ -277,7 +283,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	deploymentTriggerReconciler := controller.NewDeploymentTriggerController(mgr.GetClient(), mgr.GetScheme())
+	deploymentTriggerReconciler := controller.NewDeploymentTriggerController(mgr.GetClient(), mgr.GetScheme(), *clientsRegistry)
 	if err = deploymentTriggerReconciler.
 		SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DeploymentController")
@@ -304,7 +310,7 @@ func main() {
 	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
 
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
-		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
+		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName), *clientsRegistry,
 		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
@@ -321,7 +327,7 @@ func main() {
 		mgr.GetScheme(),
 		config.PolicyRecommendationRegistrar.RequeueDelayMs,
 		monitorManager,
-		policyStore, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
+		policyStore, *clientsRegistry, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",
 			"controller", "PolicyRecommendationRegistration")
 		os.Exit(1)
