@@ -91,7 +91,6 @@ func init() {
 	metrics.Registry.MustRegister(hpaenforcerScaledObjectUpdatedCounter, hpaenforcerScaledObjectDeletedCounter, hpaenforcerReconcileCounter)
 }
 
-// PolicyRecommendationReconciler reconciles a PolicyRecommendation object
 type HPAEnforcementController struct {
 	client.Client
 	Scheme                  *runtime.Scheme
@@ -102,11 +101,12 @@ type HPAEnforcementController struct {
 	IncludedNamespaces      *[]string
 	WhitelistMode           *bool
 	MinRequiredReplicas     int
+	enableScaledObject      *bool
 }
 
 func NewHPAEnforcementController(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder,
-	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int) (*HPAEnforcementController, error) {
+	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int, enableScaledObject *bool) (*HPAEnforcementController, error) {
 	return &HPAEnforcementController{
 		Client:                  client,
 		Scheme:                  scheme,
@@ -117,6 +117,7 @@ func NewHPAEnforcementController(client client.Client,
 		IncludedNamespaces:      includedNamespaces,
 		WhitelistMode:           whitelistMode,
 		MinRequiredReplicas:     minRequiredReplicas,
+		enableScaledObject:      enableScaledObject,
 	}, nil
 }
 
@@ -168,31 +169,51 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	scaledObjects := &kedaapi.ScaledObjectList{}
 	labelSelector, err := labels.Parse(fmt.Sprintf("!%s", createdByLabelKey))
 	if err != nil {
 		logger.V(0).Error(err, "Unable to parse label selector string.")
 		return ctrl.Result{}, err
 	}
 	// List only scaledObjects not created by this controller
-	if err := r.List(ctx, scaledObjects, &client.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector(scaledObjectField, workload.GetName()),
-		LabelSelector: labelSelector,
-		Namespace:     workload.GetNamespace(),
-	}); err != nil && client.IgnoreNotFound(err) != nil {
-		return ctrl.Result{}, err
-	}
-
 	var conditions []metav1.Condition
 	var statusPatch *v1alpha1.PolicyRecommendation
-	if len(scaledObjects.Items) > 0 {
-		logger.V(0).Info("ScaledObject managed by a different controller/entity already exists for this workload. Skipping.", "workload", workload, "namespace", workload.GetNamespace(), "kind", workload.GetObjectKind(), "scaledobject", scaledObjects)
-		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.HPAEnforced, metav1.ConditionFalse, ScaledObjectExistsReason, ScaledObjectExistsMessage)
-		if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(HPAEnforcementCtrlName)); err != nil {
-			logger.Error(err, "Error updating the status of the policy reco object")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
+	if *r.enableScaledObject {
+		scaledObjects := &kedaapi.ScaledObjectList{}
+		if err := r.List(ctx, scaledObjects, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(scaledObjectField, workload.GetName()),
+			LabelSelector: labelSelector,
+			Namespace:     workload.GetNamespace(),
+		}); err != nil && client.IgnoreNotFound(err) != nil {
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
+
+		if len(scaledObjects.Items) > 0 {
+			logger.V(0).Info("ScaledObject managed by a different controller/entity already exists for this workload. Skipping.", "workload", workload, "namespace", workload.GetNamespace(), "kind", workload.GetObjectKind(), "scaledobject", scaledObjects)
+			statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.HPAEnforced, metav1.ConditionFalse, ScaledObjectExistsReason, ScaledObjectExistsMessage)
+			if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(HPAEnforcementCtrlName)); err != nil {
+				logger.Error(err, "Error updating the status of the policy reco object")
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
+			return ctrl.Result{}, nil
+		}
+	} else {
+		hpas := &autoscalingv1.HorizontalPodAutoscalerList{}
+		if err := r.List(ctx, hpas, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(scaledObjectField, workload.GetName()),
+			LabelSelector: labelSelector,
+			Namespace:     workload.GetNamespace(),
+		}); err != nil && client.IgnoreNotFound(err) != nil {
+			return ctrl.Result{}, err
+		}
+		if len(hpas.Items) > 0 {
+			logger.V(0).Info("HPA managed by a different controller/entity already exists for this workload. Skipping.", "workload", workload, "namespace", workload.GetNamespace(), "kind", workload.GetObjectKind(), "scaledobject", hpas)
+			statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.HPAEnforced, metav1.ConditionFalse, ScaledObjectExistsReason, ScaledObjectExistsMessage)
+			if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(HPAEnforcementCtrlName)); err != nil {
+				logger.Error(err, "Error updating the status of the policy reco object")
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
+			return ctrl.Result{}, nil
+		}
 	}
 
 	if policyreco.Spec.CurrentHPAConfiguration.Max <= r.MinRequiredReplicas || policyreco.Spec.CurrentHPAConfiguration.Min <= r.MinRequiredReplicas || policyreco.Spec.CurrentHPAConfiguration.Min > policyreco.Spec.CurrentHPAConfiguration.Max {
@@ -258,6 +279,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 	logger.V(0).Info("Reconciling PolicyRecommendation to create/update ScaleObject.")
 	min := int32(policyreco.Spec.CurrentHPAConfiguration.Min)
 	max := int32(policyreco.Spec.CurrentHPAConfiguration.Max)
+	targetCPU := int32(policyreco.Spec.CurrentHPAConfiguration.TargetMetricValue)
 	scaleTriggers := []kedaapi.ScaleTriggers{
 		{
 			Type: "cpu",
@@ -276,54 +298,99 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		})
 	}
 	if !*r.isDryRun {
-		logger.V(0).Info("Creating/Updating ScaledObject for workload.", "workload", workload.GetName())
+		if *r.enableScaledObject {
+			logger.V(0).Info("Creating/Updating ScaledObject for workload.", "workload", workload.GetName())
 
-		scaledObj := kedaapi.ScaledObject{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      workload.GetName(),
-				Namespace: workload.GetNamespace(),
-				OwnerReferences: []metav1.OwnerReference{{
-					APIVersion:         workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
-					Kind:               workload.GetObjectKind().GroupVersionKind().Kind,
-					Name:               workload.GetName(),
-					UID:                workload.GetUID(),
-					Controller:         &trueBool,
-					BlockOwnerDeletion: &trueBool,
-				}},
-				Labels: map[string]string{
-					createdByLabelKey: createdByLabelValue,
+			scaledObj := kedaapi.ScaledObject{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      workload.GetName(),
+					Namespace: workload.GetNamespace(),
+					OwnerReferences: []metav1.OwnerReference{{
+						APIVersion:         workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+						Kind:               workload.GetObjectKind().GroupVersionKind().Kind,
+						Name:               workload.GetName(),
+						UID:                workload.GetUID(),
+						Controller:         &trueBool,
+						BlockOwnerDeletion: &trueBool,
+					}},
+					Labels: map[string]string{
+						createdByLabelKey: createdByLabelValue,
+					},
 				},
-			},
-			Spec: kedaapi.ScaledObjectSpec{
-				ScaleTargetRef: &kedaapi.ScaleTarget{
-					Name:       workload.GetName(),
-					APIVersion: workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
-					Kind:       workload.GetObjectKind().GroupVersionKind().Kind,
+				Spec: kedaapi.ScaledObjectSpec{
+					ScaleTargetRef: &kedaapi.ScaleTarget{
+						Name:       workload.GetName(),
+						APIVersion: workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+						Kind:       workload.GetObjectKind().GroupVersionKind().Kind,
+					},
+					MinReplicaCount: &min,
+					MaxReplicaCount: &max,
+					Triggers:        scaleTriggers,
 				},
-				MinReplicaCount: &min,
-				MaxReplicaCount: &max,
-				Triggers:        scaleTriggers,
-			},
-		}
-		// Add triggers
-		if result, err := controllerutil.CreateOrUpdate(ctx, r.Client, &scaledObj, func() error {
-			scaledObj.Spec = kedaapi.ScaledObjectSpec{
-				ScaleTargetRef: &kedaapi.ScaleTarget{
-					Name:       workload.GetName(),
-					APIVersion: workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
-					Kind:       workload.GetObjectKind().GroupVersionKind().Kind,
-				},
-				MinReplicaCount: &min,
-				MaxReplicaCount: &max,
-				Triggers:        scaleTriggers,
 			}
-			return nil
-		}); err != nil {
-			logger.V(0).Error(err, "Error creating or updating scaledobject")
-			return ctrl.Result{}, err
+			// Add triggers
+			if result, err := controllerutil.CreateOrUpdate(ctx, r.Client, &scaledObj, func() error {
+				scaledObj.Spec = kedaapi.ScaledObjectSpec{
+					ScaleTargetRef: &kedaapi.ScaleTarget{
+						Name:       workload.GetName(),
+						APIVersion: workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+						Kind:       workload.GetObjectKind().GroupVersionKind().Kind,
+					},
+					MinReplicaCount: &min,
+					MaxReplicaCount: &max,
+					Triggers:        scaleTriggers,
+				}
+				return nil
+			}); err != nil {
+				logger.V(0).Error(err, "Error creating or updating scaledobject")
+				return ctrl.Result{}, err
+			} else {
+				hpaenforcerScaledObjectUpdatedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, scaledObj.Name, string(result)).Inc()
+				logger.V(0).Info(fmt.Sprintf("Result of the create or update operation is '%s\n'", result))
+			}
 		} else {
-			hpaenforcerScaledObjectUpdatedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, scaledObj.Name, string(result)).Inc()
-			logger.V(0).Info(fmt.Sprintf("Result of the create or update operation is '%s\n'", result))
+			//Creating/Updating HPA
+			logger.V(0).Info("Creating/Updating HPA for workload.", "workload", workload.GetName())
+			hpa := autoscalingv1.HorizontalPodAutoscaler{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      workload.GetName(),
+					Namespace: workload.GetNamespace(),
+					Labels: map[string]string{
+						createdByLabelKey: createdByLabelValue,
+					},
+				},
+				Spec: autoscalingv1.HorizontalPodAutoscalerSpec{
+					ScaleTargetRef: autoscalingv1.CrossVersionObjectReference{
+						Name:       workload.GetName(),
+						APIVersion: workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+						Kind:       workload.GetObjectKind().GroupVersionKind().Kind,
+					},
+					MinReplicas:                    &min,
+					MaxReplicas:                    max,
+					TargetCPUUtilizationPercentage: &targetCPU,
+				},
+			}
+
+			if result, err := controllerutil.CreateOrUpdate(ctx, r.Client, &hpa, func() error {
+				hpa.Spec = autoscalingv1.HorizontalPodAutoscalerSpec{
+					ScaleTargetRef: autoscalingv1.CrossVersionObjectReference{
+						Name:       workload.GetName(),
+						APIVersion: workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+						Kind:       workload.GetObjectKind().GroupVersionKind().Kind,
+					},
+					MinReplicas:                    &min,
+					MaxReplicas:                    max,
+					TargetCPUUtilizationPercentage: &targetCPU,
+				}
+				return nil
+			}); err != nil {
+				logger.V(0).Error(err, "Error creating or updating hpa")
+				return ctrl.Result{}, err
+			} else {
+				//hpaenforcerScaledObjectUpdatedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, hpa.Name, string(result)).Inc()
+				logger.V(0).Info(fmt.Sprintf("Result of the create or update operation is '%s\n'", result))
+			}
+
 		}
 
 	} else {
@@ -370,14 +437,27 @@ func isInitialized(conditions []metav1.Condition) bool {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &kedaapi.ScaledObject{}, scaledObjectField, func(rawObj client.Object) []string {
-		scaledObject := rawObj.(*kedaapi.ScaledObject)
-		if scaledObject.Spec.ScaleTargetRef.Name == "" {
-			return nil
+	if *r.enableScaledObject {
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &kedaapi.ScaledObject{}, scaledObjectField, func(rawObj client.Object) []string {
+			scaledObject := rawObj.(*kedaapi.ScaledObject)
+			if scaledObject.Spec.ScaleTargetRef.Name == "" {
+				return nil
+			}
+			return []string{scaledObject.Spec.ScaleTargetRef.Name}
+		}); err != nil {
+			return err
 		}
-		return []string{scaledObject.Spec.ScaleTargetRef.Name}
-	}); err != nil {
-		return err
+	} else {
+
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &autoscalingv1.HorizontalPodAutoscaler{}, scaledObjectField, func(rawObj client.Object) []string {
+			hpa := rawObj.(*autoscalingv1.HorizontalPodAutoscaler)
+			if hpa.Spec.ScaleTargetRef.Name == "" {
+				return nil
+			}
+			return []string{hpa.Spec.ScaleTargetRef.Name}
+		}); err != nil {
+			return err
+		}
 	}
 
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.PolicyRecommendation{}, policyRecoOwnerField, func(rawObj client.Object) []string {
@@ -487,17 +567,23 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	enqueueFunc := func(obj client.Object) []reconcile.Request {
-		mgr.GetLogger().Info("ScaledObject delete predicate invoked.")
-		scaledObject := obj.(*kedaapi.ScaledObject)
-		if len(scaledObject.OwnerReferences) == 0 {
+		var object client.Object
+		if *r.enableScaledObject {
+			mgr.GetLogger().Info("ScaledObject delete predicate invoked.")
+			object = obj.(*kedaapi.ScaledObject)
+		} else {
+			mgr.GetLogger().Info("HPA delete predicate invoked.")
+			object = obj.(*autoscalingv1.HorizontalPodAutoscaler)
+		}
+		if len(object.GetOwnerReferences()) == 0 {
 			return nil
 		}
-		for _, owner := range scaledObject.OwnerReferences {
+		for _, owner := range object.GetOwnerReferences() {
 			if owner.Kind == "Deployment" || owner.Kind == "Rollout" {
 				policyRecos := &v1alpha1.PolicyRecommendationList{}
 				if err := r.List(context.Background(), policyRecos, &client.ListOptions{
 					FieldSelector: fields.OneTermEqualSelector(policyRecoOwnerField, owner.Name),
-					Namespace:     scaledObject.GetNamespace(),
+					Namespace:     object.GetNamespace(),
 				}); err != nil {
 					return nil
 				}
@@ -545,18 +631,13 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		return requests
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	controllerBuilder := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Named(HPAEnforcementCtrlName).
 		Watches(
 			&source.Kind{Type: &v1alpha1.PolicyRecommendation{}},
 			&handler.EnqueueRequestForObject{},
 			builder.WithPredicates(predicate.And(predicate.ResourceVersionChangedPredicate{}, updatePredicate, namespaceFilter)),
-		).
-		Watches(
-			&source.Kind{Type: &kedaapi.ScaledObject{}},
-			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
-			builder.WithPredicates(deletePredicate),
 		).
 		Watches(
 			&source.Kind{Type: &appsv1.Deployment{}},
@@ -567,7 +648,21 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
 			builder.WithPredicates(predicate.And(predicate.AnnotationChangedPredicate{}, namespaceFilter)),
-		).
+		)
+
+	if *r.enableScaledObject {
+		controllerBuilder.Watches(&source.Kind{Type: &kedaapi.ScaledObject{}},
+			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
+			builder.WithPredicates(deletePredicate),
+		)
+	} else {
+		controllerBuilder.Watches(&source.Kind{Type: &autoscalingv1.HorizontalPodAutoscaler{}},
+			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
+			builder.WithPredicates(deletePredicate),
+		)
+	}
+
+	return controllerBuilder.
 		WithEventFilter(namespaceFilter).
 		Complete(r)
 }
@@ -604,42 +699,77 @@ func (r *HPAEnforcementController) isWhitelistedNamespace(namespace string) bool
 }
 
 func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx context.Context, policyreco v1alpha1.PolicyRecommendation, workload client.Object, logger logr.Logger) error {
-	scaledObjects := &kedaapi.ScaledObjectList{}
 	labelSelector, err := labels.Parse(fmt.Sprintf("%s=%s", createdByLabelKey, createdByLabelValue))
 	if err != nil {
 		logger.V(0).Error(err, "Unable to parse label selector string.")
 		return err
 	}
-	// List only scaledObjects created by this controller
-	if err := r.List(ctx, scaledObjects, &client.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector(scaledObjectField, policyreco.GetName()),
-		LabelSelector: labelSelector,
-		Namespace:     policyreco.GetNamespace(),
-	}); err != nil && client.IgnoreNotFound(err) != nil {
-		return err
-	}
-
-	if len(scaledObjects.Items) == 0 {
-		return nil
-	}
-	logger.V(0).Info(fmt.Sprintf("Found %d scaledobject(s) for policyreco %s.", len(scaledObjects.Items), policyreco.Name))
-	logger.V(0).Info("Deleting the ScaledObject and resetting workload spec.replicas")
 	var maxPods int32
-	for _, scaledObject := range scaledObjects.Items {
-		if scaledObject.Spec.MaxReplicaCount != nil {
-			maxPods = *scaledObject.Spec.MaxReplicaCount
+	// List only scaledObjects created by this controller
+	if *r.enableScaledObject {
+		scaledObjects := &kedaapi.ScaledObjectList{}
+		if err := r.List(ctx, scaledObjects, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(scaledObjectField, policyreco.GetName()),
+			LabelSelector: labelSelector,
+			Namespace:     policyreco.GetNamespace(),
+		}); err != nil && client.IgnoreNotFound(err) != nil {
+			return err
 		}
-		deletePropagationPolicy := metav1.DeletePropagationForeground
-		err := r.Delete(ctx, &scaledObject, &client.DeleteOptions{
-			PropagationPolicy: &deletePropagationPolicy,
-		})
-		r.Recorder.Event(&policyreco, eventTypeNormal, "ScaledObjectDeleted", fmt.Sprintf("The ScaledObject '%s' has been deleted.", scaledObject.Name))
-		if err != nil {
-			logger.V(0).Error(err, "Error while deleting the scaledobject", "scaledobject", scaledObject)
-			return client.IgnoreNotFound(err)
+
+		if len(scaledObjects.Items) == 0 {
+			return nil
 		}
-		hpaenforcerScaledObjectDeletedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, scaledObject.Name).Inc()
-		logger.V(0).Info("Deleted ScaledObject for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "scaledobject.name", scaledObject.Name, "scaledobject.namespace", scaledObject.Namespace, "maxReplicas", *scaledObject.Spec.MaxReplicaCount)
+		logger.V(0).Info(fmt.Sprintf("Found %d scaledobject(s) for policyreco %s.", len(scaledObjects.Items), policyreco.Name))
+		logger.V(0).Info("Deleting the ScaledObject and resetting workload spec.replicas")
+
+		for _, scaledObject := range scaledObjects.Items {
+			if scaledObject.Spec.MaxReplicaCount != nil {
+				maxPods = *scaledObject.Spec.MaxReplicaCount
+			}
+			deletePropagationPolicy := metav1.DeletePropagationForeground
+			err := r.Delete(ctx, &scaledObject, &client.DeleteOptions{
+				PropagationPolicy: &deletePropagationPolicy,
+			})
+			r.Recorder.Event(&policyreco, eventTypeNormal, "ScaledObjectDeleted", fmt.Sprintf("The ScaledObject '%s' has been deleted.", scaledObject.Name))
+			if err != nil {
+				logger.V(0).Error(err, "Error while deleting the scaledobject", "scaledobject", scaledObject)
+				return client.IgnoreNotFound(err)
+			}
+			hpaenforcerScaledObjectDeletedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, scaledObject.Name).Inc()
+			logger.V(0).Info("Deleted ScaledObject for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "scaledobject.name", scaledObject.Name, "scaledobject.namespace", scaledObject.Namespace, "maxReplicas", *scaledObject.Spec.MaxReplicaCount)
+		}
+	} else {
+		hpas := &autoscalingv1.HorizontalPodAutoscalerList{}
+		if err := r.List(ctx, hpas, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(scaledObjectField, policyreco.GetName()),
+			LabelSelector: labelSelector,
+			Namespace:     policyreco.GetNamespace(),
+		}); err != nil && client.IgnoreNotFound(err) != nil {
+			return err
+		}
+
+		if len(hpas.Items) == 0 {
+			return nil
+		}
+		logger.V(0).Info(fmt.Sprintf("Found %d HPA(s) for policyreco %s.", len(hpas.Items), policyreco.Name))
+		logger.V(0).Info("Deleting the ScaledObject and resetting workload spec.replicas")
+
+		for _, hpa := range hpas.Items {
+			if hpa.Spec.MaxReplicas != 0 {
+				maxPods = hpa.Spec.MaxReplicas
+			}
+			deletePropagationPolicy := metav1.DeletePropagationForeground
+			err := r.Delete(ctx, &hpa, &client.DeleteOptions{
+				PropagationPolicy: &deletePropagationPolicy,
+			})
+			r.Recorder.Event(&policyreco, eventTypeNormal, "HPADeleted", fmt.Sprintf("The ScaledObject '%s' has been deleted.", hpa.Name))
+			if err != nil {
+				logger.V(0).Error(err, "Error while deleting the HPA", "HPA", hpa)
+				return client.IgnoreNotFound(err)
+			}
+			hpaenforcerScaledObjectDeletedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, hpa.Name).Inc()
+			logger.V(0).Info("Deleted HPA for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "scaledobject.name", hpa.Name, "scaledobject.namespace", hpa.Namespace, "maxReplicas", hpa.Spec.MaxReplicas)
+		}
 	}
 
 	if maxPods == 0 {

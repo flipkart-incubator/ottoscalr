@@ -303,9 +303,12 @@ func main() {
 	hpaEnforcerExcludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.ExcludedNamespaces)
 	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
 
+	var enableScaledObject *bool
+	myBoolValue := false
+	enableScaledObject = &myBoolValue
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
-		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas)
+		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas, enableScaledObject)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
 		os.Exit(1)

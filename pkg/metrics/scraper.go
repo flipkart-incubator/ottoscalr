@@ -475,6 +475,7 @@ func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
 			partialMatrix := partialResult.(model.Matrix)
 			p8sQuerySuccessCount.WithLabelValues(pi.address).Inc()
 			resultChan <- PrometheusQueryResult{partialMatrix, nil}
+			return
 
 		}(splitRange)
 

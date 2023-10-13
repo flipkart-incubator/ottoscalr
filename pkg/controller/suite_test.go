@@ -158,9 +158,12 @@ var _ = BeforeSuite(func() {
 	hpaEnforcerIncludedNamespaces = new([]string)
 	*hpaEnforcerIsDryRun = falseBool
 	*whitelistMode = falseBool
+	var enableScaledObject *bool
+	myBoolValue := true
+	enableScaledObject = &myBoolValue
 	hpaenforcer, err := NewHPAEnforcementController(k8sManager.GetClient(),
 		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName),
-		1, hpaEnforcerIsDryRun, hpaEnforcerExcludedNamespaces, hpaEnforcerIncludedNamespaces, whitelistMode, 3)
+		1, hpaEnforcerIsDryRun, hpaEnforcerExcludedNamespaces, hpaEnforcerIncludedNamespaces, whitelistMode, 3, enableScaledObject)
 	Expect(err).NotTo(HaveOccurred())
 	err = hpaenforcer.
 		SetupWithManager(k8sManager)
