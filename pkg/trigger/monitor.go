@@ -27,10 +27,15 @@ var (
 		prometheus.HistogramOpts{Name: "breachmonitor_mitigation_latency_seconds",
 			Help: "Time to mitigate breach latency in seconds"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
 	)
+
+	concurrentBreachMonitorExecutions = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "concurrent_breachmonitor_executions",
+			Help: "Number of concurrent breach monitor executions"}, []string{},
+	)
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(breachGauge, timeToMitigateLatency)
+	p8smetrics.Registry.MustRegister(breachGauge, timeToMitigateLatency, concurrentBreachMonitorExecutions)
 }
 
 const (
@@ -207,6 +212,7 @@ func (m *Monitor) monitorBreaches() {
 			return
 		case <-ticker.C:
 			m.logger.Info("Executing breach monitor check.", "workload", m.workload)
+			concurrentBreachMonitorExecutions.WithLabelValues().Add(1)
 			end := time.Now()
 			start := end.Add(-m.breachCheckFrequency)
 
@@ -216,6 +222,8 @@ func (m *Monitor) monitorBreaches() {
 				Name:      m.workload.Name,
 			}, &policyreco); err != nil {
 				m.logger.Error(err, "Error while getting policyRecommendation.", "workload", m.workload)
+				concurrentBreachMonitorExecutions.WithLabelValues().Sub(1)
+				continue
 			}
 			var breachedInPast bool
 			lastBreachedTime := time.Now()
@@ -230,6 +238,7 @@ func (m *Monitor) monitorBreaches() {
 				}
 			}
 			var statusPatch *ottoscaleriov1alpha1.PolicyRecommendation
+			//TODO: Handle Error
 			breached, _ := HasBreached(log.IntoContext(context.Background(), m.logger), start, end, m.workloadType, m.workload, m.metricScraper, m.cpuRedLine, m.metricStep)
 			if breached {
 				m.recorder.Event(&policyreco, eventTypeWarning, "BreachDetected", "A breach has been detected for the current policy")
@@ -252,6 +261,7 @@ func (m *Monitor) monitorBreaches() {
 					timeToMitigateLatency.WithLabelValues(policyreco.Namespace, policyreco.Name, policyreco.Spec.WorkloadMeta.Kind, policyreco.Spec.WorkloadMeta.Name).Observe(mitigationLatency)
 				}
 			}
+			concurrentBreachMonitorExecutions.WithLabelValues().Sub(1)
 		}
 	}
 }
