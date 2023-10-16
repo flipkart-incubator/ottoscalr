@@ -50,7 +50,7 @@ var (
 
 	p8sQuerySuccessCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{Name: "p8s_query_success_count",
-			Help: "P8s error counter"}, []string{"query", "p8sinstance"},
+			Help: "P8s success counter"}, []string{"query", "p8sinstance"},
 	)
 
 	p8sConcurrentQueries = promauto.NewGaugeVec(
