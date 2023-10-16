@@ -35,7 +35,7 @@ var (
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(breachGauge, timeToMitigateLatency)
+	p8smetrics.Registry.MustRegister(breachGauge, timeToMitigateLatency, concurrentBreachMonitorExecutions)
 }
 
 const (
