@@ -2,7 +2,6 @@ package trigger
 
 import (
 	"context"
-	"fmt"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/go-logr/logr"
@@ -253,10 +252,10 @@ func (m *Monitor) monitorBreaches() {
 			if err := m.concurrencyControlSemaphore.Acquire(context.Background(), 1); err != nil {
 				// Return if the context is canceled.
 				if err == context.Canceled || err == context.DeadlineExceeded {
-					fmt.Printf("Failed to acquire semaphore as context is cancelled: %v\n", err)
+					m.logger.Error(err, "Failed to acquire semaphore as context is cancelled: %v\n")
 					return
 				}
-				fmt.Printf("Failed to acquire semaphore: %v\n", err)
+				m.logger.Error(err, "Failed to acquire semaphore as context is cancelled: %v\n")
 				continue
 			}
 			//TODO: Handle Error
