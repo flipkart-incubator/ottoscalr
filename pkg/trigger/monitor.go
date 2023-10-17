@@ -34,8 +34,6 @@ var (
 		prometheus.GaugeOpts{Name: "concurrent_breachmonitor_executions",
 			Help: "Number of concurrent breach monitor executions"}, []string{},
 	)
-
-	concurrencyControlSemaphore *semaphore.Weighted
 )
 
 func init() {
