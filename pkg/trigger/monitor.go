@@ -33,10 +33,15 @@ var (
 		prometheus.GaugeOpts{Name: "concurrent_breachmonitor_executions",
 			Help: "Number of concurrent breach monitor executions"}, []string{},
 	)
+
+	breachMonitorExecutionRate = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "breachmonitor_execution_rate",
+			Help: "Rate of breach monitor executions"}, []string{},
+	)
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(breachGauge, timeToMitigateLatency, concurrentBreachMonitorExecutions)
+	p8smetrics.Registry.MustRegister(breachGauge, timeToMitigateLatency, concurrentBreachMonitorExecutions, breachMonitorExecutionRate)
 }
 
 const (
@@ -226,6 +231,7 @@ func (m *Monitor) monitorBreaches() {
 		case <-ticker.C:
 
 			m.logger.Info("Executing breach monitor check.", "workload", m.workload)
+			breachMonitorExecutionRate.WithLabelValues().Inc()
 			concurrentBreachMonitorExecutions.WithLabelValues().Add(1)
 			end := time.Now()
 			start := end.Add(-m.breachCheckFrequency)
