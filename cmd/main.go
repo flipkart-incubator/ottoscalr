@@ -127,6 +127,7 @@ type Config struct {
 		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
 		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
+	EnableRollout *bool `yaml:"enableRollout"`
 }
 
 func main() {
@@ -244,11 +245,14 @@ func main() {
 
 		metricsTransformer = append(metricsTransformer, outlierInterpolatorTransformer)
 	}
-	clientsRegistry := registry.NewDeploymentClientRegistryBuilder().
+	clientsRegistryBuilder := registry.NewDeploymentClientRegistryBuilder().
 		WithK8sClient(mgr.GetClient()).
-		WithCustomDeploymentClient(registry.DeploymentGVK).
-		WithCustomDeploymentClient(registry.RolloutGVK).
-		Build()
+		WithCustomDeploymentClient(registry.DeploymentGVK)
+
+	if *config.EnableRollout {
+		clientsRegistryBuilder = clientsRegistryBuilder.WithCustomDeploymentClient(registry.RolloutGVK)
+	}
+	clientsRegistry := clientsRegistryBuilder.Build()
 	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
