@@ -81,6 +81,9 @@ func NewPolicyRecommendationMonitorManager(k8sClient client.Client,
 	cpuRedLine float64,
 	logger logr.Logger) *PolicyRecommendationMonitorManager {
 
+	if concurrentExecutions == 0 {
+		concurrentExecutions = 50
+	}
 	concurrencySemaphore := semaphore.NewWeighted(int64(concurrentExecutions))
 
 	return &PolicyRecommendationMonitorManager{
