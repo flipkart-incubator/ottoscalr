@@ -2,11 +2,13 @@ package trigger
 
 import (
 	"context"
+	"fmt"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"golang.org/x/sync/semaphore"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -32,6 +34,8 @@ var (
 		prometheus.GaugeOpts{Name: "concurrent_breachmonitor_executions",
 			Help: "Number of concurrent breach monitor executions"}, []string{},
 	)
+
+	concurrencyControlSemaphore *semaphore.Weighted
 )
 
 func init() {
@@ -55,17 +59,18 @@ type MonitorManager interface {
 	Shutdown()
 }
 type PolicyRecommendationMonitorManager struct {
-	k8sClient                client.Client
-	recorder                 record.EventRecorder
-	metricScraper            metrics.Scraper
-	metricStep               time.Duration
-	cpuRedLine               float64
-	periodicRequeueFrequency time.Duration
-	breachCheckFrequency     time.Duration
-	handlerFunc              func(workloadName types.NamespacedName)
-	monitors                 map[string]*Monitor
-	monitorMutex             sync.Mutex
-	logger                   logr.Logger
+	k8sClient                   client.Client
+	recorder                    record.EventRecorder
+	metricScraper               metrics.Scraper
+	metricStep                  time.Duration
+	cpuRedLine                  float64
+	periodicRequeueFrequency    time.Duration
+	breachCheckFrequency        time.Duration
+	concurrencyControlSemaphore *semaphore.Weighted
+	handlerFunc                 func(workloadName types.NamespacedName)
+	monitors                    map[string]*Monitor
+	monitorMutex                sync.Mutex
+	logger                      logr.Logger
 }
 
 func NewPolicyRecommendationMonitorManager(k8sClient client.Client,
@@ -73,22 +78,26 @@ func NewPolicyRecommendationMonitorManager(k8sClient client.Client,
 	metricScraper metrics.Scraper,
 	periodicRequeueFrequency time.Duration,
 	breachCheckFrequency time.Duration,
+	concurrentExecutions int,
 	handlerFunc func(workloadName types.NamespacedName),
 	stepSec int,
 	cpuRedLine float64,
 	logger logr.Logger) *PolicyRecommendationMonitorManager {
 
+	concurrencySemaphore := semaphore.NewWeighted(int64(concurrentExecutions))
+
 	return &PolicyRecommendationMonitorManager{
-		k8sClient:                k8sClient,
-		recorder:                 recorder,
-		metricScraper:            metricScraper,
-		metricStep:               time.Duration(stepSec) * time.Second,
-		cpuRedLine:               cpuRedLine,
-		periodicRequeueFrequency: periodicRequeueFrequency,
-		breachCheckFrequency:     breachCheckFrequency,
-		handlerFunc:              handlerFunc,
-		monitors:                 make(map[string]*Monitor),
-		logger:                   logger,
+		k8sClient:                   k8sClient,
+		recorder:                    recorder,
+		metricScraper:               metricScraper,
+		metricStep:                  time.Duration(stepSec) * time.Second,
+		cpuRedLine:                  cpuRedLine,
+		periodicRequeueFrequency:    periodicRequeueFrequency,
+		breachCheckFrequency:        breachCheckFrequency,
+		concurrencyControlSemaphore: concurrencySemaphore,
+		handlerFunc:                 handlerFunc,
+		monitors:                    make(map[string]*Monitor),
+		logger:                      logger,
 	}
 }
 
@@ -112,6 +121,7 @@ func (mf *PolicyRecommendationMonitorManager) RegisterMonitor(workloadType strin
 		mf.metricStep,
 		mf.periodicRequeueFrequency,
 		mf.breachCheckFrequency,
+		mf.concurrencyControlSemaphore,
 		mf.handlerFunc,
 		mf.logger)
 
@@ -141,21 +151,22 @@ func (mf *PolicyRecommendationMonitorManager) Shutdown() {
 }
 
 type Monitor struct {
-	k8sClient                client.Client
-	recorder                 record.EventRecorder
-	namespace                string
-	workload                 types.NamespacedName
-	workloadType             string
-	metricScraper            metrics.Scraper
-	cpuRedLine               float64
-	metricStep               time.Duration
-	periodicRequeueFrequency time.Duration
-	breachCheckFrequency     time.Duration
-	handlerFunc              func(workload types.NamespacedName)
-	ctx                      context.Context
-	cancel                   context.CancelFunc
-	wg                       sync.WaitGroup
-	logger                   logr.Logger
+	k8sClient                   client.Client
+	recorder                    record.EventRecorder
+	namespace                   string
+	workload                    types.NamespacedName
+	workloadType                string
+	metricScraper               metrics.Scraper
+	cpuRedLine                  float64
+	metricStep                  time.Duration
+	periodicRequeueFrequency    time.Duration
+	breachCheckFrequency        time.Duration
+	concurrencyControlSemaphore *semaphore.Weighted
+	handlerFunc                 func(workload types.NamespacedName)
+	ctx                         context.Context
+	cancel                      context.CancelFunc
+	wg                          sync.WaitGroup
+	logger                      logr.Logger
 }
 
 func NewMonitor(k8sClient client.Client,
@@ -168,25 +179,27 @@ func NewMonitor(k8sClient client.Client,
 	metricStep time.Duration,
 	periodicRequeueFrequency time.Duration,
 	breachCheckFrequency time.Duration,
+	concurrencyControlSemaphore *semaphore.Weighted,
 	handlerFunc func(workload types.NamespacedName),
 	logger logr.Logger) *Monitor {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Monitor{
-		k8sClient:                k8sClient,
-		recorder:                 recorder,
-		namespace:                namespace,
-		workload:                 workload,
-		workloadType:             workloadType,
-		metricScraper:            metricScraper,
-		cpuRedLine:               cpuRedLine,
-		metricStep:               metricStep,
-		periodicRequeueFrequency: periodicRequeueFrequency,
-		breachCheckFrequency:     breachCheckFrequency,
-		handlerFunc:              handlerFunc,
-		ctx:                      ctx,
-		cancel:                   cancel,
-		logger:                   logger,
+		k8sClient:                   k8sClient,
+		recorder:                    recorder,
+		namespace:                   namespace,
+		workload:                    workload,
+		workloadType:                workloadType,
+		metricScraper:               metricScraper,
+		cpuRedLine:                  cpuRedLine,
+		metricStep:                  metricStep,
+		periodicRequeueFrequency:    periodicRequeueFrequency,
+		breachCheckFrequency:        breachCheckFrequency,
+		concurrencyControlSemaphore: concurrencyControlSemaphore,
+		handlerFunc:                 handlerFunc,
+		ctx:                         ctx,
+		cancel:                      cancel,
+		logger:                      logger,
 	}
 }
 
@@ -211,6 +224,7 @@ func (m *Monitor) monitorBreaches() {
 		case <-m.ctx.Done():
 			return
 		case <-ticker.C:
+
 			m.logger.Info("Executing breach monitor check.", "workload", m.workload)
 			concurrentBreachMonitorExecutions.WithLabelValues().Add(1)
 			end := time.Now()
@@ -238,8 +252,18 @@ func (m *Monitor) monitorBreaches() {
 				}
 			}
 			var statusPatch *ottoscaleriov1alpha1.PolicyRecommendation
+			if err := m.concurrencyControlSemaphore.Acquire(context.Background(), 1); err != nil {
+				// Return if the context is canceled.
+				if err == context.Canceled || err == context.DeadlineExceeded {
+					fmt.Printf("Failed to acquire semaphore as context is cancelled: %v\n", err)
+					return
+				}
+				fmt.Printf("Failed to acquire semaphore: %v\n", err)
+				continue
+			}
 			//TODO: Handle Error
 			breached, _ := HasBreached(log.IntoContext(context.Background(), m.logger), start, end, m.workloadType, m.workload, m.metricScraper, m.cpuRedLine, m.metricStep)
+			m.concurrencyControlSemaphore.Release(1)
 			if breached {
 				m.recorder.Event(&policyreco, eventTypeWarning, "BreachDetected", "A breach has been detected for the current policy")
 				if !breachedInPast {

@@ -78,9 +78,10 @@ type Config struct {
 	} `yaml:"metricsScraper"`
 
 	BreachMonitor struct {
-		PollingIntervalSec int     `yaml:"pollingIntervalSec"`
-		CpuRedLine         float64 `yaml:"cpuRedLine"`
-		StepSec            int     `yaml:"stepSec"`
+		PollingIntervalSec   int     `yaml:"pollingIntervalSec"`
+		CpuRedLine           float64 `yaml:"cpuRedLine"`
+		StepSec              int     `yaml:"stepSec"`
+		ConcurrentExecutions int     `yaml:"concurrentExecutions"`
 	} `yaml:"breachMonitor"`
 
 	PeriodicTrigger struct {
@@ -292,6 +293,7 @@ func main() {
 		scraper,
 		time.Duration(config.PeriodicTrigger.PollingIntervalMin)*time.Minute,
 		time.Duration(config.BreachMonitor.PollingIntervalSec)*time.Second,
+		config.BreachMonitor.ConcurrentExecutions,
 		triggerHandler.QueueForExecution,
 		config.BreachMonitor.StepSec,
 		config.BreachMonitor.CpuRedLine,
