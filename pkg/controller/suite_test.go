@@ -19,6 +19,7 @@ package controller
 import (
 	"errors"
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/autoscaler"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
@@ -158,12 +159,11 @@ var _ = BeforeSuite(func() {
 	hpaEnforcerIncludedNamespaces = new([]string)
 	*hpaEnforcerIsDryRun = falseBool
 	*whitelistMode = falseBool
-	var enableScaledObject *bool
-	myBoolValue := true
-	enableScaledObject = &myBoolValue
+	var autoscalerCRUD autoscaler.AutoscalerCRUD
+	autoscalerCRUD = autoscaler.NewScaledobjectCRUD(k8sManager.GetClient())
 	hpaenforcer, err := NewHPAEnforcementController(k8sManager.GetClient(),
 		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName),
-		1, hpaEnforcerIsDryRun, hpaEnforcerExcludedNamespaces, hpaEnforcerIncludedNamespaces, whitelistMode, 3, enableScaledObject)
+		1, hpaEnforcerIsDryRun, hpaEnforcerExcludedNamespaces, hpaEnforcerIncludedNamespaces, whitelistMode, 3, autoscalerCRUD)
 	Expect(err).NotTo(HaveOccurred())
 	err = hpaenforcer.
 		SetupWithManager(k8sManager)

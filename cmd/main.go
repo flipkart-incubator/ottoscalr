@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/autoscaler"
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
 	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
@@ -126,6 +127,7 @@ type Config struct {
 		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
 		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
+	EnableScaledObject *bool `yaml:"enableScaledObject"`
 }
 
 func main() {
@@ -303,12 +305,15 @@ func main() {
 	hpaEnforcerExcludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.ExcludedNamespaces)
 	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
 
-	var enableScaledObject *bool
-	myBoolValue := false
-	enableScaledObject = &myBoolValue
+	var autoscalerCRUD autoscaler.AutoscalerCRUD
+	if *config.EnableScaledObject {
+		autoscalerCRUD = autoscaler.NewScaledobjectCRUD(mgr.GetClient())
+	} else {
+		autoscalerCRUD = autoscaler.NewHPACRUD(mgr.GetClient())
+	}
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
-		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas, enableScaledObject)
+		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas, autoscalerCRUD)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
 		os.Exit(1)
