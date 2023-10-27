@@ -152,7 +152,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	hpaenforcerReconcileCounter.WithLabelValues(policyreco.Namespace, policyreco.Name).Inc()
 
-	if !isInitialized(policyreco.Status.Conditions) { //|| !isRecoGenerated(policyreco.Status.Conditions) {
+	if !isInitialized(policyreco.Status.Conditions) || !isRecoGenerated(policyreco.Status.Conditions) {
 		logger.V(0).Info("Skipping policy enforcement as the policy recommendation is not initialized.")
 		return ctrl.Result{}, nil
 	}
