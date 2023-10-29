@@ -127,7 +127,7 @@ type Config struct {
 		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
 		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
-	EnableRollout *bool `yaml:"enableRollout"`
+	EnableArgoRolloutsSupport *bool `yaml:"enableArgoRolloutsSupport"`
 }
 
 func main() {
@@ -245,14 +245,14 @@ func main() {
 
 		metricsTransformer = append(metricsTransformer, outlierInterpolatorTransformer)
 	}
-	clientsRegistryBuilder := registry.NewDeploymentClientRegistryBuilder().
+	deploymentClientRegistryBuilder := registry.NewDeploymentClientRegistryBuilder().
 		WithK8sClient(mgr.GetClient()).
-		WithCustomDeploymentClient(registry.DeploymentGVK)
+		WithCustomDeploymentClient(registry.NewDeploymentClient(mgr.GetClient()))
 
-	if *config.EnableRollout {
-		clientsRegistryBuilder = clientsRegistryBuilder.WithCustomDeploymentClient(registry.RolloutGVK)
+	if *config.EnableArgoRolloutsSupport {
+		deploymentClientRegistryBuilder = deploymentClientRegistryBuilder.WithCustomDeploymentClient(registry.NewRolloutClient(mgr.GetClient()))
 	}
-	clientsRegistry := clientsRegistryBuilder.Build()
+	deploymentClientRegistry := deploymentClientRegistryBuilder.Build()
 	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
@@ -262,7 +262,7 @@ func main() {
 		config.CpuUtilizationBasedRecommender.MinTarget,
 		config.CpuUtilizationBasedRecommender.MaxTarget,
 		config.CpuUtilizationBasedRecommender.MetricsPercentageThreshold,
-		*clientsRegistry,
+		*deploymentClientRegistry,
 		logger)
 
 	breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
@@ -287,7 +287,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	deploymentTriggerReconciler := controller.NewDeploymentTriggerController(mgr.GetClient(), mgr.GetScheme(), *clientsRegistry)
+	deploymentTriggerReconciler := controller.NewDeploymentTriggerController(mgr.GetClient(), mgr.GetScheme(), *deploymentClientRegistry)
 	if err = deploymentTriggerReconciler.
 		SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DeploymentController")
@@ -314,7 +314,7 @@ func main() {
 	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
 
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
-		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName), *clientsRegistry,
+		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName), *deploymentClientRegistry,
 		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
@@ -331,7 +331,7 @@ func main() {
 		mgr.GetScheme(),
 		config.PolicyRecommendationRegistrar.RequeueDelayMs,
 		monitorManager,
-		policyStore, *clientsRegistry, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
+		policyStore, *deploymentClientRegistry, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",
 			"controller", "PolicyRecommendationRegistration")
 		os.Exit(1)
