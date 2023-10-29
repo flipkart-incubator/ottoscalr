@@ -111,8 +111,8 @@ var _ = BeforeSuite(func() {
 
 	clientsRegistry = *registry.NewDeploymentClientRegistryBuilder().
 		WithK8sClient(k8sClient1).
-		WithCustomDeploymentClient(registry.DeploymentGVK).
-		WithCustomDeploymentClient(registry.RolloutGVK).
+		WithCustomDeploymentClient(registry.NewDeploymentClient(k8sManager1.GetClient())).
+		WithCustomDeploymentClient(registry.NewRolloutClient(k8sManager1.GetClient())).
 		Build()
 	err = (&DeploymentTriggerController{
 		Client:          k8sManager1.GetClient(),
@@ -132,8 +132,8 @@ var _ = BeforeSuite(func() {
 
 	clientsRegistry = *registry.NewDeploymentClientRegistryBuilder().
 		WithK8sClient(k8sManager.GetClient()).
-		WithCustomDeploymentClient(registry.DeploymentGVK).
-		WithCustomDeploymentClient(registry.RolloutGVK).
+		WithCustomDeploymentClient(registry.NewDeploymentClient(k8sManager.GetClient())).
+		WithCustomDeploymentClient(registry.NewRolloutClient(k8sManager.GetClient())).
 		Build()
 	err = (&PolicyRecommendationRegistrar{
 		Client:             k8sManager.GetClient(),
