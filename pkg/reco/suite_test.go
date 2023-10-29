@@ -204,8 +204,8 @@ var _ = BeforeSuite(func() {
 
 	clientsRegistry = *registry.NewDeploymentClientRegistryBuilder().
 		WithK8sClient(k8sClient).
-		WithCustomDeploymentClient(registry.DeploymentGVK).
-		WithCustomDeploymentClient(registry.RolloutGVK).
+		WithCustomDeploymentClient(registry.NewDeploymentClient(k8sManager.GetClient())).
+		WithCustomDeploymentClient(registry.NewRolloutClient(k8sManager.GetClient())).
 		Build()
 
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
