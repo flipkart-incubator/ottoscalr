@@ -11,17 +11,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-type ScaledobjectCRUD struct {
+type ScaledobjectClient struct {
 	k8sClient client.Client
 }
 
-func NewScaledobjectCRUD(k8sClient client.Client) *ScaledobjectCRUD {
-	return &ScaledobjectCRUD{
+func NewScaledobjectClient(k8sClient client.Client) *ScaledobjectClient {
+	return &ScaledobjectClient{
 		k8sClient: k8sClient,
 	}
 }
 
-func (soc *ScaledobjectCRUD) GetMaxReplicaCount(obj client.Object) int32 {
+func (soc *ScaledobjectClient) GetMaxReplicaCount(obj client.Object) int32 {
 	maxPods := int32(0)
 	scaledObject := obj.(*kedaapi.ScaledObject)
 	if scaledObject.Spec.MaxReplicaCount != nil {
@@ -31,16 +31,16 @@ func (soc *ScaledobjectCRUD) GetMaxReplicaCount(obj client.Object) int32 {
 	return maxPods
 }
 
-func (soc *ScaledobjectCRUD) GetName() string {
+func (soc *ScaledobjectClient) GetName() string {
 	return "ScaledObject"
 }
 
-func (soc *ScaledobjectCRUD) GetScaleTargetName(obj client.Object) string {
+func (soc *ScaledobjectClient) GetScaleTargetName(obj client.Object) string {
 	scaledObject := obj.(*kedaapi.ScaledObject)
 	return scaledObject.Spec.ScaleTargetRef.Name
 }
 
-func (soc *ScaledobjectCRUD) GetList(ctx context.Context, labelSelector labels.Selector, namespace string, fieldSelector fields.Selector) ([]client.Object, error) {
+func (soc *ScaledobjectClient) GetList(ctx context.Context, labelSelector labels.Selector, namespace string, fieldSelector fields.Selector) ([]client.Object, error) {
 	scaledObjects := &kedaapi.ScaledObjectList{}
 	if err := soc.k8sClient.List(ctx, scaledObjects, &client.ListOptions{
 		FieldSelector: fieldSelector,
@@ -60,11 +60,11 @@ func (soc *ScaledobjectCRUD) GetList(ctx context.Context, labelSelector labels.S
 
 }
 
-func (soc *ScaledobjectCRUD) GetType() client.Object {
+func (soc *ScaledobjectClient) GetType() client.Object {
 	return &kedaapi.ScaledObject{}
 }
 
-func (soc *ScaledobjectCRUD) DeleteAutoscaler(ctx context.Context, obj client.Object) error {
+func (soc *ScaledobjectClient) DeleteAutoscaler(ctx context.Context, obj client.Object) error {
 	deletePropagationPolicy := metav1.DeletePropagationForeground
 	err := soc.k8sClient.Delete(ctx, obj, &client.DeleteOptions{
 		PropagationPolicy: &deletePropagationPolicy,
@@ -75,7 +75,7 @@ func (soc *ScaledobjectCRUD) DeleteAutoscaler(ctx context.Context, obj client.Ob
 	return nil
 }
 
-func (soc *ScaledobjectCRUD) CreateOrUpdateAutoscaler(ctx context.Context, workload client.Object, labels map[string]string,
+func (soc *ScaledobjectClient) CreateOrUpdateAutoscaler(ctx context.Context, workload client.Object, labels map[string]string,
 	max int32, min int32, targetCPUUtilization int32) (string, error) {
 	scaledObj := kedaapi.ScaledObject{
 		ObjectMeta: metav1.ObjectMeta{

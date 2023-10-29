@@ -100,18 +100,18 @@ type HPAEnforcementController struct {
 	IncludedNamespaces      *[]string
 	WhitelistMode           *bool
 	MinRequiredReplicas     int
-	autoscalerCRUD          autoscaler.AutoscalerCRUD
+	autoscalerClient        autoscaler.AutoscalerClient
 }
 
 func NewHPAEnforcementController(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder,
-	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int, autoscalerCRUD autoscaler.AutoscalerCRUD) (*HPAEnforcementController, error) {
+	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int, autoscalerClient autoscaler.AutoscalerClient) (*HPAEnforcementController, error) {
 
-	HPAEnforcedReason = fmt.Sprintf("%sIsCreated", autoscalerCRUD.GetName())
-	HPAEnforcedMessage = fmt.Sprintf("%s has been created.", autoscalerCRUD.GetName())
-	AutoscalerExistsReason = fmt.Sprintf("UserCreated%sAlreadyExists", autoscalerCRUD.GetName())
-	AutoscalerExistsMessage = fmt.Sprintf("User managed %s already exists for this workload.", autoscalerCRUD.GetName())
-	InvalidPolicyRecoMessage = fmt.Sprintf("HPA config in the PolicyRecommendation doesn't qualify for the %s creation criteria.", autoscalerCRUD.GetName())
+	HPAEnforcedReason = fmt.Sprintf("%sIsCreated", autoscalerClient.GetName())
+	HPAEnforcedMessage = fmt.Sprintf("%s has been created.", autoscalerClient.GetName())
+	AutoscalerExistsReason = fmt.Sprintf("UserCreated%sAlreadyExists", autoscalerClient.GetName())
+	AutoscalerExistsMessage = fmt.Sprintf("User managed %s already exists for this workload.", autoscalerClient.GetName())
+	InvalidPolicyRecoMessage = fmt.Sprintf("HPA config in the PolicyRecommendation doesn't qualify for the %s creation criteria.", autoscalerClient.GetName())
 
 	return &HPAEnforcementController{
 		Client:                  client,
@@ -123,7 +123,7 @@ func NewHPAEnforcementController(client client.Client,
 		IncludedNamespaces:      includedNamespaces,
 		WhitelistMode:           whitelistMode,
 		MinRequiredReplicas:     minRequiredReplicas,
-		autoscalerCRUD:          autoscalerCRUD,
+		autoscalerClient:        autoscalerClient,
 	}, nil
 }
 
@@ -184,13 +184,13 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 	var conditions []metav1.Condition
 	var statusPatch *v1alpha1.PolicyRecommendation
 
-	autoscalerObjects, err := r.autoscalerCRUD.GetList(ctx, labelSelector, workload.GetNamespace(), fields.OneTermEqualSelector(autoscalerField, workload.GetName()))
+	autoscalerObjects, err := r.autoscalerClient.GetList(ctx, labelSelector, workload.GetNamespace(), fields.OneTermEqualSelector(autoscalerField, workload.GetName()))
 	if err != nil && client.IgnoreNotFound(err) != nil {
 		return ctrl.Result{}, err
 	}
 
 	if len(autoscalerObjects) > 0 {
-		logger.V(0).Info(r.autoscalerCRUD.GetName()+" managed by a different controller/entity already exists for this workload. Skipping.", "workload", workload, "namespace", workload.GetNamespace(), "kind", workload.GetObjectKind(), "autoscaler", autoscalerObjects)
+		logger.V(0).Info(r.autoscalerClient.GetName()+" managed by a different controller/entity already exists for this workload. Skipping.", "workload", workload, "namespace", workload.GetNamespace(), "kind", workload.GetObjectKind(), "autoscaler", autoscalerObjects)
 		statusPatch, conditions = CreatePolicyPatch(policyreco, conditions, v1alpha1.HPAEnforced, metav1.ConditionFalse, AutoscalerExistsReason, AutoscalerExistsMessage)
 		if err := r.Status().Patch(ctx, statusPatch, client.Apply, getSubresourcePatchOptions(HPAEnforcementCtrlName)); err != nil {
 			logger.Error(err, "Error updating the status of the policy reco object")
@@ -259,7 +259,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
-	logger.V(0).Info("Reconciling PolicyRecommendation to create/update " + r.autoscalerCRUD.GetName())
+	logger.V(0).Info("Reconciling PolicyRecommendation to create/update " + r.autoscalerClient.GetName())
 	labels := map[string]string{
 		createdByLabelKey: createdByLabelValue,
 	}
@@ -270,11 +270,11 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if !*r.isDryRun {
 
-		logger.V(0).Info("Creating/Updating "+r.autoscalerCRUD.GetName()+" for workload.", "workload", workload.GetName())
+		logger.V(0).Info("Creating/Updating "+r.autoscalerClient.GetName()+" for workload.", "workload", workload.GetName())
 
-		result, err := r.autoscalerCRUD.CreateOrUpdateAutoscaler(ctx, workload, labels, max, min, targetCPU)
+		result, err := r.autoscalerClient.CreateOrUpdateAutoscaler(ctx, workload, labels, max, min, targetCPU)
 		if err != nil {
-			logger.V(0).Error(err, "Error creating or updating "+r.autoscalerCRUD.GetName())
+			logger.V(0).Error(err, "Error creating or updating "+r.autoscalerClient.GetName())
 			return ctrl.Result{}, err
 		} else {
 			hpaenforcerAutoscalerObjectUpdatedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, workload.GetName(), result).Inc()
@@ -282,7 +282,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 
 	} else {
-		logger.V(0).Info("Skipping creating "+r.autoscalerCRUD.GetName()+" for workload as the controller is deployed in dryRun mode.", "workload", workload.GetName())
+		logger.V(0).Info("Skipping creating "+r.autoscalerClient.GetName()+" for workload as the controller is deployed in dryRun mode.", "workload", workload.GetName())
 		return ctrl.Result{}, nil
 	}
 
@@ -291,7 +291,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		logger.Error(err, "Error updating the status of the policy reco object")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	r.Recorder.Event(&policyreco, eventTypeNormal, r.autoscalerCRUD.GetName()+"Created", fmt.Sprintf("The %s has been created successfully.", r.autoscalerCRUD.GetName()))
+	r.Recorder.Event(&policyreco, eventTypeNormal, r.autoscalerClient.GetName()+"Created", fmt.Sprintf("The %s has been created successfully.", r.autoscalerClient.GetName()))
 
 	return ctrl.Result{}, nil
 }
@@ -321,8 +321,8 @@ func isInitialized(conditions []metav1.Condition) bool {
 // SetupWithManager sets up the controller with the Manager.
 func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), r.autoscalerCRUD.GetType(), autoscalerField, func(rawObj client.Object) []string {
-		scaleTargetName := r.autoscalerCRUD.GetScaleTargetName(rawObj)
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), r.autoscalerClient.GetType(), autoscalerField, func(rawObj client.Object) []string {
+		scaleTargetName := r.autoscalerClient.GetScaleTargetName(rawObj)
 		if scaleTargetName == "" {
 			return nil
 		}
@@ -438,7 +438,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	enqueueFunc := func(obj client.Object) []reconcile.Request {
-		object := r.autoscalerCRUD.GetType()
+		object := r.autoscalerClient.GetType()
 		if len(object.GetOwnerReferences()) == 0 {
 			return nil
 		}
@@ -513,7 +513,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
 			builder.WithPredicates(predicate.And(predicate.AnnotationChangedPredicate{}, namespaceFilter)),
 		).
-		Watches(&source.Kind{Type: r.autoscalerCRUD.GetType()},
+		Watches(&source.Kind{Type: r.autoscalerClient.GetType()},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(deletePredicate),
 		).
@@ -561,30 +561,30 @@ func (r *HPAEnforcementController) deleteControllerManagedAutoscaler(ctx context
 	var maxPods int32
 	// List only autoscalerObjects created by this controller
 
-	autoscalerObjects, err := r.autoscalerCRUD.GetList(context.Background(), labelSelector, workload.GetNamespace(), fields.OneTermEqualSelector(autoscalerField, workload.GetName()))
+	autoscalerObjects, err := r.autoscalerClient.GetList(context.Background(), labelSelector, workload.GetNamespace(), fields.OneTermEqualSelector(autoscalerField, workload.GetName()))
 	if err != nil && client.IgnoreNotFound(err) != nil {
 		return err
 	}
 	if len(autoscalerObjects) == 0 {
 		return nil
 	}
-	logger.V(0).Info(fmt.Sprintf("Found %d %s(s) for policyreco %s.", len(autoscalerObjects), r.autoscalerCRUD.GetName(), policyreco.Name))
-	logger.V(0).Info("Deleting the " + r.autoscalerCRUD.GetName() + " and resetting workload spec.replicas")
+	logger.V(0).Info(fmt.Sprintf("Found %d %s(s) for policyreco %s.", len(autoscalerObjects), r.autoscalerClient.GetName(), policyreco.Name))
+	logger.V(0).Info("Deleting the " + r.autoscalerClient.GetName() + " and resetting workload spec.replicas")
 
 	for _, autoscalerObject := range autoscalerObjects {
-		maxPods = r.autoscalerCRUD.GetMaxReplicaCount(autoscalerObject)
-		err := r.autoscalerCRUD.DeleteAutoscaler(context.Background(), autoscalerObject)
+		maxPods = r.autoscalerClient.GetMaxReplicaCount(autoscalerObject)
+		err := r.autoscalerClient.DeleteAutoscaler(context.Background(), autoscalerObject)
 		if err != nil {
-			logger.V(0).Error(err, "Error while deleting the "+r.autoscalerCRUD.GetName(), r.autoscalerCRUD.GetName(), autoscalerObject)
+			logger.V(0).Error(err, "Error while deleting the "+r.autoscalerClient.GetName(), r.autoscalerClient.GetName(), autoscalerObject)
 			return client.IgnoreNotFound(err)
 		}
-		r.Recorder.Event(&policyreco, eventTypeNormal, r.autoscalerCRUD.GetName()+"Deleted", fmt.Sprintf("The %s '%s' has been deleted.", r.autoscalerCRUD.GetName(), autoscalerObject.GetName()))
+		r.Recorder.Event(&policyreco, eventTypeNormal, r.autoscalerClient.GetName()+"Deleted", fmt.Sprintf("The %s '%s' has been deleted.", r.autoscalerClient.GetName(), autoscalerObject.GetName()))
 		hpaenforcerAutoscalerObjectDeletedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, autoscalerObject.GetName()).Inc()
-		logger.V(0).Info("Deleted "+r.autoscalerCRUD.GetName()+" for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "autoscaler.name", autoscalerObject.GetName(), "autoscaler.namespace", autoscalerObject.GetNamespace(), "maxReplicas", maxPods)
+		logger.V(0).Info("Deleted "+r.autoscalerClient.GetName()+" for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "autoscaler.name", autoscalerObject.GetName(), "autoscaler.namespace", autoscalerObject.GetNamespace(), "maxReplicas", maxPods)
 	}
 
 	if maxPods == 0 {
-		logger.Info(r.autoscalerCRUD.GetName() + " maxReplicas is not configured. Not resetting the workload.spec.replicas.")
+		logger.Info(r.autoscalerClient.GetName() + " maxReplicas is not configured. Not resetting the workload.spec.replicas.")
 		return nil
 	}
 
@@ -622,6 +622,6 @@ func (r *HPAEnforcementController) deleteControllerManagedAutoscaler(ctx context
 		logger.Error(err, "Error patching the workload")
 		return client.IgnoreNotFound(err)
 	}
-	r.Recorder.Event(&policyreco, eventTypeNormal, r.autoscalerCRUD.GetName()+"Deleted", fmt.Sprintf("Workload has be rescaled to max replicas '%d' from the deleted "+r.autoscalerCRUD.GetName(), maxPods))
+	r.Recorder.Event(&policyreco, eventTypeNormal, r.autoscalerClient.GetName()+"Deleted", fmt.Sprintf("Workload has be rescaled to max replicas '%d' from the deleted "+r.autoscalerClient.GetName(), maxPods))
 	return nil
 }

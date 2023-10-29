@@ -12,7 +12,7 @@ var (
 	trueBool  = true
 )
 
-type AutoscalerCRUD interface {
+type AutoscalerClient interface {
 	CreateOrUpdateAutoscaler(ctx context.Context, workload client.Object, labels map[string]string, max int32, min int32, targetCPUUtilization int32) (string, error)
 	DeleteAutoscaler(ctx context.Context, obj client.Object) error
 	GetType() client.Object

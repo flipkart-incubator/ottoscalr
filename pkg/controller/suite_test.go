@@ -159,7 +159,7 @@ var _ = BeforeSuite(func() {
 	hpaEnforcerIncludedNamespaces = new([]string)
 	*hpaEnforcerIsDryRun = falseBool
 	*whitelistMode = falseBool
-	var autoscalerCRUD autoscaler.AutoscalerCRUD
+	var autoscalerCRUD autoscaler.AutoscalerClient
 	autoscalerCRUD = autoscaler.NewScaledobjectCRUD(k8sManager.GetClient())
 	hpaenforcer, err := NewHPAEnforcementController(k8sManager.GetClient(),
 		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName),

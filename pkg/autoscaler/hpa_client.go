@@ -10,27 +10,27 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-type HPACRUD struct {
+type HPAClient struct {
 	k8sClient client.Client
 }
 
-func NewHPACRUD(k8sClient client.Client) *HPACRUD {
-	return &HPACRUD{
+func NewHPAClient(k8sClient client.Client) *HPAClient {
+	return &HPAClient{
 		k8sClient: k8sClient,
 	}
 }
 
-func (hc *HPACRUD) GetMaxReplicaCount(obj client.Object) int32 {
+func (hc *HPAClient) GetMaxReplicaCount(obj client.Object) int32 {
 	hpa := obj.(*autoscalingv1.HorizontalPodAutoscaler)
 	maxPods := hpa.Spec.MaxReplicas
 	return maxPods
 }
 
-func (hc *HPACRUD) GetName() string {
+func (hc *HPAClient) GetName() string {
 	return "HPA"
 }
 
-func (hc *HPACRUD) GetList(ctx context.Context, labelSelector labels.Selector, namespace string, fieldSelector fields.Selector) ([]client.Object, error) {
+func (hc *HPAClient) GetList(ctx context.Context, labelSelector labels.Selector, namespace string, fieldSelector fields.Selector) ([]client.Object, error) {
 	hpas := &autoscalingv1.HorizontalPodAutoscalerList{}
 	if err := hc.k8sClient.List(ctx, hpas, &client.ListOptions{
 		FieldSelector: fieldSelector,
@@ -50,11 +50,11 @@ func (hc *HPACRUD) GetList(ctx context.Context, labelSelector labels.Selector, n
 
 }
 
-func (hc *HPACRUD) GetType() client.Object {
+func (hc *HPAClient) GetType() client.Object {
 	return &autoscalingv1.HorizontalPodAutoscaler{}
 }
 
-func (hc *HPACRUD) DeleteAutoscaler(ctx context.Context, obj client.Object) error {
+func (hc *HPAClient) DeleteAutoscaler(ctx context.Context, obj client.Object) error {
 	deletePropagationPolicy := metav1.DeletePropagationForeground
 	err := hc.k8sClient.Delete(ctx, obj, &client.DeleteOptions{
 		PropagationPolicy: &deletePropagationPolicy,
@@ -65,12 +65,12 @@ func (hc *HPACRUD) DeleteAutoscaler(ctx context.Context, obj client.Object) erro
 	return nil
 }
 
-func (hc *HPACRUD) GetScaleTargetName(obj client.Object) string {
+func (hc *HPAClient) GetScaleTargetName(obj client.Object) string {
 	hpa := obj.(*autoscalingv1.HorizontalPodAutoscaler)
 	return hpa.Spec.ScaleTargetRef.Name
 }
 
-func (hc *HPACRUD) CreateOrUpdateAutoscaler(ctx context.Context, workload client.Object, labels map[string]string,
+func (hc *HPAClient) CreateOrUpdateAutoscaler(ctx context.Context, workload client.Object, labels map[string]string,
 	max int32, min int32, targetCPUUtilization int32) (string, error) {
 	hpa := autoscalingv1.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
