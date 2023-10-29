@@ -25,6 +25,13 @@ type DeploymentClient struct {
 	gvk       schema.GroupVersionKind
 }
 
+func NewDeploymentClient(k8sClient client.Client) ObjectClient {
+	return &DeploymentClient{
+		k8sClient: k8sClient,
+		gvk:       DeploymentGVK,
+	}
+}
+
 func (dc *DeploymentClient) GetKind() string {
 	return dc.gvk.Kind
 }

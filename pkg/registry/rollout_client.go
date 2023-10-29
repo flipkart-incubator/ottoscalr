@@ -25,6 +25,13 @@ type RolloutClient struct {
 	gvk       schema.GroupVersionKind
 }
 
+func NewRolloutClient(k8sClient client.Client) ObjectClient {
+	return &RolloutClient{
+		k8sClient: k8sClient,
+		gvk:       RolloutGVK,
+	}
+}
+
 func (rc *RolloutClient) GetKind() string {
 	return rc.gvk.Kind
 }

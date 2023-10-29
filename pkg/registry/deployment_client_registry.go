@@ -2,31 +2,8 @@ package registry
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-var gvkClientMap map[string]func(k8sClient client.Client) ObjectClient
-
-func init() {
-	gvkClientMap = make(map[string]func(k8sClient client.Client) ObjectClient)
-	gvkClientMap[DeploymentGVK.String()] = AddDeploymentClient
-	gvkClientMap[RolloutGVK.String()] = AddRolloutClient
-}
-
-func AddDeploymentClient(k8sClient client.Client) ObjectClient {
-	return &DeploymentClient{
-		k8sClient: k8sClient,
-		gvk:       DeploymentGVK,
-	}
-}
-
-func AddRolloutClient(k8sClient client.Client) ObjectClient {
-	return &RolloutClient{
-		k8sClient: k8sClient,
-		gvk:       RolloutGVK,
-	}
-}
 
 type ObjectClient interface {
 	GetObject(namespace string, name string) (client.Object, error)
@@ -69,17 +46,14 @@ func (cr *DeploymentClientRegistry) GetObjectClient(objectKind string) (ObjectCl
 	return nil, fmt.Errorf("object kind not found in client registry")
 }
 
-func (cr *DeploymentClientRegistryBuilder) WithCustomDeploymentClient(gvk schema.GroupVersionKind) *DeploymentClientRegistryBuilder {
-
-	if addCustomClient, ok := gvkClientMap[gvk.String()]; ok {
-		object := addCustomClient(cr.k8sClient)
-		if cr.Clients == nil {
-			var clientList []ObjectClient
-			clientList = append(clientList, object)
-			cr.Clients = clientList
-			return cr
-		}
-		cr.Clients = append(cr.Clients, object)
+func (cr *DeploymentClientRegistryBuilder) WithCustomDeploymentClient(client ObjectClient) *DeploymentClientRegistryBuilder {
+	if cr.Clients == nil {
+		var clientList []ObjectClient
+		clientList = append(clientList, client)
+		cr.Clients = clientList
+		return cr
 	}
+	cr.Clients = append(cr.Clients, client)
+
 	return cr
 }

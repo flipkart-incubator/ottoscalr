@@ -307,11 +307,11 @@ func (c *CpuUtilizationBasedRecommender) calculateSavings(maxReplicas int, simul
 
 func (c *CpuUtilizationBasedRecommender) getContainerCPULimitsSum(namespace, objectKind, objectName string) (float64,
 	error) {
-	obj, err := c.clientsRegistry.GetObjectClient(objectKind)
+	deploymentClient, err := c.clientsRegistry.GetObjectClient(objectKind)
 	if err != nil {
 		return 0, fmt.Errorf("unsupported objectKind: %s", objectKind)
 	}
-	cpuLimitsSum, err := obj.GetContainerResourceLimits(namespace, objectName)
+	cpuLimitsSum, err := deploymentClient.GetContainerResourceLimits(namespace, objectName)
 	if err != nil {
 		return 0, err
 	}
@@ -319,12 +319,12 @@ func (c *CpuUtilizationBasedRecommender) getContainerCPULimitsSum(namespace, obj
 }
 
 func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind string, objectName string) (int, error) {
-	obj, err := c.clientsRegistry.GetObjectClient(objectKind)
+	deploymentClient, err := c.clientsRegistry.GetObjectClient(objectKind)
 	if err != nil {
 		return 0, fmt.Errorf("unsupported objectKind: %s", objectKind)
 	}
 
-	maxPods, err := obj.GetMaxReplicaFromAnnotation(namespace, objectName)
+	maxPods, err := deploymentClient.GetMaxReplicaFromAnnotation(namespace, objectName)
 	if err == nil {
 		return maxPods, nil
 	}
@@ -339,7 +339,7 @@ func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind
 	if len(scaledObjects.Items) > 0 && scaledObjects.Items[0].Spec.MaxReplicaCount != nil {
 		return int(*scaledObjects.Items[0].Spec.MaxReplicaCount), nil
 	}
-	maxPods, err = obj.GetReplicaCount(namespace, objectName)
+	maxPods, err = deploymentClient.GetReplicaCount(namespace, objectName)
 	if err != nil {
 		return 0, err
 	}
