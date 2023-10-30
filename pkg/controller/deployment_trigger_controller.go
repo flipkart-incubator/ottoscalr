@@ -20,7 +20,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 	"time"
 )
 
@@ -142,7 +141,7 @@ func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
 		},
 	}
 
-	enqueueFunc := func(obj client.Object) []reconcile.Request {
+	enqueueFunc := func(ctx context.Context, obj client.Object) []reconcile.Request {
 		return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: obj.GetName(),
 			Namespace: obj.GetNamespace()}}}
 	}
@@ -150,12 +149,12 @@ func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(DeploymentTriggerCtrlName).
 		Watches(
-			&source.Kind{Type: &argov1alpha1.Rollout{}},
+			&argov1alpha1.Rollout{},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(annotationUpdatePredicate),
 		).
 		Watches(
-			&source.Kind{Type: &appsv1.Deployment{}},
+			&appsv1.Deployment{},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(annotationUpdatePredicate),
 		).

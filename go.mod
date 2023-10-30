@@ -1,6 +1,6 @@
 module github.com/flipkart-incubator/ottoscalr
 
-go 1.19
+go 1.20
 
 require (
 	github.com/argoproj/argo-rollouts v1.4.1
@@ -17,14 +17,8 @@ require (
 	k8s.io/api v0.27.2
 	k8s.io/apimachinery v0.27.2
 	k8s.io/client-go v0.27.2
-	sigs.k8s.io/controller-runtime v0.14.7
+	sigs.k8s.io/controller-runtime v0.15.0
 
-)
-
-replace (
-	k8s.io/api v0.27.2 => k8s.io/api v0.26.3
-	k8s.io/apimachinery v0.27.2 => k8s.io/apimachinery v0.26.3
-	k8s.io/client-go v0.27.2 => k8s.io/client-go v0.26.3
 )
 
 require (

@@ -24,7 +24,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 	"time"
 )
 
@@ -251,7 +250,7 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 		},
 	}
 
-	enqueueFunc := func(obj client.Object) []reconcile.Request {
+	enqueueFunc := func(ctx context.Context, obj client.Object) []reconcile.Request {
 		return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: obj.GetName(),
 			Namespace: obj.GetNamespace()}}}
 	}
@@ -259,29 +258,27 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(PolicyRecoRegistrarCtrlName).
 		Watches(
-			&source.Kind{Type: &argov1alpha1.Rollout{}},
+			&argov1alpha1.Rollout{},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(createPredicate),
 		).
 		Watches(
-			&source.Kind{Type: &appsv1.Deployment{}},
+			&appsv1.Deployment{},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(createPredicate),
 		).
 		Watches(
-			&source.Kind{Type: &ottoscaleriov1alpha1.PolicyRecommendation{}},
-			&handler.EnqueueRequestForOwner{
-				OwnerType:    &argov1alpha1.Rollout{},
-				IsController: true,
-			},
+			&ottoscaleriov1alpha1.PolicyRecommendation{},
+			handler.EnqueueRequestForOwner(
+				mgr.GetScheme(), mgr.GetRESTMapper(), &argov1alpha1.Rollout{},
+			),
 			builder.WithPredicates(deletePredicate),
 		).
 		Watches(
-			&source.Kind{Type: &ottoscaleriov1alpha1.PolicyRecommendation{}},
-			&handler.EnqueueRequestForOwner{
-				OwnerType:    &appsv1.Deployment{},
-				IsController: true,
-			},
+			&ottoscaleriov1alpha1.PolicyRecommendation{},
+			handler.EnqueueRequestForOwner(
+				mgr.GetScheme(), mgr.GetRESTMapper(), &appsv1.Deployment{},
+			),
 			builder.WithPredicates(deletePredicate),
 		).
 		WithEventFilter(namespaceFilter).

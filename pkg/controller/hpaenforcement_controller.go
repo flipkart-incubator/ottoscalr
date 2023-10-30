@@ -44,7 +44,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 	"strconv"
 )
 
@@ -486,7 +485,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		},
 	}
 
-	enqueueFunc := func(obj client.Object) []reconcile.Request {
+	enqueueFunc := func(ctx context.Context, obj client.Object) []reconcile.Request {
 		mgr.GetLogger().Info("ScaledObject delete predicate invoked.")
 		scaledObject := obj.(*kedaapi.ScaledObject)
 		if len(scaledObject.OwnerReferences) == 0 {
@@ -518,7 +517,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		return nil
 	}
 
-	policyrecoEnqueueFunc := func(obj client.Object) []reconcile.Request {
+	policyrecoEnqueueFunc := func(ctx context.Context, obj client.Object) []reconcile.Request {
 		mgr.GetLogger().Info("Deployment/Rollout change predicated invoked.")
 		mgr.GetLogger().Info("Updates to workload received.", "object", obj.GetName())
 		// since there's no support in controller runtime to figure out the Kind of the obj skipping the checks https://github.com/kubernetes-sigs/controller-runtime/issues/1735
@@ -549,22 +548,22 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Named(HPAEnforcementCtrlName).
 		Watches(
-			&source.Kind{Type: &v1alpha1.PolicyRecommendation{}},
+			&v1alpha1.PolicyRecommendation{},
 			&handler.EnqueueRequestForObject{},
 			builder.WithPredicates(predicate.And(predicate.ResourceVersionChangedPredicate{}, updatePredicate, namespaceFilter)),
 		).
 		Watches(
-			&source.Kind{Type: &kedaapi.ScaledObject{}},
+			&kedaapi.ScaledObject{},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(deletePredicate),
 		).
 		Watches(
-			&source.Kind{Type: &appsv1.Deployment{}},
+			&appsv1.Deployment{},
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
 			builder.WithPredicates(predicate.And(predicate.AnnotationChangedPredicate{}, namespaceFilter)),
 		).
 		Watches(
-			&source.Kind{Type: &argov1alpha1.Rollout{}},
+			&argov1alpha1.Rollout{},
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
 			builder.WithPredicates(predicate.And(predicate.AnnotationChangedPredicate{}, namespaceFilter)),
 		).
