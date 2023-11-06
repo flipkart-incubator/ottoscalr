@@ -137,6 +137,9 @@ var _ = BeforeSuite(func() {
 		requeueAllFunc: func() {
 			queuedAllRecos = true
 		},
+		requeueOneFunc: func(namespacedName types.NamespacedName) {
+			queuedAllRecos = true
+		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

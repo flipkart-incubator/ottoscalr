@@ -18,9 +18,19 @@ package controller
 
 import (
 	"context"
+	"reflect"
+
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -28,21 +38,27 @@ import (
 )
 
 const PolicyWatcherCtrl = "PolicyWatcher"
+const policyFinalizerName = "finalizer.ottoscaler.io"
+
+var policyRefKey = ".spec.policy"
 
 // PolicyWatcher reconciles a Policy object
 type PolicyWatcher struct {
 	Client         client.Client
 	Scheme         *runtime.Scheme
 	requeueAllFunc func()
+	requeueOneFunc func(types.NamespacedName)
 }
 
 func NewPolicyWatcher(client client.Client,
 	scheme *runtime.Scheme,
 	requeueAllFunc func(),
+	requeueOneFunc func(types.NamespacedName),
 ) *PolicyWatcher {
 	return &PolicyWatcher{Client: client,
 		Scheme:         scheme,
 		requeueAllFunc: requeueAllFunc,
+		requeueOneFunc: requeueOneFunc,
 	}
 }
 
@@ -63,8 +79,39 @@ func (r *PolicyWatcher) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, err
 	}
 
+	// Add finalizer to the policy if it doesn't have one
+	policy, err := r.addFinalizer(ctx, policy)
+
+	if err != nil {
+		logger.Error(err, "Error adding finalizer to policy")
+		return ctrl.Result{}, err
+	}
+
+	//Handle Reconcile
+	//If it is a delete event or update in the spec
+	//Requeue all policyRecommendations having the request Policy object as a reference
+	err = r.handleReconcilation(ctx, policy, logger)
+
+	if err != nil {
+		logger.Error(err, "Error handling reconcilation of policy")
+		return ctrl.Result{}, err
+	}
+
+	// If the policy is deleted
+	if !policy.ObjectMeta.DeletionTimestamp.IsZero() {
+
+		// Remove finalizer from the policy
+		policy.ObjectMeta.Finalizers = removeString(policy.ObjectMeta.Finalizers, policyFinalizerName)
+		if err := r.Client.Update(ctx, &policy); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{}, nil
+
+	}
+
+	// If the policy is marked as default, ensure no other policy is marked as default
 	if policy.Spec.IsDefault {
-		// If the policy is marked as default, ensure no other policy is marked as default
 		var allPolicies ottoscaleriov1alpha1.PolicyList
 		if err := r.Client.List(ctx, &allPolicies); err != nil {
 			logger.Error(err, "Error getting allPolicies")
@@ -95,8 +142,88 @@ func (r *PolicyWatcher) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 // SetupWithManager sets up the controller with the Manager.
 func (r *PolicyWatcher) SetupWithManager(mgr ctrl.Manager) error {
 
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &ottoscaleriov1alpha1.PolicyRecommendation{}, policyRefKey, func(rawObj client.Object) []string {
+		policyRecommendation := rawObj.(*ottoscaleriov1alpha1.PolicyRecommendation)
+		if policyRecommendation.Spec.Policy == "" {
+			return nil
+		}
+		return []string{policyRecommendation.Spec.Policy}
+	}); err != nil {
+		return err
+	}
+
+	reconcilePredicate := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return true
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			newPolicy := e.ObjectNew.(*ottoscaleriov1alpha1.Policy)
+			oldPolicy := e.ObjectOld.(*ottoscaleriov1alpha1.Policy)
+
+			return !reflect.DeepEqual(newPolicy.Spec, oldPolicy.Spec)
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&ottoscaleriov1alpha1.Policy{}).
+		Watches(&source.Kind{Type: &ottoscaleriov1alpha1.Policy{}},
+			&handler.EnqueueRequestForObject{},
+			builder.WithPredicates(reconcilePredicate)).
 		Named(PolicyWatcherCtrl).
 		Complete(r)
+}
+
+func (r *PolicyWatcher) addFinalizer(ctx context.Context, policy ottoscaleriov1alpha1.Policy) (ottoscaleriov1alpha1.Policy, error) {
+	// Add finalizer to the policy if it doesn't have one
+	if !containsString(policy.ObjectMeta.Finalizers, policyFinalizerName) {
+		policy.ObjectMeta.Finalizers = append(policy.ObjectMeta.Finalizers, policyFinalizerName)
+		if err := r.Client.Update(ctx, &policy); err != nil {
+			return ottoscaleriov1alpha1.Policy{}, err
+		}
+	}
+
+	return policy, nil
+}
+
+func (r *PolicyWatcher) handleReconcilation(ctx context.Context, policy ottoscaleriov1alpha1.Policy, logger logr.Logger) error {
+	// Get all PolicyRecommendation objects that reference the Policy object
+	var policyRecommendations ottoscaleriov1alpha1.PolicyRecommendationList
+	if err := r.Client.List(ctx, &policyRecommendations, &client.ListOptions{
+		FieldSelector: fields.OneTermEqualSelector(policyRefKey, policy.Name)}); err != nil {
+		return err
+	}
+
+	// Requeue all PolicyRecommendation objects having the Policy object as a reference
+	for _, policyRecommendation := range policyRecommendations.Items {
+		r.requeueOneFunc(types.NamespacedName{Namespace: policyRecommendation.Namespace,
+			Name: policyRecommendation.Name})
+	}
+
+	return nil
+}
+
+func containsString(slice []string, str string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+
+	return false
+}
+
+func removeString(slice []string, str string) []string {
+	var result []string
+	for _, s := range slice {
+		if s != str {
+			result = append(result, s)
+		}
+	}
+
+	return result
 }

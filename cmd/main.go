@@ -331,7 +331,8 @@ func main() {
 
 	if err = controller.NewPolicyWatcher(mgr.GetClient(),
 		mgr.GetScheme(),
-		triggerHandler.QueueAllForExecution).SetupWithManager(mgr); err != nil {
+		triggerHandler.QueueAllForExecution,
+		triggerHandler.QueueForExecution).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Policy")
 		os.Exit(1)
 	}
