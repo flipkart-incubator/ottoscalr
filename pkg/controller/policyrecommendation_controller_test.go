@@ -97,6 +97,8 @@ var _ = Describe("PolicyrecommendationController", func() {
 			Expect(k8sClient.Delete(ctx, createdPolicy)).Should(Succeed())
 			safestPolicy.Finalizers = nil
 			Expect(k8sClient.Update(ctx, &safestPolicy)).Should(Succeed())
+			safestPolicy = v1alpha1.Policy{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: safestPolicy.Name, Namespace: safestPolicy.Namespace}, &safestPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &safestPolicy)).Should(Succeed())
 			policy1.Finalizers = nil
 			Expect(k8sClient.Update(ctx, &policy1)).Should(Succeed())
