@@ -2,12 +2,14 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"time"
+
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"time"
 )
 
 var _ = Describe("PolicyWatcher controller", func() {
@@ -25,6 +27,25 @@ var _ = Describe("PolicyWatcher controller", func() {
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy3)).Should(Succeed())
+			policy1 = ottoscaleriov1alpha1.Policy{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "policy1"}, &policy1)).Should(Succeed())
+			Expect(policy1.DeletionTimestamp).ShouldNot(BeNil())
+			policy1.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy1)).Should(Succeed())
+			time.Sleep(1 * time.Second)
+
+			policy2 = ottoscaleriov1alpha1.Policy{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "policy2"}, &policy2)).Should(Succeed())
+			Expect(policy2.DeletionTimestamp).ShouldNot(BeNil())
+			policy2.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy2)).Should(Succeed())
+			time.Sleep(1 * time.Second)
+			policy3 = ottoscaleriov1alpha1.Policy{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "policy3"}, &policy3)).Should(Succeed())
+			Expect(policy3.DeletionTimestamp).ShouldNot(BeNil())
+			policy3.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy3)).Should(Succeed())
+			time.Sleep(1 * time.Second)
 		})
 		It("Should mark other policies as non-default and requeue all policy recommendations ", func() {
 			By("Seeding all policies")
@@ -62,6 +83,9 @@ var _ = Describe("PolicyWatcher controller", func() {
 			Expect(k8sClient.Create(ctx, &policy2)).Should(Succeed())
 			Expect(k8sClient.Create(ctx, &policy3)).Should(Succeed())
 
+			time.Sleep(2 * time.Second)
+			policy2 = ottoscaleriov1alpha1.Policy{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "policy2"}, &policy2)).Should(Succeed())
 			policy2.Spec.IsDefault = true
 			err := k8sClient.Update(ctx, &policy2)
 			Expect(err).ToNot(HaveOccurred())
