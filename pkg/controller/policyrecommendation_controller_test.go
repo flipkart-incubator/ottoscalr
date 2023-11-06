@@ -92,10 +92,20 @@ var _ = Describe("PolicyrecommendationController", func() {
 			updatedPolicy = &v1alpha1.PolicyRecommendation{}
 		})
 		AfterEach(func() {
+			createdPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, createdPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, createdPolicy)).Should(Succeed())
+			safestPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &safestPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &safestPolicy)).Should(Succeed())
+			policy1.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
+			policy2.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy2)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
+			policy3.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy3)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy3)).Should(Succeed())
 		})
 
@@ -256,9 +266,17 @@ var _ = Describe("PolicyrecommendationController", func() {
 			updatedPolicy = &v1alpha1.PolicyRecommendation{}
 		})
 		AfterEach(func() {
+			createdPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, createdPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, createdPolicy)).Should(Succeed())
+			safestPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &safestPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &safestPolicy)).Should(Succeed())
+			policy1.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
+			policy2.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy2)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
 		})
 
@@ -535,8 +553,14 @@ var _ = Describe("PolicyrecommendationController", func() {
 			updatedPolicy = &v1alpha1.PolicyRecommendation{}
 		})
 		AfterEach(func() {
+			createdPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, createdPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, createdPolicy)).Should(Succeed())
+			safestPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &safestPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &safestPolicy)).Should(Succeed())
+			policy1.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
 		})
 
@@ -667,6 +691,8 @@ var _ = Describe("PolicyrecommendationController", func() {
 
 		})
 		AfterEach(func() {
+			safestPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, safestPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, safestPolicy)).Should(Succeed())
 		})
 
@@ -834,10 +860,19 @@ var _ = Describe("PolicyrecommendationController", func() {
 		})
 
 		AfterEach(func() {
-			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
+			createdPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, createdPolicy)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, createdPolicy)).Should(Succeed())
+			safestPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &safestPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &safestPolicy)).Should(Succeed())
+			policy1.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
+			policy2.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy2)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
+			
 		})
 		It("Should Create a new PolicyRecommendation with Initialized,RecoTaskQueued,Recommendation Generated and Target Reco Achieved Status Conditions", func() {
 			By("By creating a new Deployment")
@@ -955,9 +990,17 @@ var _ = Describe("PolicyrecommendationController", func() {
 		})
 
 		AfterEach(func() {
-			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
+			createdPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, createdPolicy)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, createdPolicy)).Should(Succeed())
+			safestPolicy.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &safestPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &safestPolicy)).Should(Succeed())
+			policy1.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
+			policy2.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &policy2)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
 		})
 		It("Should Create a new PolicyRecommendation with Initialized,RecoTaskQueued,Recommendation Generated and Target Reco Achieved Status Conditions", func() {
