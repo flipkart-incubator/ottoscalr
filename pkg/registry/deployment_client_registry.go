@@ -47,13 +47,6 @@ func (cr *DeploymentClientRegistry) GetObjectClient(objectKind string) (ObjectCl
 }
 
 func (cr *DeploymentClientRegistryBuilder) WithCustomDeploymentClient(client ObjectClient) *DeploymentClientRegistryBuilder {
-	if cr.Clients == nil {
-		var clientList []ObjectClient
-		clientList = append(clientList, client)
-		cr.Clients = clientList
-		return cr
-	}
 	cr.Clients = append(cr.Clients, client)
-
 	return cr
 }
