@@ -2,6 +2,7 @@ package autoscaler
 
 import (
 	"context"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -14,8 +15,8 @@ type HPAClientV2 struct {
 	k8sClient client.Client
 }
 
-func NewHPAClientV2(k8sClient client.Client) *HPAClient {
-	return &HPAClient{
+func NewHPAClientV2(k8sClient client.Client) *HPAClientV2 {
+	return &HPAClientV2{
 		k8sClient: k8sClient,
 	}
 }
