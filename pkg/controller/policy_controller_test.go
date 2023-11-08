@@ -204,6 +204,7 @@ var _ = Describe("PolicyWatcher controller", func() {
 
 			//update policy2 now
 			policy2.Spec.RiskIndex = 4
+			queuedOneReco = nil
 			err := k8sClient.Update(ctx, &policy2)
 			Expect(err).ToNot(HaveOccurred())
 

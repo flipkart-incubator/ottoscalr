@@ -141,7 +141,9 @@ var _ = BeforeSuite(func() {
 			queuedAllRecos = true
 		},
 		requeueOneFunc: func(namespacedName types.NamespacedName) {
-			queuedOneReco = append(queuedOneReco, true)
+			if namespacedName.Name == "test-deployment-afgre" || namespacedName.Name == "test-deployment-afgre2" {
+				queuedOneReco = append(queuedOneReco, true)
+			}
 		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
