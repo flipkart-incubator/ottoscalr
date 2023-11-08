@@ -86,7 +86,6 @@ func (r *PolicyWatcher) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		logger.Error(err, "Error adding finalizer to policy")
 		return ctrl.Result{}, err
 	}
-
 	//Handle Reconcile
 	//If it is a delete event or update in the spec
 	//Requeue all policyRecommendations having the request Policy object as a reference
@@ -160,10 +159,10 @@ func (r *PolicyWatcher) SetupWithManager(mgr ctrl.Manager) error {
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			newPolicy := e.ObjectNew.(*ottoscaleriov1alpha1.Policy)
-			oldPolicy := e.ObjectOld.(*ottoscaleriov1alpha1.Policy)
+			oldObj := e.ObjectOld.(*ottoscaleriov1alpha1.Policy)
+			newObj := e.ObjectNew.(*ottoscaleriov1alpha1.Policy)
 
-			return !reflect.DeepEqual(newPolicy.Spec, oldPolicy.Spec)
+			return !reflect.DeepEqual(oldObj.Spec, newObj.Spec)
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
 			return false
@@ -173,7 +172,7 @@ func (r *PolicyWatcher) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Watches(&source.Kind{Type: &ottoscaleriov1alpha1.Policy{}},
 			&handler.EnqueueRequestForObject{},
-			builder.WithPredicates(reconcilePredicate)).
+			builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, reconcilePredicate))).
 		Named(PolicyWatcherCtrl).
 		Complete(r)
 }
@@ -200,6 +199,8 @@ func (r *PolicyWatcher) handleReconcilation(ctx context.Context, policy ottoscal
 
 	// Requeue all PolicyRecommendation objects having the Policy object as a reference
 	for _, policyRecommendation := range policyRecommendations.Items {
+		logger.Info("Requeueing PolicyRecommendation as some update/delete in seen the policy field", "policyRecommendation", policyRecommendation.Name, "Namespace", policyRecommendation.Namespace,
+			"policy", policyRecommendation.Spec.Policy)
 		r.requeueOneFunc(types.NamespacedName{Namespace: policyRecommendation.Namespace,
 			Name: policyRecommendation.Name})
 	}
