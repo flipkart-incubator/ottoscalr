@@ -8,7 +8,6 @@ import (
 )
 
 var (
-	falseBool = false
 	trueBool  = true
 )
 

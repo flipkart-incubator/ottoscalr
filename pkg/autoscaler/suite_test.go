@@ -24,7 +24,6 @@ var (
 	scaledObjectClient AutoscalerClient
 	hpaClient          AutoscalerClient
 	hpaClientV2        AutoscalerClient
-	autoscalerField    = ".spec.scaleTargetRef.name"
 )
 
 func TestAutoscalerClient(t *testing.T) {
