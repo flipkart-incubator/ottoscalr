@@ -171,6 +171,7 @@ func main() {
 		MetricsBindAddress:     config.MetricBindAddress,
 		Port:                   config.Port,
 		HealthProbeBindAddress: config.HealthProbeBindAddress,
+		PprofBindAddress:       config.MetricBindAddress,
 		LeaderElection:         config.EnableLeaderElection,
 		LeaderElectionID:       config.LeaderElectionID,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
