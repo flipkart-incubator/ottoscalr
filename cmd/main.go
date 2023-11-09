@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/autoscaler"
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
 	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
@@ -128,6 +129,10 @@ type Config struct {
 		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
 		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
+	AutoscalerClient struct {
+		EnableScaledObject *bool  `yaml:"enableScaledObject"`
+		HpaAPIVersion      string `yaml:"hpaAPIVersion"`
+	} `yaml:"autoscalerClient"`
 	EnableArgoRolloutsSupport *bool `yaml:"enableArgoRolloutsSupport"`
 }
 
@@ -315,9 +320,19 @@ func main() {
 	hpaEnforcerExcludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.ExcludedNamespaces)
 	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
 
+	var autoscalerClient autoscaler.AutoscalerClient
+	if *config.AutoscalerClient.EnableScaledObject {
+		autoscalerClient = autoscaler.NewScaledobjectClient(mgr.GetClient())
+	} else {
+		if config.AutoscalerClient.HpaAPIVersion == "v2" {
+			autoscalerClient = autoscaler.NewHPAClientV2(mgr.GetClient())
+		} else {
+			autoscalerClient = autoscaler.NewHPAClient(mgr.GetClient())
+		}
+	}
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
-		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName), *deploymentClientRegistry,
-		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas)
+		mgr.GetScheme(),*deploymentClientRegistry, mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
+		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas, autoscalerClient)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
 		os.Exit(1)
