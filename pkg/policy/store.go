@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"sort"
+
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"log"
-	"sort"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -110,10 +111,19 @@ func (ps *PolicyStore) GetSortedPolicies() (*v1alpha1.PolicyList, error) {
 		return nil, err2
 	}
 
-	sort.Slice(policies.Items, func(i, j int) bool {
-		return policies.Items[i].Spec.RiskIndex < policies.Items[j].Spec.RiskIndex
+	//Get only policies having deletion timestamp as zero
+	filteredPolicies := policies.DeepCopy()
+	filteredPolicies.Items = nil
+	for _, policy := range policies.Items {
+		if policy.ObjectMeta.DeletionTimestamp.IsZero() {
+			filteredPolicies.Items = append(filteredPolicies.Items, policy)
+		}
+	}
+
+	sort.Slice(filteredPolicies.Items, func(i, j int) bool {
+		return filteredPolicies.Items[i].Spec.RiskIndex < filteredPolicies.Items[j].Spec.RiskIndex
 	})
-	return policies, nil
+	return filteredPolicies, nil
 }
 
 func (ps *PolicyStore) GetPolicyByName(name string) (*v1alpha1.Policy, error) {

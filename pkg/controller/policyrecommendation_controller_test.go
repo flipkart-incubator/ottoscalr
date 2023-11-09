@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
@@ -13,7 +15,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
 )
 
 var _ = Describe("PolicyrecommendationController", func() {
@@ -97,6 +98,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy3)).Should(Succeed())
+			time.Sleep(1 * time.Second)
 		})
 
 		It("Lifecycle of a PolicyRecommendation with a default policy", func() {
@@ -260,6 +262,8 @@ var _ = Describe("PolicyrecommendationController", func() {
 			Expect(k8sClient.Delete(ctx, &safestPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
+
+			time.Sleep(1 * time.Second)
 		})
 
 		It("With a conservative target reco", func() {
@@ -538,6 +542,8 @@ var _ = Describe("PolicyrecommendationController", func() {
 			Expect(k8sClient.Delete(ctx, createdPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &safestPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
+
+			time.Sleep(1 * time.Second)
 		})
 
 		It("With an aggressive target reco", func() {
@@ -668,6 +674,8 @@ var _ = Describe("PolicyrecommendationController", func() {
 		})
 		AfterEach(func() {
 			Expect(k8sClient.Delete(ctx, safestPolicy)).Should(Succeed())
+			time.Sleep(1 * time.Second)
+
 		})
 
 		It("Should create basic policyreco with 'true' QueueForExecution", func() {
@@ -838,6 +846,7 @@ var _ = Describe("PolicyrecommendationController", func() {
 			Expect(k8sClient.Delete(ctx, &safestPolicy)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy2)).Should(Succeed())
+			time.Sleep(1 * time.Second)
 		})
 		It("Should Create a new PolicyRecommendation with Initialized,RecoTaskQueued,Recommendation Generated and Target Reco Achieved Status Conditions", func() {
 			By("By creating a new Deployment")

@@ -18,6 +18,8 @@ package controller
 
 import (
 	"errors"
+	"time"
+
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
@@ -29,10 +31,10 @@ import (
 	"golang.org/x/net/context"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"time"
+
+	"testing"
 
 	ctrl "sigs.k8s.io/controller-runtime"
-	"testing"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -55,6 +57,7 @@ var (
 	cancel     context.CancelFunc
 
 	queuedAllRecos                 = false
+	queuedOneReco                  []bool
 	recommender                    *MockRecommender
 	deploymentTriggerControllerEnv *testutil.TestEnvironment
 	clientsRegistry                registry.DeploymentClientRegistry
@@ -151,6 +154,11 @@ var _ = BeforeSuite(func() {
 		Scheme: k8sManager.GetScheme(),
 		requeueAllFunc: func() {
 			queuedAllRecos = true
+		},
+		requeueOneFunc: func(namespacedName types.NamespacedName) {
+			if namespacedName.Name == "test-deployment-afgre" || namespacedName.Name == "test-deployment-afgre2" {
+				queuedOneReco = append(queuedOneReco, true)
+			}
 		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
