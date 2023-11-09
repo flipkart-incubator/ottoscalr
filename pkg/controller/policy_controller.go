@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -170,7 +169,7 @@ func (r *PolicyWatcher) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		Watches(&source.Kind{Type: &ottoscaleriov1alpha1.Policy{}},
+		Watches(&ottoscaleriov1alpha1.Policy{},
 			&handler.EnqueueRequestForObject{},
 			builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, reconcilePredicate))).
 		Named(PolicyWatcherCtrl).

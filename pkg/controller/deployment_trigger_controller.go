@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"time"
+
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
@@ -18,8 +20,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
-	"time"
 )
 
 const (
@@ -125,7 +125,7 @@ func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
 		},
 	}
 
-	enqueueFunc := func(obj client.Object) []reconcile.Request {
+	enqueueFunc := func(ctx context.Context, obj client.Object) []reconcile.Request {
 		return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: obj.GetName(),
 			Namespace: obj.GetNamespace()}}}
 	}
@@ -135,7 +135,7 @@ func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
 
 	for _, object := range r.ClientsRegistry.Clients {
 		controllerBuilder.Watches(
-			&source.Kind{Type: object.GetObjectType()},
+			object.GetObjectType(),
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(annotationUpdatePredicate),
 		)
