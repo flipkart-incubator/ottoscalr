@@ -79,6 +79,7 @@ var _ = Describe("PolicyWatcher controller", func() {
 				err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default",
 					Name: "policy2"}, &updatedPolicy2)
 				if err != nil {
+
 					return false
 				}
 

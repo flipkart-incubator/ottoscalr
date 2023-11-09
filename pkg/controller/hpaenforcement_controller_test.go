@@ -1400,7 +1400,9 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
 
 			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(10 * time.Second)
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
+
 			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
 			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
 			fmt.Println("step 22")

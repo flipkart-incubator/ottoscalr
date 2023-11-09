@@ -2,12 +2,10 @@ package controller
 
 import (
 	"context"
-	"fmt"
-	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
+	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
 	"github.com/go-logr/logr"
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -29,16 +27,17 @@ const (
 )
 
 type DeploymentTriggerController struct {
-	Client client.Client
-	Scheme *runtime.Scheme
+	Client          client.Client
+	Scheme          *runtime.Scheme
+	ClientsRegistry registry.DeploymentClientRegistry
 }
 
 func NewDeploymentTriggerController(client client.Client,
-	scheme *runtime.Scheme,
-) *DeploymentTriggerController {
+	scheme *runtime.Scheme, clientsRegistry registry.DeploymentClientRegistry) *DeploymentTriggerController {
 	return &DeploymentTriggerController{
-		Client: client,
-		Scheme: scheme,
+		Client:          client,
+		Scheme:          scheme,
+		ClientsRegistry: clientsRegistry,
 	}
 }
 
@@ -53,31 +52,16 @@ func (r *DeploymentTriggerController) Reconcile(ctx context.Context,
 	logger := log.FromContext(ctx)
 	logger = logger.WithValues("request", request).WithName(DeploymentTriggerCtrlName)
 
-	// Check if Rollout is enqueued
-	rollout := argov1alpha1.Rollout{}
-	err := r.Client.Get(ctx, request.NamespacedName, &rollout)
-	if err == nil {
-		// Rollout exists, requeue the policyreco
-		return ctrl.Result{}, r.requeuePolicyRecommendation(ctx, &rollout, r.Scheme, logger)
-	}
-
-	if !errors.IsNotFound(err) {
-		// Error occurred
-		logger.Error(err, "Failed to get Rollout. Requeue the request")
-		return ctrl.Result{RequeueAfter: 1 * time.Second}, err
-	}
-
-	// Rollout isn't queued. Check if Deployment is enqueued
-	deployment := appsv1.Deployment{}
-	err = r.Client.Get(ctx, request.NamespacedName, &deployment)
-	if err == nil {
-		// Deployment exists, requeue the policyreco
-		return ctrl.Result{}, r.requeuePolicyRecommendation(ctx, &deployment, r.Scheme, logger)
-	}
-
-	if !errors.IsNotFound(err) {
-		logger.Error(err, "Failed to get Deployment. Requeue the request")
-		return ctrl.Result{RequeueAfter: 1 * time.Second}, err
+	for _, obj := range r.ClientsRegistry.Clients {
+		object, err := obj.GetObject(request.Namespace, request.Name)
+		if err == nil {
+			return ctrl.Result{}, r.requeuePolicyRecommendation(ctx, object, r.Scheme, logger)
+		}
+		if !errors.IsNotFound(err) {
+			// Error occurred
+			logger.Error(err, "Failed to get. Requeue the request")
+			return ctrl.Result{RequeueAfter: 1 * time.Second}, err
+		}
 	}
 
 	logger.Info("Rollout or Deployment not found.")
@@ -92,7 +76,7 @@ func (r *DeploymentTriggerController) requeuePolicyRecommendation(ctx context.Co
 	now := metav1.Now()
 	policyRecommendation := &ottoscaleriov1alpha1.PolicyRecommendation{}
 
-	err := r.Client.Get(context.TODO(), types.NamespacedName{
+	err := r.Client.Get(context.Background(), types.NamespacedName{
 		Namespace: object.GetNamespace(),
 		Name:      object.GetName(),
 	}, policyRecommendation)
@@ -104,7 +88,7 @@ func (r *DeploymentTriggerController) requeuePolicyRecommendation(ctx context.Co
 	policyRecommendation.Spec.QueuedForExecution = &trueBool
 	policyRecommendation.Spec.QueuedForExecutionAt = &now
 
-	err = r.Client.Update(context.TODO(), policyRecommendation, client.FieldOwner(DeploymentTriggerCtrlName))
+	err = r.Client.Update(context.Background(), policyRecommendation, client.FieldOwner(DeploymentTriggerCtrlName))
 	if err != nil {
 		logger.Error(err, "Error while updating policyRecommendation.", "workloadName", object.GetName(), "workloadNamespace", object.GetNamespace())
 		return err
@@ -115,7 +99,6 @@ func (r *DeploymentTriggerController) requeuePolicyRecommendation(ctx context.Co
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
-	fmt.Println("Deployment Manager setup")
 	annotationUpdatePredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return false
@@ -147,17 +130,16 @@ func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
 			Namespace: obj.GetNamespace()}}}
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
-		Named(DeploymentTriggerCtrlName).
-		Watches(
-			&source.Kind{Type: &argov1alpha1.Rollout{}},
+	controllerBuilder := ctrl.NewControllerManagedBy(mgr).
+		Named(DeploymentTriggerCtrlName)
+
+	for _, object := range r.ClientsRegistry.Clients {
+		controllerBuilder.Watches(
+			&source.Kind{Type: object.GetObjectType()},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(annotationUpdatePredicate),
-		).
-		Watches(
-			&source.Kind{Type: &appsv1.Deployment{}},
-			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
-			builder.WithPredicates(annotationUpdatePredicate),
-		).
-		Complete(r)
+		)
+	}
+
+	return controllerBuilder.Complete(r)
 }
