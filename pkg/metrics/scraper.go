@@ -12,6 +12,7 @@ import (
 	"math"
 	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -44,17 +45,22 @@ var (
 
 	p8sQueryErrorCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{Name: "p8s_query_error_count",
-			Help: "P8s error counter"}, []string{"p8sinstance"},
+			Help: "P8s error counter"}, []string{"query", "p8sinstance"},
 	)
 
 	p8sQuerySuccessCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{Name: "p8s_query_success_count",
-			Help: "P8s error counter"}, []string{"p8sinstance"},
+			Help: "P8s success counter"}, []string{"query", "p8sinstance"},
+	)
+
+	p8sConcurrentQueries = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "p8s_concurrent_queries",
+			Help: "Number of concurrent p8s queries"}, []string{"query", "p8sinstance"},
 	)
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(prometheusQueryLatency, dataPointsFetched, totalDataPointsFetched, p8sInstanceQueried, p8sQueryErrorCount, p8sQuerySuccessCount)
+	p8smetrics.Registry.MustRegister(prometheusQueryLatency, dataPointsFetched, totalDataPointsFetched, p8sInstanceQueried, p8sQueryErrorCount, p8sQuerySuccessCount, p8sConcurrentQueries)
 }
 
 type DataPoint struct {
@@ -460,20 +466,24 @@ func (rqs *RangeQuerySplitter) QueryRangeByInterval(ctx context.Context,
 		wg.Add(1)
 		go func(splitRange v1.Range) {
 			defer wg.Done()
+			defer p8sConcurrentQueries.WithLabelValues(getQueryType(query), pi.address).Sub(1)
+
+			p8sConcurrentQueries.WithLabelValues(getQueryType(query), pi.address).Add(1)
 			partialResult, _, err := api.QueryRange(ctx, query, splitRange)
 			if err != nil {
-				p8sQueryErrorCount.WithLabelValues(pi.address).Inc()
+				p8sQueryErrorCount.WithLabelValues(getQueryType(query), pi.address).Inc()
 				resultChan <- PrometheusQueryResult{nil, fmt.Errorf("failed to execute Prometheus query: %v", err)}
 				return
 			}
 
 			if partialResult.Type() != model.ValMatrix {
+				p8sQueryErrorCount.WithLabelValues(getQueryType(query), pi.address).Inc()
 				resultChan <- PrometheusQueryResult{nil, fmt.Errorf("unexpected result type: %v", partialResult.Type())}
 				return
 			}
 
 			partialMatrix := partialResult.(model.Matrix)
-			p8sQuerySuccessCount.WithLabelValues(pi.address).Inc()
+			p8sQuerySuccessCount.WithLabelValues(getQueryType(query), pi.address).Inc()
 			resultChan <- PrometheusQueryResult{partialMatrix, nil}
 
 		}(splitRange)
@@ -598,4 +608,11 @@ func logP8sMetrics(p8sQueryStartTime time.Time, namespace string, query string, 
 	prometheusQueryLatency.WithLabelValues(namespace, query, address, workload).Observe(p8sQueryLatency)
 	dataPointsFetched.WithLabelValues(namespace, query, address, workload).Set(float64(dataPointsLength))
 	p8sInstanceQueried.WithLabelValues(namespace, query, address, workload).Set(float64(p8sInstanceSuccessfullyQueried))
+}
+
+func getQueryType(query string) string {
+	if strings.Contains(query, "kube_horizontalpodautoscaler") {
+		return BreachDataPointsQuery
+	}
+	return CPUUtilizationDataPointsQuery
 }

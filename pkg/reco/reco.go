@@ -4,22 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
+	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
 	"github.com/go-logr/logr"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
-	"strconv"
 	"time"
 )
 
@@ -60,6 +55,7 @@ type CpuUtilizationBasedRecommender struct {
 	minTarget                  int
 	maxTarget                  int
 	metricsPercentageThreshold int
+	clientsRegistry            registry.DeploymentClientRegistry
 	logger                     logr.Logger
 }
 
@@ -72,6 +68,7 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 	minTarget int,
 	maxTarget int,
 	metricsPercentageThreshold int,
+	clientsRegistry registry.DeploymentClientRegistry,
 	logger logr.Logger) *CpuUtilizationBasedRecommender {
 	return &CpuUtilizationBasedRecommender{
 		k8sClient:                  k8sClient,
@@ -83,6 +80,7 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 		minTarget:                  minTarget,
 		maxTarget:                  maxTarget,
 		metricsPercentageThreshold: metricsPercentageThreshold,
+		clientsRegistry:            clientsRegistry,
 		logger:                     logger,
 	}
 }
@@ -309,108 +307,42 @@ func (c *CpuUtilizationBasedRecommender) calculateSavings(maxReplicas int, simul
 
 func (c *CpuUtilizationBasedRecommender) getContainerCPULimitsSum(namespace, objectKind, objectName string) (float64,
 	error) {
-	var obj client.Object
-	switch objectKind {
-	case "Deployment":
-		obj = &appsv1.Deployment{}
-	case "Rollout":
-		obj = &rolloutv1alpha1.Rollout{}
-	default:
+	deploymentClient, err := c.clientsRegistry.GetObjectClient(objectKind)
+	if err != nil {
 		return 0, fmt.Errorf("unsupported objectKind: %s", objectKind)
 	}
-
-	if err := c.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: objectName}, obj); err != nil {
+	cpuLimitsSum, err := deploymentClient.GetContainerResourceLimits(namespace, objectName)
+	if err != nil {
 		return 0, err
 	}
-
-	var podTemplateSpec *corev1.PodTemplateSpec
-	switch v := obj.(type) {
-	case *appsv1.Deployment:
-		podTemplateSpec = &v.Spec.Template
-	case *rolloutv1alpha1.Rollout:
-		podTemplateSpec = &v.Spec.Template
-	default:
-		return 0, fmt.Errorf("unsupported object type")
-	}
-
-	podList := &corev1.PodList{}
-
-	if podTemplateSpec.Labels == nil {
-		return 0, fmt.Errorf("no labels present on the workload to fetch pod")
-	}
-
-	labelSet := labels.Set(podTemplateSpec.Labels)
-	selector := labels.SelectorFromSet(labelSet)
-
-	if err := c.k8sClient.List(context.Background(), podList, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
-		return 0, err
-	}
-
-	cpuLimitsSum := int64(0)
-
-	if len(podList.Items) == 0 {
-		return 0, fmt.Errorf("no pod found for the workload")
-	}
-
-	for _, container := range podList.Items[0].Spec.Containers {
-		if limit, ok := container.Resources.Limits[corev1.ResourceCPU]; ok {
-			cpuLimitsSum += limit.MilliValue()
-		}
-	}
-
-	return float64(cpuLimitsSum) / 1000, nil
+	return cpuLimitsSum, nil
 }
 
 func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind string, objectName string) (int, error) {
-	var obj client.Object
-	switch objectKind {
-	case "Deployment":
-		obj = &appsv1.Deployment{}
-	case "Rollout":
-		obj = &rolloutv1alpha1.Rollout{}
-	default:
+	deploymentClient, err := c.clientsRegistry.GetObjectClient(objectKind)
+	if err != nil {
 		return 0, fmt.Errorf("unsupported objectKind: %s", objectKind)
 	}
 
-	if err := c.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: objectName}, obj); err != nil {
+	maxPods, err := deploymentClient.GetMaxReplicaFromAnnotation(namespace, objectName)
+	if err == nil {
+		return maxPods, nil
+	}
+	scaledObjects := &kedaapi.ScaledObjectList{}
+	if err := c.k8sClient.List(context.Background(), scaledObjects, &client.ListOptions{
+		FieldSelector: fields.OneTermEqualSelector(ScaledObjectField, objectName),
+		Namespace:     namespace,
+	}); err != nil && client.IgnoreNotFound(err) != nil {
+		return 0, fmt.Errorf("unable to fetch scaledobjects: %s", err)
+	}
+
+	if len(scaledObjects.Items) > 0 && scaledObjects.Items[0].Spec.MaxReplicaCount != nil {
+		return int(*scaledObjects.Items[0].Spec.MaxReplicaCount), nil
+	}
+	maxPods, err = deploymentClient.GetReplicaCount(namespace, objectName)
+	if err != nil {
 		return 0, err
 	}
-
-	maxPodAnnotation, ok := obj.GetAnnotations()[OttoscalrMaxPodAnnotation]
-
-	var maxPods int
-
-	if ok {
-		var err error
-		maxPods, err = strconv.Atoi(maxPodAnnotation)
-		if err != nil {
-			return 0, fmt.Errorf("unable to convert maxPods from string to int: %s", err)
-		}
-
-	} else {
-		scaledObjects := &kedaapi.ScaledObjectList{}
-		if err := c.k8sClient.List(context.Background(), scaledObjects, &client.ListOptions{
-			FieldSelector: fields.OneTermEqualSelector(ScaledObjectField, objectName),
-			Namespace:     namespace,
-		}); err != nil && client.IgnoreNotFound(err) != nil {
-			return 0, fmt.Errorf("unable to fetch scaledobjects: %s", err)
-		}
-
-		if len(scaledObjects.Items) > 0 && scaledObjects.Items[0].Spec.MaxReplicaCount != nil {
-			maxPods = int(*scaledObjects.Items[0].Spec.MaxReplicaCount)
-		} else {
-			switch v := obj.(type) {
-			case *appsv1.Deployment:
-				maxPods = int(*v.Spec.Replicas)
-			case *rolloutv1alpha1.Rollout:
-				maxPods = int(*v.Spec.Replicas)
-			default:
-				return 0, fmt.Errorf("unsupported object type")
-			}
-		}
-
-	}
-
 	return maxPods, nil
 }
 

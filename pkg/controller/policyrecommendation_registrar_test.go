@@ -94,6 +94,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Expect(createdPolicy.Name).Should(Equal(RolloutName))
 			Expect(createdPolicy.Namespace).Should(Equal(RolloutNamespace))
 			Expect(createdPolicy.Spec.Policy).Should(Equal("safest-policy"))
+			Expect(createdPolicy.Spec.WorkloadMeta.Kind).Should(Equal("Rollout"))
 			Expect(createdPolicy.OwnerReferences[0].Name).Should(Equal(RolloutName))
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Rollout"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("argoproj.io/v1alpha1"))

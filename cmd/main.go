@@ -26,6 +26,7 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
+	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
 	"github.com/flipkart-incubator/ottoscalr/pkg/transformer"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
@@ -79,9 +80,10 @@ type Config struct {
 	} `yaml:"metricsScraper"`
 
 	BreachMonitor struct {
-		PollingIntervalSec int     `yaml:"pollingIntervalSec"`
-		CpuRedLine         float64 `yaml:"cpuRedLine"`
-		StepSec            int     `yaml:"stepSec"`
+		PollingIntervalSec   int     `yaml:"pollingIntervalSec"`
+		CpuRedLine           float64 `yaml:"cpuRedLine"`
+		StepSec              int     `yaml:"stepSec"`
+		ConcurrentExecutions int     `yaml:"concurrentExecutions"`
 	} `yaml:"breachMonitor"`
 
 	PeriodicTrigger struct {
@@ -131,6 +133,7 @@ type Config struct {
 		EnableScaledObject *bool  `yaml:"enableScaledObject"`
 		HpaAPIVersion      string `yaml:"hpaAPIVersion"`
 	} `yaml:"autoscalerClient"`
+	EnableArgoRolloutsSupport *bool `yaml:"enableArgoRolloutsSupport"`
 }
 
 func main() {
@@ -248,7 +251,14 @@ func main() {
 
 		metricsTransformer = append(metricsTransformer, outlierInterpolatorTransformer)
 	}
+	deploymentClientRegistryBuilder := registry.NewDeploymentClientRegistryBuilder().
+		WithK8sClient(mgr.GetClient()).
+		WithCustomDeploymentClient(registry.NewDeploymentClient(mgr.GetClient()))
 
+	if *config.EnableArgoRolloutsSupport {
+		deploymentClientRegistryBuilder = deploymentClientRegistryBuilder.WithCustomDeploymentClient(registry.NewRolloutClient(mgr.GetClient()))
+	}
+	deploymentClientRegistry := deploymentClientRegistryBuilder.Build()
 	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
@@ -258,6 +268,7 @@ func main() {
 		config.CpuUtilizationBasedRecommender.MinTarget,
 		config.CpuUtilizationBasedRecommender.MaxTarget,
 		config.CpuUtilizationBasedRecommender.MetricsPercentageThreshold,
+		*deploymentClientRegistry,
 		logger)
 
 	breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
@@ -282,7 +293,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	deploymentTriggerReconciler := controller.NewDeploymentTriggerController(mgr.GetClient(), mgr.GetScheme())
+	deploymentTriggerReconciler := controller.NewDeploymentTriggerController(mgr.GetClient(), mgr.GetScheme(), *deploymentClientRegistry)
 	if err = deploymentTriggerReconciler.
 		SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DeploymentController")
@@ -297,6 +308,7 @@ func main() {
 		scraper,
 		time.Duration(config.PeriodicTrigger.PollingIntervalMin)*time.Minute,
 		time.Duration(config.BreachMonitor.PollingIntervalSec)*time.Second,
+		config.BreachMonitor.ConcurrentExecutions,
 		triggerHandler.QueueForExecution,
 		config.BreachMonitor.StepSec,
 		config.BreachMonitor.CpuRedLine,
@@ -319,7 +331,7 @@ func main() {
 		}
 	}
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
-		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
+		mgr.GetScheme(),*deploymentClientRegistry, mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
 		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas, autoscalerClient)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
@@ -336,7 +348,7 @@ func main() {
 		mgr.GetScheme(),
 		config.PolicyRecommendationRegistrar.RequeueDelayMs,
 		monitorManager,
-		policyStore, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
+		policyStore, *deploymentClientRegistry, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",
 			"controller", "PolicyRecommendationRegistration")
 		os.Exit(1)

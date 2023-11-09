@@ -21,6 +21,7 @@ import (
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/autoscaler"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
+	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
 	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
@@ -57,6 +58,7 @@ var (
 	queuedAllRecos                 = false
 	recommender                    *MockRecommender
 	deploymentTriggerControllerEnv *testutil.TestEnvironment
+	clientsRegistry                registry.DeploymentClientRegistry
 	excludedNamespaces             []string
 	includedNamespaces             []string
 	hpaEnforcerExcludedNamespaces  *[]string
@@ -107,9 +109,16 @@ var _ = BeforeSuite(func() {
 		MetricsBindAddress: "0.0.0.0:0",
 	})
 	Expect(err).ToNot(HaveOccurred())
+
+	clientsRegistry = *registry.NewDeploymentClientRegistryBuilder().
+		WithK8sClient(k8sClient1).
+		WithCustomDeploymentClient(registry.NewDeploymentClient(k8sManager1.GetClient())).
+		WithCustomDeploymentClient(registry.NewRolloutClient(k8sManager1.GetClient())).
+		Build()
 	err = (&DeploymentTriggerController{
-		Client: k8sManager1.GetClient(),
-		Scheme: k8sManager1.GetScheme(),
+		Client:          k8sManager1.GetClient(),
+		Scheme:          k8sManager1.GetScheme(),
+		ClientsRegistry: clientsRegistry,
 	}).SetupWithManager(k8sManager1)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -122,11 +131,17 @@ var _ = BeforeSuite(func() {
 	excludedNamespaces = []string{"namespace1", "namespace2"}
 	includedNamespaces = []string{}
 
+	clientsRegistry = *registry.NewDeploymentClientRegistryBuilder().
+		WithK8sClient(k8sManager.GetClient()).
+		WithCustomDeploymentClient(registry.NewDeploymentClient(k8sManager.GetClient())).
+		WithCustomDeploymentClient(registry.NewRolloutClient(k8sManager.GetClient())).
+		Build()
 	err = (&PolicyRecommendationRegistrar{
 		Client:             k8sManager.GetClient(),
 		Scheme:             k8sManager.GetScheme(),
 		MonitorManager:     &FakeMonitorManager{},
 		PolicyStore:        newFakePolicyStore(),
+		ClientsRegistry:    clientsRegistry,
 		ExcludedNamespaces: excludedNamespaces,
 		IncludedNamespaces: includedNamespaces,
 	}).SetupWithManager(k8sManager)
@@ -162,7 +177,7 @@ var _ = BeforeSuite(func() {
 	var autoscalerCRUD autoscaler.AutoscalerClient
 	autoscalerCRUD = autoscaler.NewScaledobjectClient(k8sManager.GetClient())
 	hpaenforcer, err := NewHPAEnforcementController(k8sManager.GetClient(),
-		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName),
+		k8sManager.GetScheme(),clientsRegistry, k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName),
 		1, hpaEnforcerIsDryRun, hpaEnforcerExcludedNamespaces, hpaEnforcerIncludedNamespaces, whitelistMode, 3, autoscalerCRUD)
 	Expect(err).NotTo(HaveOccurred())
 	err = hpaenforcer.
