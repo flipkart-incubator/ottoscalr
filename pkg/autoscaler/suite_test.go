@@ -55,7 +55,7 @@ var _ = BeforeSuite(func() {
 	k8sClient = k8sManager.GetClient()
 	Expect(k8sClient).NotTo(BeNil())
 
-	scaledObjectClient = NewScaledobjectClient(k8sManager.GetClient())
+	scaledObjectClient = NewScaledobjectClient(k8sManager.GetClient(), &trueBool)
 	hpaClient = NewHPAClient(k8sManager.GetClient())
 	hpaClientV2 = NewHPAClientV2(k8sManager.GetClient())
 	go func() {

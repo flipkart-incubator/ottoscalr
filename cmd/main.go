@@ -19,6 +19,13 @@ package main
 import (
 	"context"
 	"flag"
+	_ "net/http/pprof"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/autoscaler"
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
@@ -31,13 +38,8 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/spf13/viper"
-	_ "net/http/pprof"
-	"os"
-	"os/signal"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
-	"syscall"
-	"time"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -70,6 +72,7 @@ func init() {
 type Config struct {
 	Port                   int    `yaml:"port"`
 	MetricBindAddress      string `yaml:"metricBindAddress"`
+	PprofBindAddress       string `yaml:"pprofBindAddress"`
 	HealthProbeBindAddress string `yaml:"healthProbeBindAddress"`
 	EnableLeaderElection   bool   `yaml:"enableLeaderElection"`
 	LeaderElectionID       string `yaml:"leaderElectionID"`
@@ -130,8 +133,13 @@ type Config struct {
 		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
 	AutoscalerClient struct {
-		EnableScaledObject *bool  `yaml:"enableScaledObject"`
-		HpaAPIVersion      string `yaml:"hpaAPIVersion"`
+		ScaledObjectConfigs struct {
+			EnableScaledObject    *bool `yaml:"enableScaledObject"`
+			EnableEventAutoscaler *bool `yaml:"enableEventAutoscaler"`
+		} `yaml:"scaledObjectConfigs"`
+		HpaConfigs struct {
+			HpaAPIVersion string `yaml:"hpaAPIVersion"`
+		} `yaml:"hpaConfigs"`
 	} `yaml:"autoscalerClient"`
 	EnableArgoRolloutsSupport *bool `yaml:"enableArgoRolloutsSupport"`
 }
@@ -171,7 +179,7 @@ func main() {
 		MetricsBindAddress:     config.MetricBindAddress,
 		Port:                   config.Port,
 		HealthProbeBindAddress: config.HealthProbeBindAddress,
-		PprofBindAddress:       config.MetricBindAddress,
+		PprofBindAddress:       config.PprofBindAddress,
 		LeaderElection:         config.EnableLeaderElection,
 		LeaderElectionID:       config.LeaderElectionID,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
@@ -243,7 +251,7 @@ func main() {
 
 	var metricsTransformer []metrics.MetricsTransformer
 
-	if *config.EnableMetricsTransformer == true {
+	if *config.EnableMetricsTransformer {
 		outlierInterpolatorTransformer, err := transformer.NewOutlierInterpolatorTransformer(eventIntegrations, logger)
 		if err != nil {
 			setupLog.Error(err, "unable to start metrics transformer")
@@ -322,17 +330,18 @@ func main() {
 	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
 
 	var autoscalerClient autoscaler.AutoscalerClient
-	if *config.AutoscalerClient.EnableScaledObject {
-		autoscalerClient = autoscaler.NewScaledobjectClient(mgr.GetClient())
+	if *config.AutoscalerClient.ScaledObjectConfigs.EnableScaledObject {
+		autoscalerClient = autoscaler.NewScaledobjectClient(mgr.GetClient(),
+			config.AutoscalerClient.ScaledObjectConfigs.EnableEventAutoscaler)
 	} else {
-		if config.AutoscalerClient.HpaAPIVersion == "v2" {
+		if config.AutoscalerClient.HpaConfigs.HpaAPIVersion == "v2" {
 			autoscalerClient = autoscaler.NewHPAClientV2(mgr.GetClient())
 		} else {
 			autoscalerClient = autoscaler.NewHPAClient(mgr.GetClient())
 		}
 	}
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
-		mgr.GetScheme(),*deploymentClientRegistry, mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
+		mgr.GetScheme(), *deploymentClientRegistry, mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
 		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas, autoscalerClient)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")

@@ -102,7 +102,7 @@ type HPAEnforcementController struct {
 }
 
 func NewHPAEnforcementController(client client.Client,
-	scheme *runtime.Scheme,clientsRegistry registry.DeploymentClientRegistry, recorder record.EventRecorder,
+	scheme *runtime.Scheme, clientsRegistry registry.DeploymentClientRegistry, recorder record.EventRecorder,
 	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int, autoscalerClient autoscaler.AutoscalerClient) (*HPAEnforcementController, error) {
 
 	HPAEnforcedReason = fmt.Sprintf("%sIsCreated", autoscalerClient.GetName())
@@ -429,7 +429,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		},
 	}
 
-	enqueueFunc := func(ctx context.Context,obj client.Object) []reconcile.Request {
+	enqueueFunc := func(ctx context.Context, obj client.Object) []reconcile.Request {
 		object := r.autoscalerClient.GetType()
 		if len(object.GetOwnerReferences()) == 0 {
 			return nil
