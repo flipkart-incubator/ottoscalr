@@ -63,9 +63,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(argov1alpha1.AddToScheme(scheme))
 	utilruntime.Must(ottoscaleriov1alpha1.AddToScheme(scheme))
-	utilruntime.Must(kedaapi.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -265,6 +263,7 @@ func main() {
 		WithCustomDeploymentClient(registry.NewDeploymentClient(mgr.GetClient()))
 
 	if *config.EnableArgoRolloutsSupport {
+		utilruntime.Must(argov1alpha1.AddToScheme(scheme))
 		deploymentClientRegistryBuilder = deploymentClientRegistryBuilder.WithCustomDeploymentClient(registry.NewRolloutClient(mgr.GetClient()))
 	}
 	deploymentClientRegistry := deploymentClientRegistryBuilder.Build()
@@ -331,6 +330,7 @@ func main() {
 
 	var autoscalerClient autoscaler.AutoscalerClient
 	if *config.AutoscalerClient.ScaledObjectConfigs.EnableScaledObject {
+		utilruntime.Must(kedaapi.AddToScheme(scheme))
 		autoscalerClient = autoscaler.NewScaledobjectClient(mgr.GetClient(),
 			config.AutoscalerClient.ScaledObjectConfigs.EnableEventAutoscaler)
 	} else {
