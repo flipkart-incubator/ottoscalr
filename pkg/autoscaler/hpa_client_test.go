@@ -127,7 +127,9 @@ var _ = Describe("HPAClient", func() {
 			Expect(hpa.Spec.MinReplicas).To(Equal(int32Ptr(5)))
 			Expect(hpa.Spec.TargetCPUUtilizationPercentage).To(Equal(int32Ptr(4)))
 			Expect(hpa.Spec.ScaleTargetRef.Name).To(Equal(deploymentName))
-			Expect(k8sClient.Delete(ctx, hpa)).To(Succeed())
+
+			err = hpaClient.DeleteAutoscaler(ctx, hpa)
+			Expect(err).ToNot(HaveOccurred())
 
 		})
 		It("should update an existing HPA if it is present", func() {

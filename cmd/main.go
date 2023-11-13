@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"flag"
 	_ "net/http/pprof"
 	"os"
@@ -38,7 +37,6 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/spf13/viper"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -56,7 +54,6 @@ import (
 )
 
 var (
-	scaledTargetName = "spec.scaleTargetRef.name"
 	scheme           = runtime.NewScheme()
 	setupLog         = ctrl.Log.WithName("setup")
 )
@@ -264,6 +261,7 @@ func main() {
 
 	if *config.EnableArgoRolloutsSupport {
 		utilruntime.Must(argov1alpha1.AddToScheme(scheme))
+		//+kubebuilder:scaffold:scheme
 		deploymentClientRegistryBuilder = deploymentClientRegistryBuilder.WithCustomDeploymentClient(registry.NewRolloutClient(mgr.GetClient()))
 	}
 	deploymentClientRegistry := deploymentClientRegistryBuilder.Build()
@@ -331,6 +329,8 @@ func main() {
 	var autoscalerClient autoscaler.AutoscalerClient
 	if *config.AutoscalerClient.ScaledObjectConfigs.EnableScaledObject {
 		utilruntime.Must(kedaapi.AddToScheme(scheme))
+		//+kubebuilder:scaffold:scheme
+
 		autoscalerClient = autoscaler.NewScaledobjectClient(mgr.GetClient(),
 			config.AutoscalerClient.ScaledObjectConfigs.EnableEventAutoscaler)
 	} else {
@@ -379,17 +379,6 @@ func main() {
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
-	}
-
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &kedaapi.ScaledObject{}, scaledTargetName, func(obj client.Object) []string {
-		scaledObject := obj.(*kedaapi.ScaledObject)
-		if scaledObject.Spec.ScaleTargetRef.Name == "" {
-			return nil
-		}
-		return []string{scaledObject.Spec.ScaleTargetRef.Name}
-	}); err != nil {
-		setupLog.Error(err, "unable to index scaledobject")
 		os.Exit(1)
 	}
 

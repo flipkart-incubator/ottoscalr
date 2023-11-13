@@ -56,10 +56,7 @@ func (hc *HPAClientV2) GetType() client.Object {
 }
 
 func (hc *HPAClientV2) DeleteAutoscaler(ctx context.Context, obj client.Object) error {
-	deletePropagationPolicy := metav1.DeletePropagationForeground
-	err := hc.k8sClient.Delete(ctx, obj, &client.DeleteOptions{
-		PropagationPolicy: &deletePropagationPolicy,
-	})
+	err := hc.k8sClient.Delete(ctx, obj)
 	if err != nil {
 		return err
 	}
