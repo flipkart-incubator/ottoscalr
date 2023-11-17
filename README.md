@@ -1,6 +1,6 @@
 # OttoScalr
 
-OttoScalr is an autoscaling solution for kubernetes workloads, that works  by continuously monitoring workload resource utilization patterns to proactively configure and tune the horizontal pod autoscaler policies (HPA, ScaledObjects) autonomously ensuring optimal resource utilization and cost efficiency. It is designed to work with various kubernetes workload types viz. deployment and argo rollouts. With its pluggable design to incorporate different flavors of policy recommenders, it can be extended to customize the policy generation algorithms. 
+OttoScalr is an autoscaling solution for kubernetes workloads, that works  by continuously monitoring workload resource utilization patterns to proactively configure and tune the horizontal pod autoscaler policies (HPA, ScaledObjects) autonomously ensuring optimal resource utilization and cost efficiency. It is designed to work with various kubernetes workload types viz. deployment and argo rollouts. With its pluggable design to incorporate different flavors of policy recommenders, it can be extended to customize the policy generation algorithms to suit the needs of the workload/cluster administrators. 
 
 
 ## Features
