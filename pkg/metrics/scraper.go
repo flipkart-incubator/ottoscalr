@@ -3,18 +3,19 @@ package metrics
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
-	"github.com/prometheus/client_golang/api"
-	"github.com/prometheus/client_golang/api/prometheus/v1"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/model"
 	"math"
-	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/api"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
+	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 const (
@@ -90,13 +91,16 @@ type Scraper interface {
 
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
 type PrometheusScraper struct {
-	api                 []PrometheusInstance
-	metricRegistry      *MetricNameRegistry
-	queryTimeout        time.Duration
-	rangeQuerySplitter  *RangeQuerySplitter
-	metricIngestionTime float64
-	metricProbeTime     float64
-	logger              logr.Logger
+	api                       []PrometheusInstance
+	metricRegistry            *MetricNameRegistry
+	queryTimeout              time.Duration
+	rangeQuerySplitter        *RangeQuerySplitter
+	metricIngestionTime       float64
+	metricProbeTime           float64
+	CPUUtilizationQuery       *CPUUtilizationQuery
+	CPUUtilizationBreachQuery *CPUUtilizationBreachQuery
+	PodReadyLatencyQuery      *PodReadyLatencyQuery
+	logger                    logr.Logger
 }
 
 type MetricNameRegistry struct {
@@ -179,13 +183,20 @@ func NewPrometheusScraper(apiUrls []string,
 		})
 	}
 
+	cpuUtilizationQuery := NewCPUUtilizationQuery()
+	cpuUtilizationBreachQuery := NewCPUUtilizationBreachQuery()
+	podReadyLatencyQuery := NewPodReadyLatencyQuery()
+
 	return &PrometheusScraper{api: prometheusInstances,
-		metricRegistry:      NewKubePrometheusMetricNameRegistry(),
-		queryTimeout:        timeout,
-		rangeQuerySplitter:  NewRangeQuerySplitter(splitInterval),
-		metricProbeTime:     metricProbeTime,
-		metricIngestionTime: metricIngestionTime,
-		logger:              logger}, nil
+		metricRegistry:            NewKubePrometheusMetricNameRegistry(),
+		queryTimeout:              timeout,
+		rangeQuerySplitter:        NewRangeQuerySplitter(splitInterval),
+		metricProbeTime:           metricProbeTime,
+		metricIngestionTime:       metricIngestionTime,
+		CPUUtilizationQuery:       cpuUtilizationQuery,
+		CPUUtilizationBreachQuery: cpuUtilizationBreachQuery,
+		PodReadyLatencyQuery:      podReadyLatencyQuery,
+		logger:                    logger}, nil
 }
 
 // GetAverageCPUUtilizationByWorkload returns the average CPU utilization for the given workload type and name in the
@@ -199,15 +210,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	query := fmt.Sprintf("sum(%s"+
-		"{namespace=\"%s\"} * on (namespace,pod) group_left(workload, workload_type)"+
-		"%s{namespace=\"%s\", workload=\"%s\","+
-		" workload_type=\"deployment\"}) by(namespace, workload, workload_type)",
-		ps.metricRegistry.utilizationMetric,
-		namespace,
-		ps.metricRegistry.podOwnerMetric,
-		namespace,
-		workload)
+	query := ps.CPUUtilizationQuery.BuildCompositeQuery(namespace, workload)
 
 	var totalDataPoints []DataPoint
 	if ps.api == nil {
@@ -322,45 +325,7 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	query := fmt.Sprintf("(sum(%s{"+
-		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type) "+
-		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"deployment\"})"+
-		" by (namespace, workload, workload_type)/ on (namespace, workload, workload_type) "+
-		"group_left sum(%s{"+
-		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type)"+
-		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"deployment\"}) "+
-		"by (namespace, workload, workload_type) > %.2f) and on(namespace, workload) "+
-		"label_replace(sum(%s{namespace=\"%s\"} * on(replicaset)"+
-		" group_left(namespace, owner_kind, owner_name) %s{namespace=\"%s\", owner_kind=\"%s\", owner_name=\"%s\"}) by"+
-		" (namespace, owner_kind, owner_name) < on(namespace, owner_kind, owner_name) "+
-		"(%s{namespace=\"%s\"} * on(namespace, horizontalpodautoscaler) "+
-		"group_left(owner_kind, owner_name) label_replace(label_replace(%s{"+
-		"namespace=\"%s\", scaletargetref_kind=\"%s\", scaletargetref_name=\"%s\"},\"owner_kind\", \"$1\", "+
-		"\"scaletargetref_kind\", \"(.*)\"), \"owner_name\", \"$1\", \"scaletargetref_name\", \"(.*)\")),"+
-		"\"workload\", \"$1\", \"owner_name\", \"(.*)\")",
-		ps.metricRegistry.utilizationMetric,
-		namespace,
-		ps.metricRegistry.podOwnerMetric,
-		namespace,
-		workload,
-		ps.metricRegistry.resourceLimitMetric,
-		namespace,
-		ps.metricRegistry.podOwnerMetric,
-		namespace,
-		workload,
-		redLineUtilization,
-		ps.metricRegistry.readyReplicasMetric,
-		namespace,
-		ps.metricRegistry.replicaSetOwnerMetric,
-		namespace,
-		workloadType,
-		workload,
-		ps.metricRegistry.hpaMaxReplicasMetric,
-		namespace,
-		ps.metricRegistry.hpaOwnerInfoMetric,
-		namespace,
-		workloadType,
-		workload)
+	query := ps.CPUUtilizationBreachQuery.BuildCompositeQuery(namespace, workload, workloadType, redLineUtilization)
 
 	resultChanLength := len(ps.api) + 5 //Added some buffer
 	resultChan := make(chan []DataPoint, resultChanLength)
@@ -530,17 +495,7 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	query := fmt.Sprintf("quantile(0.5,(%s"+
-		"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload, workload_type)"+
-		"(%s{namespace=\"%s\", workload=\"%s\","+
-		" workload_type=\"deployment\"}))",
-		ps.metricRegistry.podReadyTimeMetric,
-		namespace,
-		ps.metricRegistry.podCreatedTimeMetric,
-		namespace,
-		ps.metricRegistry.podOwnerMetric,
-		namespace,
-		workload)
+	query := ps.PodReadyLatencyQuery.BuildCompositeQuery(namespace, workload)
 
 	podBootstrapTime := 0.0
 	if ps.api == nil {

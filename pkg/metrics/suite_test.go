@@ -89,14 +89,13 @@ var _ = BeforeSuite(func() {
 
 	Expect(err).NotTo(HaveOccurred())
 
-	utilizationMetric := "node_namespace_pod_container_container_cpu_usage_seconds_total_sum_irate"
-	podOwnerMetric := "namespace_workload_pod_kube_pod_owner_relabel"
-	resourceLimitMetric := "cluster_namespace_pod_cpu_active_kube_pod_container_resource_limits"
+	utilizationMetric := "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate"
+	podOwnerMetric := "namespace_workload_pod:kube_pod_owner:relabel"
+	resourceLimitMetric := "cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits"
 	readyReplicasMetric := "kube_replicaset_status_ready_replicas"
 	replicaSetOwnerMetric := "kube_replicaset_owner"
 	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
 	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
-
 	podCreatedTimeMetric := "kube_pod_created"
 	podReadyTimeMetric := "alm_kube_pod_ready_time"
 
@@ -126,10 +125,13 @@ var _ = BeforeSuite(func() {
 			podCreatedTimeMetric:  podCreatedTimeMetric,
 			podReadyTimeMetric:    podReadyTimeMetric,
 		},
-		queryTimeout:        30 * time.Second,
-		rangeQuerySplitter:  NewRangeQuerySplitter(1 * time.Second),
-		metricIngestionTime: metricIngestionTime,
-		metricProbeTime:     metricProbeTime,
+		queryTimeout:              30 * time.Second,
+		rangeQuerySplitter:        NewRangeQuerySplitter(1 * time.Second),
+		metricIngestionTime:       metricIngestionTime,
+		metricProbeTime:           metricProbeTime,
+		CPUUtilizationQuery:       NewCPUUtilizationQuery(),
+		CPUUtilizationBreachQuery: NewCPUUtilizationBreachQuery(),
+		PodReadyLatencyQuery:      NewPodReadyLatencyQuery(),
 	}
 
 	go func() {
@@ -166,17 +168,17 @@ func startMetricsServer(registry *prometheus.Registry, addr string) *http.Server
 
 func registerMetrics() {
 	cpuUsageMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "node_namespace_pod_container_container_cpu_usage_seconds_total_sum_irate",
+		Name: "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate",
 		Help: "Test metric for container CPU usage",
 	}, []string{"namespace", "pod", "node", "container"})
 
 	kubePodOwnerMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "namespace_workload_pod_kube_pod_owner_relabel",
+		Name: "namespace_workload_pod:kube_pod_owner:relabel",
 		Help: "Test metric for Kubernetes pod owner",
 	}, []string{"namespace", "pod", "workload", "workload_type"})
 
 	resourceLimitMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cluster_namespace_pod_cpu_active_kube_pod_container_resource_limits",
+		Name: "cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits",
 		Help: "Test metric for container resource limits",
 	}, []string{"namespace", "pod", "node", "container"})
 
@@ -223,12 +225,12 @@ func registerMetrics() {
 
 func registerMetrics1() {
 	cpuUsageMetric1 = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "node_namespace_pod_container_container_cpu_usage_seconds_total_sum_irate",
+		Name: "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate",
 		Help: "Test metric for container CPU usage",
 	}, []string{"namespace", "pod", "node", "container"})
 
 	resourceLimitMetric1 = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cluster_namespace_pod_cpu_active_kube_pod_container_resource_limits",
+		Name: "cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits",
 		Help: "Test metric for container resource limits",
 	}, []string{"namespace", "pod", "node", "container"})
 
