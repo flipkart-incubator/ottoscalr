@@ -12,34 +12,26 @@ var _ = Describe("Queries", func() {
 
 	BeforeEach(func() {
 		qc = &QueryComponent{
-			metric: "test_metric",
-			labels: map[string]string{
-				"label1": "value1",
-				"label2": "value2",
-			},
+			metric:    "test_metric",
+			labelKeys: []string{"label1", "label2"},
 		}
-	})
-
-	Describe("AddLabel", func() {
-		Context("when adding a new label", func() {
-			It("should add the label to the labels map", func() {
-				qc.AddLabel("label3", "value3")
-				Expect(qc.labels).To(HaveKeyWithValue("label3", "value3"))
-			})
-		})
 	})
 
 	Describe("Render", func() {
 		Context("when labels are present", func() {
 			It("should render the metric with labels", func() {
-				Expect(qc.Render()).To(Equal("test_metric{label1=\"value1\",label2=\"value2\"}"))
+				labels := map[string]string{
+					"label1": "value1",
+					"label2": "value2",
+				}
+				Expect(qc.Render(labels)).To(Equal("test_metric{label1=\"value1\",label2=\"value2\"}"))
 			})
 		})
 
 		Context("when labels are not present", func() {
 			It("should render the metric without labels", func() {
-				qc.labels = nil
-				Expect(qc.Render()).To(Equal("test_metric"))
+				labels := map[string]string{}
+				Expect(qc.Render(labels)).To(Equal("test_metric"))
 			})
 		})
 	})

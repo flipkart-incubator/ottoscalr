@@ -92,7 +92,6 @@ type Scraper interface {
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
 type PrometheusScraper struct {
 	api                       []PrometheusInstance
-	metricRegistry            *MetricNameRegistry
 	queryTimeout              time.Duration
 	rangeQuerySplitter        *RangeQuerySplitter
 	metricIngestionTime       float64
@@ -101,18 +100,6 @@ type PrometheusScraper struct {
 	CPUUtilizationBreachQuery *CPUUtilizationBreachQuery
 	PodReadyLatencyQuery      *PodReadyLatencyQuery
 	logger                    logr.Logger
-}
-
-type MetricNameRegistry struct {
-	utilizationMetric     string
-	podOwnerMetric        string
-	resourceLimitMetric   string
-	readyReplicasMetric   string
-	replicaSetOwnerMetric string
-	hpaMaxReplicasMetric  string
-	hpaOwnerInfoMetric    string
-	podCreatedTimeMetric  string
-	podReadyTimeMetric    string
 }
 
 type PrometheusQueryResult struct {
@@ -127,29 +114,6 @@ func (ps *PrometheusScraper) GetACLByWorkload(namespace string, workload string)
 	}
 	totalACL := ps.metricIngestionTime + ps.metricProbeTime + podBootStrapTime
 	return time.Duration(totalACL) * time.Second, nil
-}
-
-func NewKubePrometheusMetricNameRegistry() *MetricNameRegistry {
-	cpuUtilizationMetric := "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate"
-	podOwnerMetric := "namespace_workload_pod:kube_pod_owner:relabel"
-	resourceLimitMetric := "cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits"
-	readyReplicasMetric := "kube_replicaset_status_ready_replicas"
-	replicaSetOwnerMetric := "kube_replicaset_owner"
-	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
-	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
-	podCreatedTimeMetric := "kube_pod_created"
-	podReadyTimeMetric := "alm_kube_pod_ready_time"
-
-	return &MetricNameRegistry{utilizationMetric: cpuUtilizationMetric,
-		podOwnerMetric:        podOwnerMetric,
-		resourceLimitMetric:   resourceLimitMetric,
-		readyReplicasMetric:   readyReplicasMetric,
-		replicaSetOwnerMetric: replicaSetOwnerMetric,
-		hpaMaxReplicasMetric:  hpaMaxReplicasMetric,
-		hpaOwnerInfoMetric:    hpaOwnerInfoMetric,
-		podCreatedTimeMetric:  podCreatedTimeMetric,
-		podReadyTimeMetric:    podReadyTimeMetric,
-	}
 }
 
 type PrometheusInstance struct {
@@ -183,19 +147,36 @@ func NewPrometheusScraper(apiUrls []string,
 		})
 	}
 
-	cpuUtilizationQuery := NewCPUUtilizationQuery()
-	cpuUtilizationBreachQuery := NewCPUUtilizationBreachQuery()
-	podReadyLatencyQuery := NewPodReadyLatencyQuery()
+	cpuUtilizationMetric := "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate"
+	podOwnerMetric := "namespace_workload_pod:kube_pod_owner:relabel"
+	resourceLimitMetric := "cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits"
+	readyReplicasMetric := "kube_replicaset_status_ready_replicas"
+	replicaSetOwnerMetric := "kube_replicaset_owner"
+	hpaMaxReplicasMetric := "kube_horizontalpodautoscaler_spec_max_replicas"
+	hpaOwnerInfoMetric := "kube_horizontalpodautoscaler_info"
+	podCreatedTimeMetric := "kube_pod_created"
+	podReadyTimeMetric := "alm_kube_pod_ready_time"
+
+	compositeQuery := NewCompositeQueryBuilder().
+		WithQuery("pod_ready_time_metric", (*QueryComponent)(NewQueryComponentBuilder().WithMetric(podReadyTimeMetric).WithLabelKeys([]string{"namespace"}).Build())).
+		WithQuery("pod_created_time_metric", (*QueryComponent)(NewQueryComponentBuilder().WithMetric(podCreatedTimeMetric).WithLabelKeys([]string{"namespace"}).Build())).
+		WithQuery("pod_owner_metric", (*QueryComponent)(NewQueryComponentBuilder().WithMetric(podOwnerMetric).WithLabelKeys([]string{"namespace", "workload", "workload_type"}).Build())).
+		WithQuery("cpu_utilization_metric", (*QueryComponent)(NewQueryComponentBuilder().WithMetric(cpuUtilizationMetric).WithLabelKeys([]string{"namespace"}).Build())).
+		WithQuery("resource_limit_metric", (*QueryComponent)(NewQueryComponentBuilder().WithMetric(resourceLimitMetric).WithLabelKeys([]string{"namespace"}).Build())).
+		WithQuery("ready_replicas_metric", (*QueryComponent)(NewQueryComponentBuilder().WithMetric(readyReplicasMetric).WithLabelKeys([]string{"namespace"}).Build())).
+		WithQuery("replicaset_owner_metric", (*QueryComponent)(NewQueryComponentBuilder().WithMetric(replicaSetOwnerMetric).WithLabelKeys([]string{"namespace", "owner_kind", "owner_name"}).Build())).
+		WithQuery("hpa_max_replicas_metric", (*QueryComponent)(NewQueryComponentBuilder().WithMetric(hpaMaxReplicasMetric).WithLabelKeys([]string{"namespace"}).Build())).
+		WithQuery("hpa_owner_info_metric", (*QueryComponent)(NewQueryComponentBuilder().WithMetric(hpaOwnerInfoMetric).WithLabelKeys([]string{"namespace", "scaletargetref_kind", "scaletargetref_name"}).Build())).
+		Build()
 
 	return &PrometheusScraper{api: prometheusInstances,
-		metricRegistry:            NewKubePrometheusMetricNameRegistry(),
 		queryTimeout:              timeout,
 		rangeQuerySplitter:        NewRangeQuerySplitter(splitInterval),
 		metricProbeTime:           metricProbeTime,
 		metricIngestionTime:       metricIngestionTime,
-		CPUUtilizationQuery:       cpuUtilizationQuery,
-		CPUUtilizationBreachQuery: cpuUtilizationBreachQuery,
-		PodReadyLatencyQuery:      podReadyLatencyQuery,
+		CPUUtilizationQuery:       (*CPUUtilizationQuery)(compositeQuery),
+		CPUUtilizationBreachQuery: (*CPUUtilizationBreachQuery)(compositeQuery),
+		PodReadyLatencyQuery:      (*PodReadyLatencyQuery)(compositeQuery),
 		logger:                    logger}, nil
 }
 
@@ -210,7 +191,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	query := ps.CPUUtilizationQuery.BuildCompositeQuery(namespace, workload)
+	query := ps.CPUUtilizationQuery.Render(map[string]string{"namespace": namespace, "workload": workload, "workload_type": "deployment"})
 
 	var totalDataPoints []DataPoint
 	if ps.api == nil {
@@ -325,7 +306,10 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	query := ps.CPUUtilizationBreachQuery.BuildCompositeQuery(namespace, workload, workloadType, redLineUtilization)
+	query := ps.CPUUtilizationBreachQuery.Render(redLineUtilization, map[string]string{"namespace": namespace,
+		"workload": workload, "workload_type": "deployment", "owner_kind": workloadType, "owner_name": workload,
+		"scaletargetref_kind": workloadType, "scaletargetref_name": workload})
+
 
 	resultChanLength := len(ps.api) + 5 //Added some buffer
 	resultChan := make(chan []DataPoint, resultChanLength)
@@ -495,7 +479,7 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	query := ps.PodReadyLatencyQuery.BuildCompositeQuery(namespace, workload)
+	query := ps.PodReadyLatencyQuery.Render(map[string]string{"namespace": namespace, "workload": workload, "workload_type": "deployment"})
 
 	podBootstrapTime := 0.0
 	if ps.api == nil {
