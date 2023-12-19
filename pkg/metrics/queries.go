@@ -35,15 +35,15 @@ type CPUUtilizationQuery CompositeQuery
 type CPUUtilizationBreachQuery CompositeQuery
 type PodReadyLatencyQuery CompositeQuery
 
-func (qb *CPUUtilizationQuery) Render(m map[string]string) string {
+func (qb *CPUUtilizationQuery) Render(labels map[string]string) string {
 
 	return fmt.Sprintf("sum(%s * on (namespace,pod) group_left(workload, workload_type)"+
 		"%s) by(namespace, workload, workload_type)",
-		qb.queries["cpu_utilization_metric"].Render(m),
-		qb.queries["pod_owner_metric"].Render(m))
+		qb.queries["cpu_utilization_metric"].Render(labels),
+		qb.queries["pod_owner_metric"].Render(labels))
 }
 
-func (qb *CPUUtilizationBreachQuery) Render(redLineUtilization float64, m map[string]string) string {
+func (qb *CPUUtilizationBreachQuery) Render(redLineUtilization float64, labels map[string]string) string {
 
 	return fmt.Sprintf("(sum(%s * on(namespace,pod) group_left(workload, workload_type) "+
 		"%s) by (namespace, workload, workload_type)/ on (namespace, workload, workload_type) "+
@@ -56,26 +56,26 @@ func (qb *CPUUtilizationBreachQuery) Render(redLineUtilization float64, m map[st
 		"group_left(owner_kind, owner_name) label_replace(label_replace(%s,\"owner_kind\", \"$1\", "+
 		"\"scaletargetref_kind\", \"(.*)\"), \"owner_name\", \"$1\", \"scaletargetref_name\", \"(.*)\")),"+
 		"\"workload\", \"$1\", \"owner_name\", \"(.*)\")",
-		qb.queries["cpu_utilization_metric"].Render(m),
-		qb.queries["pod_owner_metric"].Render(m),
-		qb.queries["resource_limit_metric"].Render(m),
-		qb.queries["pod_owner_metric"].Render(m),
+		qb.queries["cpu_utilization_metric"].Render(labels),
+		qb.queries["pod_owner_metric"].Render(labels),
+		qb.queries["resource_limit_metric"].Render(labels),
+		qb.queries["pod_owner_metric"].Render(labels),
 		redLineUtilization,
-		qb.queries["ready_replicas_metric"].Render(m),
-		qb.queries["replicaset_owner_metric"].Render(m),
-		qb.queries["hpa_max_replicas_metric"].Render(m),
-		qb.queries["hpa_owner_info_metric"].Render(m))
+		qb.queries["ready_replicas_metric"].Render(labels),
+		qb.queries["replicaset_owner_metric"].Render(labels),
+		qb.queries["hpa_max_replicas_metric"].Render(labels),
+		qb.queries["hpa_owner_info_metric"].Render(labels))
 
 }
 
-func (qb *PodReadyLatencyQuery) Render(m map[string]string) string {
+func (qb *PodReadyLatencyQuery) Render(labels map[string]string) string {
 
 	return fmt.Sprintf("quantile(0.5,(%s - on (namespace,pod) (%s)) "+
 		"* on (namespace,pod) group_left(workload, workload_type)"+
 		"(%s))",
-		qb.queries["pod_ready_time_metric"].Render(m),
-		qb.queries["pod_created_time_metric"].Render(m),
-		qb.queries["pod_owner_metric"].Render(m))
+		qb.queries["pod_ready_time_metric"].Render(labels),
+		qb.queries["pod_created_time_metric"].Render(labels),
+		qb.queries["pod_owner_metric"].Render(labels))
 }
 
 func ValidateQuery(query string) bool {
