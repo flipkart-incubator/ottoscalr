@@ -1,0 +1,22 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: p8s-ottoscalr
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: ottoscalr
+    app.kubernetes.io/part-of: ottoscalr
+    {{- include "ottoscalr.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - ""
+      - apps
+      - discovery.k8s.io
+    resources:
+      - pods
+      - services
+      - endpointslices
+      - endpoints
+
+    verbs: ["get", "list", "watch"]

@@ -120,11 +120,6 @@ type Config struct {
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
 	EventCallIntegration     struct {
-		EventCalendarAPIEndpoint        string `yaml:"eventCalendarAPIEndpoint"`
-		NfrEventCompletedAPIEndpoint    string `yaml:"nfrEventCompletedAPIEndpoint"`
-		NfrEventInProgressAPIEndpoint   string `yaml:"nfrEventInProgressAPIEndpoint"`
-		EventFetchWindowInHours         int    `yaml:"eventFetchWindowInHours"`
-		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
 		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
 	AutoscalerClient struct {
@@ -215,25 +210,6 @@ func main() {
 	}
 
 	var eventIntegrations []integration.EventIntegration
-	eventCalendarIntegration, err := integration.NewEventCalendarDataFetcher(config.EventCallIntegration.EventCalendarAPIEndpoint,
-		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour,
-		time.Duration(config.EventCallIntegration.EventScaleUpBufferPeriodInHours)*time.Hour, logger)
-
-	if err != nil {
-		setupLog.Error(err, "unable to start event calendar data fetcher")
-		os.Exit(1)
-	}
-
-	nfrEventIntegration, err := integration.NewNFREventDataFetcher(config.EventCallIntegration.NfrEventCompletedAPIEndpoint,
-		config.EventCallIntegration.NfrEventInProgressAPIEndpoint,
-		time.Duration(config.EventCallIntegration.EventFetchWindowInHours)*time.Hour,
-		time.Duration(config.EventCallIntegration.EventScaleUpBufferPeriodInHours)*time.Hour, logger)
-
-	if err != nil {
-		setupLog.Error(err, "unable to start nfr event data fetcher")
-		os.Exit(1)
-	}
-
 	customEventIntegration, err := integration.NewCustomEventDataFetcher(mgr.GetClient(),
 		os.Getenv("DEPLOYMENT_NAMESPACE"), config.EventCallIntegration.CustomEventDataConfigMapName, logger)
 
@@ -242,8 +218,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	eventIntegrations = append(eventIntegrations, eventCalendarIntegration, nfrEventIntegration, customEventIntegration)
-
+	eventIntegrations = append(eventIntegrations, customEventIntegration)
 	var metricsTransformer []metrics.MetricsTransformer
 
 	if *config.EnableMetricsTransformer {
@@ -394,7 +369,6 @@ func main() {
 	go func() {
 		<-sigs
 		monitorManager.Shutdown()
-		eventCalendarIntegration.Cancel()
 		os.Exit(0)
 	}()
 }

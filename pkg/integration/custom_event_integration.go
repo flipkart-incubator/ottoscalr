@@ -61,3 +61,13 @@ func (ce *CustomEventDataFetcher) GetDesiredEvents(startTime time.Time, endTime 
 	}
 	return eventDetails, nil
 }
+
+func formatTime(tm string) time.Time {
+
+	parse, _ := time.Parse("2006-01-02 15:04", tm)
+	unixTime := parse.Unix()
+	actualTm := time.Unix(0, unixTime*int64(time.Second))
+	formattedTime := actualTm.Add(-330 * time.Minute)
+
+	return formattedTime
+}
