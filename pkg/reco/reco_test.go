@@ -32,7 +32,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			perPodResources := 8.2
 
 			optimalTarget, min, max, err := recommender.findOptimalHPAConfigurations(
-				dataPoints, acl, minTarget, maxTarget, perPodResources, 24)
+				dataPoints, acl, minTarget, maxTarget, perPodResources, 24,1)
 
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(optimalTarget).To(Equal(48))
