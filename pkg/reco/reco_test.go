@@ -3,6 +3,8 @@ package reco
 import (
 	"context"
 	"fmt"
+	"time"
+
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
@@ -12,7 +14,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"time"
 )
 
 var _ = Describe("CpuUtilizationBasedRecommender", func() {
@@ -32,7 +33,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			perPodResources := 8.2
 
 			optimalTarget, min, max, err := recommender.findOptimalHPAConfigurations(
-				dataPoints, acl, minTarget, maxTarget, perPodResources, 24,1)
+				dataPoints, acl, minTarget, maxTarget, perPodResources, 24, 1)
 
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(optimalTarget).To(Equal(48))
@@ -671,6 +672,246 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 		})
 	})
 
+	Describe("getMinPods", func() {
+		var (
+			deploymentNamespace = "default"
+			deploymentName      = "test-deployment"
+			rolloutNamespace    = "default"
+			rolloutName         = "test-rollout"
+			rollout             *rolloutv1alpha1.Rollout
+			deployment          *appsv1.Deployment
+		)
+
+		BeforeEach(func() {
+			rollout = &rolloutv1alpha1.Rollout{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "argoproj.io/v1alpha1",
+					Kind:       "Rollout",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      rolloutName,
+					Namespace: rolloutNamespace,
+				},
+				Spec: rolloutv1alpha1.RolloutSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "container-1",
+									Image: "container-image",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU: resource.MustParse("1"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, rollout)
+			Expect(err).ToNot(HaveOccurred())
+
+			deployment = &appsv1.Deployment{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      deploymentName,
+					Namespace: deploymentNamespace,
+					Annotations: map[string]string{
+						OttoscalrMinPodAnnotation: "3",
+					},
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "container-1",
+									Image: "container-image",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU: resource.MustParse("1"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err = k8sClient.Create(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, rollout)
+			Expect(err).ToNot(HaveOccurred())
+			err = k8sClient.Delete(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+
+		})
+
+		It("should return the replicas from annotations for the deployment if the annotation is present", func() {
+			minReplicas, err := recommender1.getMinPods(deploymentNamespace, "Deployment", deploymentName)
+			Expect(err).To(BeNil())
+			Expect(minReplicas).To(Equal(3))
+		})
+
+		It("should return minReplicas as 1 if the annotation is not present", func() {
+			maxReplicas, err := recommender1.getMinPods(rolloutNamespace, "Rollout", rolloutName)
+			Expect(err).To(BeNil())
+			Expect(maxReplicas).To(Equal(1))
+		})
+	})
+
+	Describe("Recommend when minPod annotation is present", func() {
+
+		var (
+			deploymentNamespace = "default"
+			deploymentName      = "test-deployment"
+			deployment          *appsv1.Deployment
+			deploymentPod       *corev1.Pod
+		)
+
+		BeforeEach(func() {
+			deployment = &appsv1.Deployment{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      deploymentName,
+					Namespace: deploymentNamespace,
+					Annotations: map[string]string{
+						"ottoscalr.io/max-pods": "30",
+						"ottoscalr.io/min-pods": "20",
+					},
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "container-1",
+									Image: "container-image",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU: resource.MustParse("8"),
+										},
+									},
+								},
+								{
+									Name:  "container-2",
+									Image: "container-image",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU: resource.MustParse("0.2"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+
+			deploymentPod = &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment-pod",
+					Namespace: deploymentNamespace,
+					Labels: map[string]string{
+						"app": "test-app",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "container-1",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("8"),
+								},
+							},
+						},
+						{
+							Name:  "container-2",
+							Image: "container-image",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU: resource.MustParse("0.2"),
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err = k8sClient.Create(ctx, deploymentPod)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, deployment)
+			Expect(err).ToNot(HaveOccurred())
+			err = k8sClient.Delete(ctx, deploymentPod)
+			Expect(err).ToNot(HaveOccurred())
+
+		})
+		It("should return recommend the optimal HPA configuration", func() {
+
+			workloadSpec := WorkloadMeta{
+				Name:      deploymentName,
+				Namespace: deploymentNamespace,
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Deployment",
+					APIVersion: "apps/v1",
+				},
+			}
+			hpaConfig, err := recommender.Recommend(context.TODO(), workloadSpec)
+
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(hpaConfig.TargetMetricValue).To(Equal(60))
+			Expect(hpaConfig.Min).To(Equal(20))
+			Expect(hpaConfig.Max).To(Equal(30))
+		})
+	})
+
 	Describe("Recommend", func() {
 
 		var (
@@ -799,6 +1040,25 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			Expect(hpaConfig.Min).To(Equal(7))
 			Expect(hpaConfig.Max).To(Equal(30))
 		})
+
+		It("should return recommend the no op HPA configuration when unable to find a reco", func() {
+
+			workloadSpec := WorkloadMeta{
+				Name:      deploymentName,
+				Namespace: deploymentNamespace,
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Deployment",
+					APIVersion: "apps/v1",
+				},
+			}
+			hpaConfig, err := recommender2.Recommend(context.TODO(), workloadSpec)
+
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(hpaConfig.TargetMetricValue).To(Equal(10))
+			Expect(hpaConfig.Min).To(Equal(30))
+			Expect(hpaConfig.Max).To(Equal(30))
+		})
+
 	})
 
 	Describe("Recommend", func() {

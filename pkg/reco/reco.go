@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
+	"time"
+
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
@@ -16,11 +20,8 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
-	"strconv"
-	"time"
 )
 
 var (
@@ -113,7 +114,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		return nil, err
 	}
 
-	workloadMinReplicas,err := c.getMinPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	workloadMinReplicas, err := c.getMinPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
 	if err != nil {
 		c.logger.Error(err, "Error while getting getMinPods")
 		return nil, err
@@ -448,7 +449,7 @@ func (c *CpuUtilizationBasedRecommender) getMinPods(namespace string, objectKind
 
 	}
 
-	return minPods,nil
+	return minPods, nil
 }
 
 func (c *CpuUtilizationBasedRecommender) isMetricsAboveThreshold(dataPoints []metrics.DataPoint) bool {
