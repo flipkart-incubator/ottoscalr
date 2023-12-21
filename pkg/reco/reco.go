@@ -444,7 +444,7 @@ func (c *CpuUtilizationBasedRecommender) getMinPods(namespace string, objectKind
 		var err error
 		minPods, err = strconv.Atoi(minPodAnnotation)
 		if err != nil {
-			return 0, fmt.Errorf("unable to convert maxPods from string to int: %s", err)
+			return 0, fmt.Errorf("unable to convert minPods from string to int: %s", err)
 		}
 
 	}
