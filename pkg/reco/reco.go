@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
+	"time"
+
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
@@ -16,11 +20,8 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
-	"strconv"
-	"time"
 )
 
 var (
@@ -48,6 +49,7 @@ var unableToRecommendError = errors.New("Unable to generate recommendation witho
 const (
 	ScaledObjectField         = "spec.scaleTargetRef.name"
 	OttoscalrMaxPodAnnotation = "ottoscalr.io/max-pods"
+	OttoscalrMinPodAnnotation = "ottoscalr.io/min-pods"
 )
 
 type CpuUtilizationBasedRecommender struct {
@@ -112,6 +114,12 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		return nil, err
 	}
 
+	workloadMinReplicas, err := c.getMinPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	if err != nil {
+		c.logger.Error(err, "Error while getting getMinPods")
+		return nil, err
+	}
+
 	if !c.isMetricsAboveThreshold(dataPoints) {
 		minPercentageOfDataPointsPresent.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(float64(0))
 		err = fmt.Errorf("metric Source doesn't has required number of metrics to generate recommendation")
@@ -146,7 +154,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		acl,
 		c.minTarget,
 		c.maxTarget,
-		perPodResources, workloadMaxReplicas)
+		perPodResources, workloadMaxReplicas, workloadMinReplicas)
 	if err != nil {
 		if errors.Is(err, unableToRecommendError) {
 			return &v1alpha1.HPAConfiguration{Min: workloadMaxReplicas, Max: workloadMaxReplicas, TargetMetricValue: c.minTarget}, nil
@@ -249,13 +257,12 @@ func (c *CpuUtilizationBasedRecommender) findOptimalHPAConfigurations(dataPoints
 	acl time.Duration,
 	minTarget,
 	maxTarget int,
-	perPodResources float64, maxReplicas int) (int, int, int, error) {
+	perPodResources float64, maxReplicas int, minReplicas int) (int, int, int, error) {
 
 	optimalTargetThreshold := 0
 	optimalMin := 0
 	savings := 0.0
 
-	minReplicas := 1
 	for ; minReplicas <= maxReplicas; minReplicas++ {
 		calculatedMin := 0
 		low := minTarget
@@ -412,6 +419,37 @@ func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind
 	}
 
 	return maxPods, nil
+}
+
+func (c *CpuUtilizationBasedRecommender) getMinPods(namespace string, objectKind string, objectName string) (int, error) {
+	minPods := 1
+
+	var obj client.Object
+	switch objectKind {
+	case "Deployment":
+		obj = &appsv1.Deployment{}
+	case "Rollout":
+		obj = &rolloutv1alpha1.Rollout{}
+	default:
+		return 0, fmt.Errorf("unsupported objectKind: %s", objectKind)
+	}
+
+	if err := c.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: objectName}, obj); err != nil {
+		return 0, err
+	}
+
+	minPodAnnotation, ok := obj.GetAnnotations()[OttoscalrMinPodAnnotation]
+
+	if ok {
+		var err error
+		minPods, err = strconv.Atoi(minPodAnnotation)
+		if err != nil {
+			return 0, fmt.Errorf("unable to convert minPods from string to int: %s", err)
+		}
+
+	}
+
+	return minPods, nil
 }
 
 func (c *CpuUtilizationBasedRecommender) isMetricsAboveThreshold(dataPoints []metrics.DataPoint) bool {

@@ -131,7 +131,11 @@ func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
 			newMaxPods, _ = newObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
 			oldMaxPods, _ = oldObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
 
-			if newMaxPods != oldMaxPods {
+			var newMinPods, oldMinPods string
+			newMinPods, _ = newObj.GetAnnotations()[reco.OttoscalrMinPodAnnotation]
+			oldMinPods, _ = oldObj.GetAnnotations()[reco.OttoscalrMinPodAnnotation]
+
+			if newMaxPods != oldMaxPods || newMinPods != oldMinPods {
 				return true
 			}
 
