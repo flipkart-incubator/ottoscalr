@@ -1,26 +1,51 @@
 port: 9443
 metricBindAddress: ":8080"
 healthProbeBindAddress: ":8081"
+pprofBindAddress: ":8082"
 enableLeaderElection: false
 leaderElectionID: "85d48caf.fcp.ottoscalr.io"
 metricsScraper:
-  prometheusUrl: {{ .Values.prometheusUrl }}
-  queryTimeoutSec: 30
-  querySplitIntervalHr: 24
+  prometheusUrl: {{ .Values.ottoscalr.config.metricsScraper.prometheusUrl }}
+  queryTimeoutSec: {{ .Values.ottoscalr.config.metricsScraper.queryTimeoutSec | default "30" }}
+  querySplitIntervalHr: {{ .Values.ottoscalr.config.metricsScraper.querySplitIntervalHr | default "24" }}
 breachMonitor:
-  pollingIntervalSec: 300
-  cpuRedLine: 0.85
+  pollingIntervalSec: {{ .Values.ottoscalr.config.breachMonitor.pollingIntervalSec | default "300" }}
+  cpuRedLine: {{ .Values.ottoscalr.config.breachMonitor.cpuRedLine | default "0.75" }}
   stepSec: 30
+  concurrentExecutions: {{ .Values.ottoscalr.config.breachMonitor.concurrentExecutions | default "50" }}
 periodicTrigger:
-  pollingIntervalMin: 360
+  pollingIntervalMin: {{ .Values.ottoscalr.config.periodicTrigger.pollingIntervalMin | default "1440" }}
 policyRecommendationController:
-  maxConcurrentReconciles: 1
+  maxConcurrentReconciles: {{ .Values.ottoscalr.config.policyRecommendationController.maxConcurrentReconciles | default "1" }}
+  minRequiredReplicas: {{ .Values.ottoscalr.config.policyRecommendationController.minRequiredReplicas | default "3" }}
+  policyExpiryAge: {{ .Values.ottoscalr.config.policyRecommendationController.policyExpiryAge | default "48h" }}
 policyRecommendationRegistrar:
   requeueDelayMs: 500
+  excludedNamespaces: {{ .Values.ottoscalr.config.policyRecommendationRegistrar.excludedNamespaces | default "kube-system,monitoring,gatekeeper-system,webhook" }}
+  includedNamespaces: {{ .Values.ottoscalr.config.policyRecommendationRegistrar.includedNamespaces }}
 cpuUtilizationBasedRecommender:
-  metricWindowInDays: 28
+  metricWindowInDays: {{ .Values.ottoscalr.config.cpuUtilizationBasedRecommender.metricWindowInDays | default "28" }}
   stepSec: 30
-  minTarget: 10
-  maxTarget: 60
+  minTarget: {{ .Values.ottoscalr.config.cpuUtilizationBasedRecommender.minTarget | default "5" }}
+  maxTarget: {{ .Values.ottoscalr.config.cpuUtilizationBasedRecommender.maxTarget | default "60" }}
+  metricsPercentageThreshold: {{ .Values.ottoscalr.config.cpuUtilizationBasedRecommender.metricsPercentageThreshold | default "0" }}
 metricIngestionTime: 15.0
 metricProbeTime: 15.0
+enableMetricsTransformer: {{ .Values.ottoscalr.config.enableMetricsTransformer | default false }}
+eventCallIntegration:
+  customEventDataConfigMapName: {{ .Values.ottoscalr.config.eventCallIntegration.customEventDataConfigMapName | default "custom-event-data-config" }}
+hpaEnforcer:
+  maxConcurrentReconciles: {{ .Values.ottoscalr.config.hpaEnforcer.maxConcurrentReconciles | default 1 }}
+  excludedNamespaces: {{ .Values.ottoscalr.config.hpaEnforcer.excludedNamespaces | default "" }}
+  includedNamespaces: {{ .Values.ottoscalr.config.hpaEnforcer.includedNamespaces | default "" }}
+  isDryRun: {{ kindIs "invalid" .Values.ottoscalr.config.hpaEnforcer.isDryRun |  ternary true .Values.ottoscalr.config.hpaEnforcer.isDryRun }}
+  whitelistMode: {{ kindIs "invalid" .Values.ottoscalr.config.hpaEnforcer.whitelistMode |  ternary true .Values.ottoscalr.config.hpaEnforcer.whitelistMode }}
+  minRequiredReplicas: {{ .Values.ottoscalr.config.hpaEnforcer.minRequiredReplicas | default 2 }}
+autoscalerClient:
+  scaledObjectConfigs:
+    enableScaledObject: {{ kindIs "invalid" .Values.ottoscalr.config.autoscalerClient.scaledObjectConfigs.enableScaledObject |  ternary true .Values.ottoscalr.config.autoscalerClient.scaledObjectConfigs.enableScaledObject }}
+    enableEventAutoscaler: {{ kindIs "invalid" .Values.ottoscalr.config.autoscalerClient.scaledObjectConfigs.enableEventAutoscaler |  ternary true .Values.ottoscalr.config.autoscalerClient.scaledObjectConfigs.enableEventAutoscaler }}
+  hpaConfigs:
+    hpaAPIVersion: {{ .Values.ottoscalr.config.autoscalerClient.hpaConfigs.hpaAPIVersion | default "v2" }}
+enableArgoRolloutsSupport: {{ kindIs "invalid" .Values.ottoscalr.config.enableArgoRolloutsSupport |  ternary true .Values.ottoscalr.config.enableArgoRolloutsSupport }}
+

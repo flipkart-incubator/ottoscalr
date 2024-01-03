@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: p8s-ottoscalr
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: ottoscalr
+    app.kubernetes.io/part-of: ottoscalr
+      {{- include "ottoscalr.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: p8s-ottoscalr
+subjects:
+  - namespace: monitoring
+    kind: ServiceAccount
+    name: prometheus-k8s

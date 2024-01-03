@@ -1,0 +1,109 @@
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-min
+spec:
+  riskIndex: 0
+  minReplicaPercentageCut: 0
+  targetUtilization: 1
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-min-10
+spec:
+  riskIndex: 100
+  minReplicaPercentageCut: 10
+  targetUtilization: 5
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-min-25
+spec:
+  riskIndex: 200
+  minReplicaPercentageCut: 25
+  targetUtilization: 5
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-min-50
+spec:
+  riskIndex: 300
+  minReplicaPercentageCut: 50
+  targetUtilization: 5
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-min-75
+spec:
+  riskIndex: 400
+  minReplicaPercentageCut: 75
+  targetUtilization: 5
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-min-100
+spec:
+  riskIndex: 500
+  minReplicaPercentageCut: 100
+  targetUtilization: 5
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-target-10
+spec:
+  riskIndex: 520
+  minReplicaPercentageCut: 100
+  targetUtilization: 10
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-target-20
+spec:
+  riskIndex: 550
+  minReplicaPercentageCut: 100
+  targetUtilization: 20
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-target-30
+spec:
+  riskIndex: 600
+  minReplicaPercentageCut: 100
+  targetUtilization: 30
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-target-40
+spec:
+  riskIndex: 700
+  minReplicaPercentageCut: 100
+  targetUtilization: 40
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-target-50
+spec:
+  riskIndex: 800
+  minReplicaPercentageCut: 100
+  targetUtilization: 50
+---
+kind: Policy
+apiVersion: ottoscaler.io/v1alpha1
+metadata:
+  name: p-target-60
+spec:
+  riskIndex: 900
+  minReplicaPercentageCut: 100
+  targetUtilization: 60
+  isDefault: true
