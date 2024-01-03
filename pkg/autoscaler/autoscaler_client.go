@@ -2,13 +2,14 @@ package autoscaler
 
 import (
 	"context"
+
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
-	trueBool  = true
+	trueBool = true
 )
 
 type AutoscalerClient interface {

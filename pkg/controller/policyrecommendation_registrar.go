@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
@@ -12,7 +11,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -245,21 +243,18 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 	}
 
 	controllerBuilder := ctrl.NewControllerManagedBy(mgr).
-		Named(PolicyRecoRegistrarCtrlName).
-		Watches(
-			&ottoscaleriov1alpha1.PolicyRecommendation{},
-			handler.EnqueueRequestForOwner(
-				mgr.GetScheme(), mgr.GetRESTMapper(), &argov1alpha1.Rollout{},
-			),
-			builder.WithPredicates(deletePredicate),
-		).
-		Watches(
-			&ottoscaleriov1alpha1.PolicyRecommendation{},
-			handler.EnqueueRequestForOwner(
-				mgr.GetScheme(), mgr.GetRESTMapper(), &appsv1.Deployment{},
-			),
-			builder.WithPredicates(deletePredicate),
-		)
+		Named(PolicyRecoRegistrarCtrlName)
+
+	for _, object := range controller.ClientsRegistry.Clients {
+		controllerBuilder.
+			Watches(
+				&ottoscaleriov1alpha1.PolicyRecommendation{},
+				handler.EnqueueRequestForOwner(
+					mgr.GetScheme(), mgr.GetRESTMapper(), object.GetObjectType(),
+				),
+				builder.WithPredicates(deletePredicate),
+			)
+	}
 
 	for _, object := range controller.ClientsRegistry.Clients {
 		controllerBuilder.Watches(

@@ -133,6 +133,7 @@ var _ = Describe("ScaledObjectClient", func() {
 			Expect(scaledObject.Spec.Triggers[0].Type).To(Equal("cpu"))
 			Expect(scaledObject.Spec.Triggers[0].Metadata["type"]).To(Equal("Utilization"))
 			Expect(scaledObject.Spec.Triggers[0].Metadata["value"]).To(Equal("4"))
+			Expect(scaledObject.Spec.Triggers[1].Type).To(Equal("scheduled-event"))
 			Expect(scaledObject.Spec.ScaleTargetRef.Name).To(Equal(deploymentName))
 			Expect(k8sClient.Delete(ctx, scaledObject)).To(Succeed())
 

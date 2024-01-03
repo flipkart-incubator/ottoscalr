@@ -3,6 +3,7 @@ package autoscaler
 import (
 	"context"
 	"fmt"
+
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -12,12 +13,15 @@ import (
 )
 
 type ScaledobjectClient struct {
-	k8sClient client.Client
+	k8sClient             client.Client
+	enableEventAutoscaler *bool
 }
 
-func NewScaledobjectClient(k8sClient client.Client) *ScaledobjectClient {
+func NewScaledobjectClient(k8sClient client.Client, enableEventAutoscaler *bool) *ScaledobjectClient {
+
 	return &ScaledobjectClient{
-		k8sClient: k8sClient,
+		k8sClient:             k8sClient,
+		enableEventAutoscaler: enableEventAutoscaler,
 	}
 }
 
@@ -99,7 +103,7 @@ func (soc *ScaledobjectClient) CreateOrUpdateAutoscaler(ctx context.Context, wor
 			},
 			MinReplicaCount: &min,
 			MaxReplicaCount: &max,
-			Triggers:        setScaleTriggers(targetCPUUtilization),
+			Triggers:        soc.setScaleTriggers(targetCPUUtilization),
 		},
 	}
 
@@ -113,7 +117,7 @@ func (soc *ScaledobjectClient) CreateOrUpdateAutoscaler(ctx context.Context, wor
 			},
 			MinReplicaCount: &min,
 			MaxReplicaCount: &max,
-			Triggers:        setScaleTriggers(targetCPUUtilization),
+			Triggers:        soc.setScaleTriggers(targetCPUUtilization),
 		}
 
 		return nil
@@ -124,7 +128,7 @@ func (soc *ScaledobjectClient) CreateOrUpdateAutoscaler(ctx context.Context, wor
 	return string(result), nil
 }
 
-func setScaleTriggers(targetCPUUtilization int32) []kedaapi.ScaleTriggers {
+func (soc *ScaledobjectClient) setScaleTriggers(targetCPUUtilization int32) []kedaapi.ScaleTriggers {
 	scaleTriggers := []kedaapi.ScaleTriggers{
 		{
 			Type: "cpu",
@@ -134,7 +138,7 @@ func setScaleTriggers(targetCPUUtilization int32) []kedaapi.ScaleTriggers {
 			},
 		},
 	}
-	if isEventScalerEnabled() {
+	if isEventScalerEnabled(soc.enableEventAutoscaler) {
 		scaleTriggers = append(scaleTriggers, kedaapi.ScaleTriggers{
 			Type: "scheduled-event",
 			Metadata: map[string]string{
@@ -145,7 +149,10 @@ func setScaleTriggers(targetCPUUtilization int32) []kedaapi.ScaleTriggers {
 	return scaleTriggers
 }
 
-func isEventScalerEnabled() bool {
-	//TODO: define based on annotation
-	return true
+func isEventScalerEnabled(enableEventAutoscaler *bool) bool {
+	if *enableEventAutoscaler {
+		//TODO: define based on annotation
+		return true
+	}
+	return false
 }

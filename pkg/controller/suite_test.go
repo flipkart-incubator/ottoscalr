@@ -183,9 +183,9 @@ var _ = BeforeSuite(func() {
 	*hpaEnforcerIsDryRun = falseBool
 	*whitelistMode = falseBool
 	var autoscalerCRUD autoscaler.AutoscalerClient
-	autoscalerCRUD = autoscaler.NewScaledobjectClient(k8sManager.GetClient())
+	autoscalerCRUD = autoscaler.NewScaledobjectClient(k8sManager.GetClient(), &trueBool)
 	hpaenforcer, err := NewHPAEnforcementController(k8sManager.GetClient(),
-		k8sManager.GetScheme(),clientsRegistry, k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName),
+		k8sManager.GetScheme(), clientsRegistry, k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName),
 		1, hpaEnforcerIsDryRun, hpaEnforcerExcludedNamespaces, hpaEnforcerIncludedNamespaces, whitelistMode, 3, autoscalerCRUD)
 	Expect(err).NotTo(HaveOccurred())
 	err = hpaenforcer.
