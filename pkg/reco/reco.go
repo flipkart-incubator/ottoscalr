@@ -4,18 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"time"
+
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/autoscaler"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
 	"github.com/go-logr/logr"
-	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"k8s.io/apimachinery/pkg/fields"
-	"math"
+	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
-	"time"
 )
 
 var (
@@ -56,6 +58,7 @@ type CpuUtilizationBasedRecommender struct {
 	maxTarget                  int
 	metricsPercentageThreshold int
 	clientsRegistry            registry.DeploymentClientRegistry
+	autoscalerClient           autoscaler.AutoscalerClient
 	logger                     logr.Logger
 }
 
@@ -69,6 +72,7 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 	maxTarget int,
 	metricsPercentageThreshold int,
 	clientsRegistry registry.DeploymentClientRegistry,
+	autoscalerClient autoscaler.AutoscalerClient,
 	logger logr.Logger) *CpuUtilizationBasedRecommender {
 	return &CpuUtilizationBasedRecommender{
 		k8sClient:                  k8sClient,
@@ -81,6 +85,7 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 		maxTarget:                  maxTarget,
 		metricsPercentageThreshold: metricsPercentageThreshold,
 		clientsRegistry:            clientsRegistry,
+		autoscalerClient:           autoscalerClient,
 		logger:                     logger,
 	}
 }
@@ -328,16 +333,14 @@ func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind
 	if err == nil {
 		return maxPods, nil
 	}
-	scaledObjects := &kedaapi.ScaledObjectList{}
-	if err := c.k8sClient.List(context.Background(), scaledObjects, &client.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector(ScaledObjectField, objectName),
-		Namespace:     namespace,
-	}); err != nil && client.IgnoreNotFound(err) != nil {
-		return 0, fmt.Errorf("unable to fetch scaledobjects: %s", err)
+
+	autoscalerObjects, err := c.autoscalerClient.GetList(context.Background(), labels.SelectorFromSet(map[string]string{}), namespace, fields.OneTermEqualSelector(ScaledObjectField, objectName))
+	if err != nil && client.IgnoreNotFound(err) != nil {
+		return 0, fmt.Errorf("unable to fetch autoscaler objects: %s", err)
 	}
 
-	if len(scaledObjects.Items) > 0 && scaledObjects.Items[0].Spec.MaxReplicaCount != nil {
-		return int(*scaledObjects.Items[0].Spec.MaxReplicaCount), nil
+	if len(autoscalerObjects) > 0 && c.autoscalerClient.GetMaxReplicaCount(autoscalerObjects[0]) != 0 {
+		return int(c.autoscalerClient.GetMaxReplicaCount(autoscalerObjects[0])), nil
 	}
 	maxPods, err = deploymentClient.GetReplicaCount(namespace, objectName)
 	if err != nil {

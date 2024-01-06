@@ -2,8 +2,12 @@ package reco
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/autoscaler"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
@@ -18,8 +22,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -208,17 +210,20 @@ var _ = BeforeSuite(func() {
 		WithCustomDeploymentClient(registry.NewRolloutClient(k8sManager.GetClient())).
 		Build()
 
+	var trueBool = true
+	autoscalerClient := autoscaler.NewScaledobjectClient(k8sManager.GetClient(), &trueBool)
+
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
-		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, clientsRegistry, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, clientsRegistry, autoscalerClient, logger)
 
 	recommender1 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, clientsRegistry, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, clientsRegistry, autoscalerClient, logger)
 
 	recommender2 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		metricWindow, fakeScraper1, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, clientsRegistry, logger)
+		metricWindow, fakeScraper1, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, clientsRegistry, autoscalerClient, logger)
 
 	recommender3 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		28*24*time.Hour, fakeScraper1, fakeMetricsTransformer, 30*time.Second, minTarget, maxTarget, minPercentageMetricsRequired, clientsRegistry, logger)
+		28*24*time.Hour, fakeScraper1, fakeMetricsTransformer, 30*time.Second, minTarget, maxTarget, minPercentageMetricsRequired, clientsRegistry, autoscalerClient, logger)
 
 	safestPolicy = &ottoscaleriov1alpha1.Policy{
 		ObjectMeta: metav1.ObjectMeta{Name: "safest-policy"},

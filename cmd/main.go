@@ -54,8 +54,8 @@ import (
 )
 
 var (
-	scheme           = runtime.NewScheme()
-	setupLog         = ctrl.Log.WithName("setup")
+	scheme   = runtime.NewScheme()
+	setupLog = ctrl.Log.WithName("setup")
 )
 
 func init() {
@@ -120,7 +120,7 @@ type Config struct {
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
 	EventCallIntegration     struct {
-		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
+		CustomEventDataConfigMapName string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
 	AutoscalerClient struct {
 		ScaledObjectConfigs struct {
@@ -240,6 +240,21 @@ func main() {
 		deploymentClientRegistryBuilder = deploymentClientRegistryBuilder.WithCustomDeploymentClient(registry.NewRolloutClient(mgr.GetClient()))
 	}
 	deploymentClientRegistry := deploymentClientRegistryBuilder.Build()
+
+	var autoscalerClient autoscaler.AutoscalerClient
+	if *config.AutoscalerClient.ScaledObjectConfigs.EnableScaledObject {
+		utilruntime.Must(kedaapi.AddToScheme(scheme))
+		//+kubebuilder:scaffold:scheme
+
+		autoscalerClient = autoscaler.NewScaledobjectClient(mgr.GetClient(),
+			config.AutoscalerClient.ScaledObjectConfigs.EnableEventAutoscaler)
+	} else {
+		if config.AutoscalerClient.HpaConfigs.HpaAPIVersion == "v2" {
+			autoscalerClient = autoscaler.NewHPAClientV2(mgr.GetClient())
+		} else {
+			autoscalerClient = autoscaler.NewHPAClient(mgr.GetClient())
+		}
+	}
 	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
@@ -250,6 +265,7 @@ func main() {
 		config.CpuUtilizationBasedRecommender.MaxTarget,
 		config.CpuUtilizationBasedRecommender.MetricsPercentageThreshold,
 		*deploymentClientRegistry,
+		autoscalerClient,
 		logger)
 
 	breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
@@ -301,20 +317,6 @@ func main() {
 	hpaEnforcerExcludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.ExcludedNamespaces)
 	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
 
-	var autoscalerClient autoscaler.AutoscalerClient
-	if *config.AutoscalerClient.ScaledObjectConfigs.EnableScaledObject {
-		utilruntime.Must(kedaapi.AddToScheme(scheme))
-		//+kubebuilder:scaffold:scheme
-
-		autoscalerClient = autoscaler.NewScaledobjectClient(mgr.GetClient(),
-			config.AutoscalerClient.ScaledObjectConfigs.EnableEventAutoscaler)
-	} else {
-		if config.AutoscalerClient.HpaConfigs.HpaAPIVersion == "v2" {
-			autoscalerClient = autoscaler.NewHPAClientV2(mgr.GetClient())
-		} else {
-			autoscalerClient = autoscaler.NewHPAClient(mgr.GetClient())
-		}
-	}
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
 		mgr.GetScheme(), *deploymentClientRegistry, mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
 		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas, autoscalerClient)
