@@ -84,8 +84,7 @@ ottoscalrConfigPath: "/etc/ottoscalr/config/ottoscalr_config.yaml"
 ottoscalr:
   config:
     metricsScraper:
-      prometheusUrl: http://prometheus-k8s-0.prometheus-operated.monitoring.svc.cluster.local:9090,http://prometheus-k8s-1.prometheus-operated.monitoring.svc.cluster.local:9090,http://prometheus-k8s-2.prometheus-operated.monitoring.svc.cluster.local:9090
-      queryTimeoutSec: 300
+      prometheusUrl: 
       querySplitIntervalHr: 24
     policyRecommendationController:
       maxConcurrentReconciles: 1

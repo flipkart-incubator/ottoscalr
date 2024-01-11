@@ -69,7 +69,7 @@ their default values.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `ottoscalr.config.metricsScraper.prometheusUrl` | string | `""` | URL where prometheus for the kubernetes cluster is running.   |
+| `ottoscalr.config.metricsScraper.prometheusUrl` | string | `""` | URL where prometheus for the kubernetes cluster is running. Fetching metrics from a single or multiple prometheus instance(give comma separated urls) is supported. Metrics from multple prometheus instances will be aggregated. If you have 2 instances named `p8s1` and `p8s2`, it should be added like `"p8s1,p8s2"`  |
 | `ottoscalr.config.metricsScraper.queryTimeoutSec` | int | `300` | Time in seconds within which the response for any query should be served by the prometheus  |
 | `ottoscalr.config.metricsScraper.querySplitIntervalHr` | int | `24` | The shortest period in hour for which data will be fetched from prometheus |
 | `ottoscalr.config.policyRecommendationController.maxConcurrentReconciles` | int | `1` | Maximum number of concurrent Reconciles which can be run. |
