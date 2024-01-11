@@ -63,7 +63,7 @@ their default values.
 | `image.repository` | string | `""` | Image name of ottoscalr deployment |
 | `image.tag` | string | `""` | Image tag of ottoscalr deployment |
 | `replicaCount` | int | `1` | Capability to configure the number of replicas for ottoscalr operator. While you can run more replicas of our operator, only one operator instance will be the leader and serving traffic. You can run multiple replicas, but they will not improve the performance of ottoscalr, it could only reduce downtime during a failover. |
-| `resources` | object | `{"limits":{"cpu":1,"memory":"2Gi"},"requests":{"cpu":"1","memory":"2Gi"}}` | Manage [resource request & limits] of ottoscalr operator pod |
+| `resources` | object | `{"limits":{"cpu":2,"memory":"4Gi"},"requests":{"cpu":"2","memory":"4Gi"}}` | Manage resource request & limits of ottoscalr operator pod |
 
 #### Operations
 
@@ -89,7 +89,8 @@ their default values.
 | `ottoscalr.config.hpaEnforcer.includedNamespaces` | string | `""` | If provided, ottoscalr will only create HPAs for these namespaces. If it is empty, it will include all except for the excluded ones. Example: "namespace1,namespace2,namespace3" |
 | `ottoscalr.config.hpaEnforcer.whitelistMode` | bool | `true` | hpa controller will act only on deployments having `ottoscalr.io/enable-hpa-enforcement: true` annotation and create hpa for them. If false, hpaEnforcer runs on blacklistMode where it will create hpas for every workload except for ones having `ottoscalr.io/disable-hpa-enforcement: true`. It is recommended to run with whitelistMode as true. |
 | `ottoscalr.config.hpaEnforcer.isDryRun` | bool | `false` | If true, hpa controller will not create any HPAs.   |
-| `ottoscalr.config.hpaEnforcer.enableMetricsTransformer` | bool | `true` | This metrics transformer can be used to interpolate any known period of data that should not be used for generating recommendation.  |
+| `ottoscalr.config.enableMetricsTransformer` | bool | `true` | This metrics transformer can be used to interpolate any known period of data that should not be used for generating recommendation.  |
 | `ottoscalr.config.autoscalerClient.scaledObjectConfigs.enableScaledObject` | bool | `false` | Flag whether to use KEDA ScaledObjects or HPA for autoscaling. KEDA needs to be deployed on your cluster for enabling it. |
 | `ottoscalr.config.autoscalerClient.hpaConfigs.hpaAPIVersion` | string | `"v2"` | Set this if using HPA for autoscaling. By default, `autoscaling/v2` api is supported. If you wish to use `autoscaling/v1` api for HPA, change this to `"v1"`. |
+| `ottoscalr.config.enableArgoRolloutsSupport` | bool | `false` | Change this to true if you have support for Argo Rollouts. |
 

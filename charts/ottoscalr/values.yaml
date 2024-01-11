@@ -5,10 +5,10 @@
 replicaCount: 1
 
 image:
-  repository: jfrog.fkinternal.com/alm/ottoscalr-oss
+  repository: ""
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v.10"
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""
@@ -56,11 +56,11 @@ ingress:
 
 resources:
   limits:
-    cpu: 100m
-    memory: 500Mi
+    cpu: 2
+    memory: 4Gi
   requests:
-    cpu: 100m
-    memory: 500Mi
+    cpu: 2
+    memory: 4Gi
 
 autoscaling:
   enabled: false
@@ -85,7 +85,7 @@ ottoscalr:
   config:
     metricsScraper:
       prometheusUrl: http://prometheus-k8s-0.prometheus-operated.monitoring.svc.cluster.local:9090,http://prometheus-k8s-1.prometheus-operated.monitoring.svc.cluster.local:9090,http://prometheus-k8s-2.prometheus-operated.monitoring.svc.cluster.local:9090
-      queryTimeoutSec: 30
+      queryTimeoutSec: 300
       querySplitIntervalHr: 24
     policyRecommendationController:
       maxConcurrentReconciles: 1
@@ -124,7 +124,7 @@ ottoscalr:
         enableScaledObject: false
         enableEventAutoscaler: false
       hpaConfigs:
-        hpaAPIVersion: v1
+        hpaAPIVersion: v2
     enableArgoRolloutsSupport: false
 
 
