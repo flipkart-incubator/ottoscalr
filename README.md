@@ -23,7 +23,7 @@ OttoScalr is an autoscaling solution for kubernetes workloads, that works  by co
 
 ## Getting Started
 
-To get started with OttoScalr, you'll need to have a Kubernetes cluster up and running where the ottoscalr can be installed. To understand the concepts and constructs that drive ottoscalr please go through the ottoscalr wiki.
+To get started with OttoScalr, you'll need to have a Kubernetes cluster up and running where the ottoscalr can be installed. To understand the concepts and constructs that drive ottoscalr please go through the ottoscalr [wiki](https://github.com/flipkart-incubator/ottoscalr/wiki/).
 
 ### Installation
 
