@@ -107,7 +107,10 @@ func (dc *DeploymentClient) GetReplicaCount(namespace string, name string) (int,
 	if err := dc.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: name}, deploymentObject); err != nil {
 		return 0, err
 	}
-	return int(*deploymentObject.Spec.Replicas), nil
+	if deploymentObject.Spec.Replicas != nil {
+		return int(*deploymentObject.Spec.Replicas), nil
+	}
+	return 0, fmt.Errorf("replica count not present")
 }
 
 func (dc *DeploymentClient) Scale(namespace string, name string, replicas int32) error {
