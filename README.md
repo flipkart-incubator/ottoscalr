@@ -23,11 +23,12 @@ OttoScalr is an autoscaling solution for kubernetes workloads, that works  by co
 
 ## Getting Started
 
-To get started with OttoScalr, you'll need to have a Kubernetes cluster up and running where the ottoscalr can be installed. Please go through the ottoscalr wiki to understand more about its workings.
+To get started with OttoScalr, you'll need to have a Kubernetes cluster up and running where the ottoscalr can be installed. To understand the concepts and constructs that drive ottoscalr please go through the ottoscalr wiki.
 
-# Installation
+### Installation
 
 Ottoscalr is easy to be installed and configured in any kubernetes cluster. The installation process involves setting up the necessary Kubernetes resources for OttoScalr to run. Detailed instructions will be provided in the [installation and configuration guide](INSTALLATION.md).
+
 
 ## Contributing
 
