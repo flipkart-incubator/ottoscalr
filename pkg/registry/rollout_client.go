@@ -107,6 +107,9 @@ func (rc *RolloutClient) GetReplicaCount(namespace string, name string) (int, er
 	if err := rc.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: name}, rolloutObject); err != nil {
 		return 0, err
 	}
+	if rolloutObject.Spec.Replicas == nil  {
+		return 0, fmt.Errorf("replica count not present")
+	}
 	return int(*rolloutObject.Spec.Replicas), nil
 }
 
