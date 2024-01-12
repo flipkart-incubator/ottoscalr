@@ -107,6 +107,9 @@ func (dc *DeploymentClient) GetReplicaCount(namespace string, name string) (int,
 	if err := dc.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: name}, deploymentObject); err != nil {
 		return 0, err
 	}
+	if deploymentObject.Spec.Replicas == nil {
+		return 0, fmt.Errorf("replica count not present")
+	}
 	return int(*deploymentObject.Spec.Replicas), nil
 }
 
