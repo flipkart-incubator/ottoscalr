@@ -6,7 +6,7 @@ enableLeaderElection: false
 leaderElectionID: "85d48caf.fcp.ottoscalr.io"
 metricsScraper:
   prometheusUrl: {{ .Values.ottoscalr.config.metricsScraper.prometheusUrl }}
-  queryTimeoutSec: {{ .Values.ottoscalr.config.metricsScraper.queryTimeoutSec | default "30" }}
+  queryTimeoutSec: {{ .Values.ottoscalr.config.metricsScraper.queryTimeoutSec | default "300" }}
   querySplitIntervalHr: {{ .Values.ottoscalr.config.metricsScraper.querySplitIntervalHr | default "24" }}
 breachMonitor:
   pollingIntervalSec: {{ .Values.ottoscalr.config.breachMonitor.pollingIntervalSec | default "300" }}
@@ -14,11 +14,11 @@ breachMonitor:
   stepSec: 30
   concurrentExecutions: {{ .Values.ottoscalr.config.breachMonitor.concurrentExecutions | default "50" }}
 periodicTrigger:
-  pollingIntervalMin: {{ .Values.ottoscalr.config.periodicTrigger.pollingIntervalMin | default "1440" }}
+  pollingIntervalMin: {{ .Values.ottoscalr.config.periodicTrigger.pollingIntervalMin | default "180" }}
 policyRecommendationController:
   maxConcurrentReconciles: {{ .Values.ottoscalr.config.policyRecommendationController.maxConcurrentReconciles | default "1" }}
   minRequiredReplicas: {{ .Values.ottoscalr.config.policyRecommendationController.minRequiredReplicas | default "3" }}
-  policyExpiryAge: {{ .Values.ottoscalr.config.policyRecommendationController.policyExpiryAge | default "48h" }}
+  policyExpiryAge: {{ .Values.ottoscalr.config.policyRecommendationController.policyExpiryAge | default "3h" }}
 policyRecommendationRegistrar:
   requeueDelayMs: 500
   excludedNamespaces: {{ .Values.ottoscalr.config.policyRecommendationRegistrar.excludedNamespaces | default "kube-system,monitoring,gatekeeper-system,webhook" }}
@@ -28,7 +28,7 @@ cpuUtilizationBasedRecommender:
   stepSec: 30
   minTarget: {{ .Values.ottoscalr.config.cpuUtilizationBasedRecommender.minTarget | default "5" }}
   maxTarget: {{ .Values.ottoscalr.config.cpuUtilizationBasedRecommender.maxTarget | default "60" }}
-  metricsPercentageThreshold: {{ .Values.ottoscalr.config.cpuUtilizationBasedRecommender.metricsPercentageThreshold | default "0" }}
+  metricsPercentageThreshold: {{ .Values.ottoscalr.config.cpuUtilizationBasedRecommender.metricsPercentageThreshold | default "25" }}
 metricIngestionTime: 15.0
 metricProbeTime: 15.0
 enableMetricsTransformer: {{ .Values.ottoscalr.config.enableMetricsTransformer | default false }}

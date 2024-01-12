@@ -24,7 +24,7 @@ var _ = Describe("Queries", func() {
 					"label1": "value1",
 					"label2": "value2",
 				}
-				Expect(qc.Render(labels)).To(Equal("test_metric{label1=\"value1\",label2=\"value2\"}"))
+				Expect(qc.Render(labels)).To(Or(Equal("test_metric{label1=\"value1\",label2=\"value2\"}"), Equal("test_metric{label2=\"value2\",label1=\"value1\"}")))
 			})
 		})
 
