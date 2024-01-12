@@ -1,4 +1,4 @@
-#### Ottoscalr metrics
+## Ottoscalr metrics
 
 | Metric name | Metric type | Description | Labels/tags |
 |-----------|------|---------|-------------|
@@ -30,7 +30,7 @@
 | `ottoscalr_hpaenforcer_reconciled_count` | counter | Number of times a policyrecommendation has been reconciled by HPAEnforcer | `policyreco`=&lt;policyrecommendation-name&gt; <br> `namespace`=&lt;policyrecommendation-namespace&gt; |
 
 
-#### Ottoscalr Controller Metrics
+### Ottoscalr Controller Metrics
 
 All the kubebuilder controller metrics as mentioned here:- https://book.kubebuilder.io/reference/metrics-reference are available for ottoscalr controllers. 
 All the metrics should be prefixed with `ottoscalr_` .
