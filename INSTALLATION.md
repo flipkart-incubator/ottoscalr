@@ -12,7 +12,7 @@ Ottoscalr can be installed in any kubernetes cluster which meets the prerequisit
 ## Building the image
 
 The following section outlines the docker image build process for the ottoscalr. 
-The following commands builds the image for the platform linux/amd64. Change the TARGETOS and TARGETARCH if it is required to be built for other platform.
+The following commands builds the image for the platform linux/amd64. Change the TARGETOS and TARGETARCH if it is required to be built for other platform. Run this from the root directory of the project.
 ```console
 $ TARGETOS=linux;TARGETARCH=amd64;make docker-build docker-push IMG={repository}:{tag}
 ```
@@ -21,7 +21,17 @@ $ TARGETOS=linux;TARGETARCH=amd64;make docker-build docker-push IMG={repository}
 
 Ottoscalr can be deployed via this [helm chart](https://github.com/flipkart-incubator/ottoscalr/tree/main/charts/ottoscalr). 
 
-This chart bootstraps ottoscalr on a Kubernetes cluster using the Helm package manager. As part of that, it will install all the required Custom Resource Definitions (CRD).
+This chart bootstraps ottoscalr on a Kubernetes cluster using the Helm package manager. As part of that, it will install all the required Custom Resource Definitions (CRD) which introduces the following kinds:
+
+```
+apiVersion: ottoscaler.io/v1alpha1
+kind: PolicyRecommendation
+```
+```
+apiVersion: ottoscaler.io/v1alpha1
+kind: Policy
+```
+
 
 ### Installing the Chart
 
@@ -64,6 +74,7 @@ their default values.
 | `image.tag` | string | `""` | Image tag of ottoscalr deployment |
 | `replicaCount` | int | `1` | Capability to configure the number of replicas for ottoscalr operator. While you can run more replicas of our operator, only one operator instance will be the leader and serving traffic. You can run multiple replicas, but they will not improve the performance of ottoscalr, it could only reduce downtime during a failover. |
 | `resources` | object | `{"limits":{"cpu":2,"memory":"4Gi"},"requests":{"cpu":"2","memory":"4Gi"}}` | Manage resource request & limits of ottoscalr operator pod |
+| `serviceMonitor.create` | bool | `true` | If true, this will export [ottoscalr metrics](https://github.com/flipkart-incubator/ottoscalr/blob/main/OTTOSCALR_METRICS.md).  |
 
 #### Operations
 
