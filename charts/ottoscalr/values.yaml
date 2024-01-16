@@ -87,8 +87,8 @@ ottoscalrConfigPath: "/etc/ottoscalr/config/ottoscalr_config.yaml"
 ottoscalr:
   config:
     metricsScraper:
-      prometheusUrl: 
-      querySplitIntervalHr: 24
+      prometheusUrl: ""
+      querySplitIntervalHr: 8
     policyRecommendationController:
       maxConcurrentReconciles: 1
       minRequiredReplicas: 3
@@ -102,7 +102,7 @@ ottoscalr:
       pollingIntervalMin: 180
     policyRecommendationRegistrar:
       requeueDelayMs: 500
-      excludedNamespaces: "apm-operator,argo-rollouts,cluster-registry,cryptex,default,event-exporter,event-synchronizer,fkadapter,flow-commons,gatekeeper-system,k8s-dashboard-oidc,keda,kube-node-lease,kube-public,kube-system,kubernetescamtl,kubernetescamtl-non-prod,metering-agent,monitoring,npd,paas-mtl,passivealerts,webhook,ottoscalr,istio-system,proxy-mesh-system,istio-monitoring,proxy-mesh-common,flow-argo-prod,flow-svc-prod,flow-env,varadhi,consus-snapshot,openebs-lvm,openebs-device,consus-lightbits,consus-fungible,consus-telemetry,gpu-operator,tenant-operator,vpa,hbaseoperator,aerospikeoperator,solroperator,zookeeperoperator,couchbaseoperator,kafkaoperator,mysqloperator,tp-k8s,kaas-app-metrics,bailiff,kaas-metrics-exporter-playground,event-synchronizer,fpg-insights-playground,cortex-xdr,fcp-rhs,qms-prod,eckoperator,gw-system,fcp-gateway,ads-disk-monitoring,apm-operator,scorpius-mgmt-prod,mtl-p8s,locust-ch-prod,locust-prod"
+      excludedNamespaces: ""
     cpuUtilizationBasedRecommender:
       metricWindowInDays: 28
       stepSec: 30
