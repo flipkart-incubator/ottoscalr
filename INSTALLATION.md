@@ -12,7 +12,7 @@ Ottoscalr can be installed in any kubernetes cluster which meets the prerequisit
 ## Building the image
 
 The following section outlines the docker image build process for the ottoscalr. 
-The following commands builds the image for the platform linux/amd64. Change the TARGETOS and TARGETARCH if it is required to be built for other platform. Run this from the root directory of the project.
+The following commands builds the image for the platform linux/amd64. Change the TARGETOS and TARGETARCH if it is required to be built for other platform. Run this from the root directory of the project. Give your repository and tag for the image which will be built and pushed.
 ```console
 $ TARGETOS=linux;TARGETARCH=amd64;make docker-build docker-push IMG={repository}:{tag}
 ```
