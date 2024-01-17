@@ -11,9 +11,9 @@ Ottoscalr can be installed in any kubernetes cluster which meets the prerequisit
 
 ## Prometheus metrics required 
 
-For ottoscalr to scrap cpu utilization data, cpu redline breach data and pod ready time data, certain metrics should be present in your Promql complaint metrics source. Go through all the [metrics](https://github.com/flipkart-incubator/ottoscalr/wiki/Recommenders#metrics-required) list. These metrics are required for ottoscalr to function. 
+For ottoscalr to scrap cpu utilization data, cpu redline breach data and pod ready time data, certain metrics should be present in your Promql complaint metrics source. Go through all the [metrics required](https://github.com/flipkart-incubator/ottoscalr/wiki/Metric-Sources#metrics-required) list. These metrics are required for ottoscalr to function. 
 
-Based on the above metrics, these are the [promql queries](https://github.com/flipkart-incubator/ottoscalr/wiki/Recommenders#promql-queries) that scrap cpu utilization data, cpu redline breach data and pod ready time data for a particular deployment. Do execute them in your Promql complaint metrics source to make sure that these queries provide the expected values. 
+Based on the above metrics, these are the [promql queries](https://github.com/flipkart-incubator/ottoscalr/wiki/Metric-Sources#promql-queries) that scrap cpu utilization data, cpu redline breach data and pod ready time data for a particular deployment. Do execute them in your Promql complaint metrics source to make sure that these queries provide the expected values. 
 
 ## Building the image
 
