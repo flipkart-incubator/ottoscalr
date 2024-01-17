@@ -7,7 +7,13 @@ Ottoscalr can be installed in any kubernetes cluster which meets the prerequisit
 - Kubernetes cluster (1.24+)
 - kube state metrics (2.8+)
 - Promql compliant metrics source (with historical workload utilization metrics)
+- Kube Prometheus (0.11+)
 
+## Prometheus metrics required 
+
+For ottoscalr to scrap cpu utilization data, cpu redline breach data and pod ready time data, certain metrics should be present in your Promql complaint metrics source. Go through all the [metrics](https://github.com/flipkart-incubator/ottoscalr/wiki/Recommenders#metrics-required) list. These metrics are required for ottoscalr to function. 
+
+Based on the above metrics, these are the [promql queries](https://github.com/flipkart-incubator/ottoscalr/wiki/Recommenders#promql-queries) that scrap cpu utilization data, cpu redline breach data and pod ready time data for a particular deployment. Do execute them in your Promql complaint metrics source to make sure that these queries provide the expected values. 
 
 ## Building the image
 
