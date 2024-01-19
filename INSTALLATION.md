@@ -18,7 +18,7 @@ Based on the above metrics, these are the [promql queries](https://github.com/fl
 ## Building the image
 
 The following section outlines the docker image build process for the ottoscalr. 
-The following commands builds the image for the platform linux/amd64. Change the TARGETOS and TARGETARCH if it is required to be built for other platform. Run this from the root directory of the project.
+The following commands builds the image for the platform linux/amd64. Change the TARGETOS and TARGETARCH if it is required to be built for other platform. Run this from the root directory of the project. Give your repository and tag for the image which will be built and pushed.
 ```console
 $ TARGETOS=linux;TARGETARCH=amd64;make docker-build docker-push IMG={repository}:{tag}
 ```
@@ -88,7 +88,7 @@ their default values.
 |-----------|------|---------|-------------|
 | `ottoscalr.config.metricsScraper.prometheusUrl` | string | `""` | URL where prometheus for the kubernetes cluster is running. Fetching metrics from a single or multiple prometheus instance(give comma separated urls) is supported. Metrics from multple prometheus instances will be aggregated. If you have 2 instances named `p8s1` and `p8s2`, it should be added like `"p8s1,p8s2"`  |
 | `ottoscalr.config.metricsScraper.queryTimeoutSec` | int | `300` | Time in seconds within which the response for any query should be served by the prometheus  |
-| `ottoscalr.config.metricsScraper.querySplitIntervalHr` | int | `24` | The shortest period in hour for which data will be fetched from prometheus. If we are fetching data for 28 days, it will fetch data for this duration at a time and merge all of them. |
+| `ottoscalr.config.metricsScraper.querySplitIntervalHr` | int | `8` | The shortest period in hour for which data will be fetched from prometheus. If we are fetching data for 28 days, it will be divided into `(28*24)/8` intervals and parallely data for all the intervals will be fetched and merged finally. This is required to execute the recommendation workflow faster. |
 | `ottoscalr.config.policyRecommendationController.maxConcurrentReconciles` | int | `1` | Maximum number of concurrent Reconciles of policy recommendation controller which can be run. |
 | `ottoscalr.config.policyRecommendationController.minRequiredReplicas` | int | `3` | The hpa.spec.minReplicas  recommended by the controller will not have replicas minimum than this.  |
 | `ottoscalr.config.policyRecommendationController.policyExpiryAge` | string | `3h` | Target Recommendation will be reached in multiple iterations and through different policies. This is the time after which a policy expires and next policy in the list can be applied. |
