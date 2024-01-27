@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -116,7 +120,7 @@ var _ = Describe("PolicyWatcher controller", func() {
 			ctx := context.TODO()
 
 			policy1 = ottoscaleriov1alpha1.Policy{
-				ObjectMeta: metav1.ObjectMeta{Name: "policy1", Namespace: "defualt"},
+				ObjectMeta: metav1.ObjectMeta{Name: "policy1", Namespace: "default"},
 				Spec: ottoscaleriov1alpha1.PolicySpec{
 					IsDefault:               false,
 					RiskIndex:               10,
@@ -125,7 +129,7 @@ var _ = Describe("PolicyWatcher controller", func() {
 				},
 			}
 			policy2 = ottoscaleriov1alpha1.Policy{
-				ObjectMeta: metav1.ObjectMeta{Name: "policy2", Namespace: "defualt"},
+				ObjectMeta: metav1.ObjectMeta{Name: "policy2", Namespace: "default"},
 				Spec: ottoscaleriov1alpha1.PolicySpec{
 					IsDefault:               true,
 					RiskIndex:               20,
@@ -134,7 +138,7 @@ var _ = Describe("PolicyWatcher controller", func() {
 				},
 			}
 			policy3 = ottoscaleriov1alpha1.Policy{
-				ObjectMeta: metav1.ObjectMeta{Name: "policy3", Namespace: "defualt"},
+				ObjectMeta: metav1.ObjectMeta{Name: "policy3", Namespace: "default"},
 				Spec: ottoscaleriov1alpha1.PolicySpec{
 					IsDefault:               false,
 					RiskIndex:               30,
@@ -229,5 +233,180 @@ var _ = Describe("PolicyWatcher controller", func() {
 			Expect(k8sClient.Delete(ctx, &policy1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &policy3)).Should(Succeed())
 		})
+
+		It("Should update the DefaultPolicyAnnotation on all the Deployments/Rollouts if the present policy annotation is deleted", func() {
+			By("Seeding all policies")
+			ctx := context.TODO()
+
+			policy1 = ottoscaleriov1alpha1.Policy{
+				ObjectMeta: metav1.ObjectMeta{Name: "policy4", Namespace: "default"},
+				Spec: ottoscaleriov1alpha1.PolicySpec{
+					IsDefault:               false,
+					RiskIndex:               10,
+					MinReplicaPercentageCut: 100,
+					TargetUtilization:       15,
+				},
+			}
+			policy2 = ottoscaleriov1alpha1.Policy{
+				ObjectMeta: metav1.ObjectMeta{Name: "policy5", Namespace: "default"},
+				Spec: ottoscaleriov1alpha1.PolicySpec{
+					IsDefault:               false,
+					RiskIndex:               20,
+					MinReplicaPercentageCut: 100,
+					TargetUtilization:       20,
+				},
+			}
+			policy3 = ottoscaleriov1alpha1.Policy{
+				ObjectMeta: metav1.ObjectMeta{Name: "policy6", Namespace: "default"},
+				Spec: ottoscaleriov1alpha1.PolicySpec{
+					IsDefault:               true,
+					RiskIndex:               30,
+					MinReplicaPercentageCut: 100,
+					TargetUtilization:       30,
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, &policy1)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, &policy2)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, &policy3)).Should(Succeed())
+
+			time.Sleep(2 * time.Second)
+
+			//create one deployment with defaultPolicyAnnotation
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deploymentpl",
+					Namespace: "default",
+					Annotations: map[string]string{
+						reco.DefaultPolicyAnnotation: policy2.Name,
+					},
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, deployment)).Should(Succeed())
+			//Create one deployment with defaultPolicyAnnotation
+			deployment1 := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deploymentpl1",
+					Namespace: "default",
+					Annotations: map[string]string{
+						reco.DefaultPolicyAnnotation: policy3.Name,
+					},
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app1",
+						},
+					},
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app1",
+							},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container1",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, deployment1)).Should(Succeed())
+			//Create one rollout with defaultPolicyAnnotation
+			rollout := &rolloutv1alpha1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rolloutpl",
+					Namespace: "default",
+					Annotations: map[string]string{
+						reco.DefaultPolicyAnnotation: policy2.Name,
+					},
+				},
+
+				Spec: rolloutv1alpha1.RolloutSpec{
+
+					Template: v1.PodTemplateSpec{
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rollout)).Should(Succeed())
+			//Create one rollout without defaultPolicyAnnotation
+			rollout1 := &rolloutv1alpha1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rolloutpl1",
+					Namespace: "default",
+				},
+
+				Spec: rolloutv1alpha1.RolloutSpec{
+
+					Template: v1.PodTemplateSpec{
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container1",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, rollout1)).Should(Succeed())
+
+			policyToBeDeleted := ottoscaleriov1alpha1.Policy{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "policy5", Namespace: "default"}, &policyToBeDeleted)).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, &policyToBeDeleted)).Should(Succeed())
+
+			time.Sleep(5 * time.Second)
+			deployment = &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "test-deploymentpl", Namespace: "default"}, deployment)).Should(Succeed())
+			Expect(deployment.Annotations[reco.DefaultPolicyAnnotation]).Should(Equal(policy1.Name))
+			deployment1 = &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "test-deploymentpl1", Namespace: "default"}, deployment1)).Should(Succeed())
+			Expect(deployment1.Annotations[reco.DefaultPolicyAnnotation]).Should(Equal(policy3.Name))
+			rollout = &rolloutv1alpha1.Rollout{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "test-rolloutpl", Namespace: "default"}, rollout)).Should(Succeed())
+			Expect(rollout.Annotations[reco.DefaultPolicyAnnotation]).Should(Equal(policy1.Name))
+			rollout1 = &rolloutv1alpha1.Rollout{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "test-rolloutpl1", Namespace: "default"}, rollout1)).Should(Succeed())
+			//Rollout should have no annotation
+			Expect(rollout1.Annotations[reco.DefaultPolicyAnnotation]).Should(Equal(""))
+		})
+
 	})
 })

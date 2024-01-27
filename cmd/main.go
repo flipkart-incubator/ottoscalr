@@ -278,7 +278,7 @@ func main() {
 
 	policyRecoReconciler, err := controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
-		config.PolicyRecommendationController.MaxConcurrentReconciles, config.PolicyRecommendationController.MinRequiredReplicas, cpuUtilizationBasedRecommender, policyStore, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL), breachAnalyzer)
+		config.PolicyRecommendationController.MaxConcurrentReconciles, config.PolicyRecommendationController.MinRequiredReplicas, cpuUtilizationBasedRecommender, policyStore, reco.NewDefaultPolicyIterator(mgr.GetClient(), *deploymentClientRegistry), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL), breachAnalyzer)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize policy reco reconciler")
 		os.Exit(1)
@@ -343,6 +343,8 @@ func main() {
 
 	if err = controller.NewPolicyWatcher(mgr.GetClient(),
 		mgr.GetScheme(),
+		*deploymentClientRegistry,
+		*policyStore,
 		triggerHandler.QueueAllForExecution,
 		triggerHandler.QueueForExecution).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Policy")

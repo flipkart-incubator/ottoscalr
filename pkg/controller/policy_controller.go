@@ -21,6 +21,9 @@ import (
 	"reflect"
 
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
+	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
+	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
@@ -45,17 +48,23 @@ var policyRefKey = ".spec.policy"
 type PolicyWatcher struct {
 	Client         client.Client
 	Scheme         *runtime.Scheme
+	clientRegistry registry.DeploymentClientRegistry
+	policyStore    policy.PolicyStore
 	requeueAllFunc func()
 	requeueOneFunc func(types.NamespacedName)
 }
 
 func NewPolicyWatcher(client client.Client,
 	scheme *runtime.Scheme,
+	clientsRegistry registry.DeploymentClientRegistry,
+	policyStore policy.PolicyStore,
 	requeueAllFunc func(),
 	requeueOneFunc func(types.NamespacedName),
 ) *PolicyWatcher {
 	return &PolicyWatcher{Client: client,
 		Scheme:         scheme,
+		clientRegistry: clientsRegistry,
+		policyStore:    policyStore,
 		requeueAllFunc: requeueAllFunc,
 		requeueOneFunc: requeueOneFunc,
 	}
@@ -97,7 +106,32 @@ func (r *PolicyWatcher) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	// If the policy is deleted
 	if !policy.ObjectMeta.DeletionTimestamp.IsZero() {
+		//Check all the deployment objects having this policy as a reference in annotations
+		//If the policy is deleted, remove the annotation and set it to next safest policy
+		logger.Info("Policy is deleted. Removing annotation from deployment objects", "policy", policy.Name)
+		for _, clients := range r.clientRegistry.Clients {
+			deploymentObjects, err := clients.GetList(ctx, nil, "", nil)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			for _, deploymentObject := range deploymentObjects {
+				deploymentObjectAnnotations := deploymentObject.GetAnnotations()
+				if val, ok := deploymentObjectAnnotations[reco.DefaultPolicyAnnotation]; ok && val == policy.Name {
+					policies, err := r.policyStore.GetSortedPolicies()
+					if err != nil {
+						return ctrl.Result{}, err
+					}
+					nextSafestPolicyName := findNextSafestPolicyName(policies, policy.Spec.RiskIndex)
+					deploymentObjectAnnotations[reco.DefaultPolicyAnnotation] = nextSafestPolicyName
+					//Patch this annotation change
 
+					if err := r.Client.Update(ctx, deploymentObject); err != nil {
+						return ctrl.Result{}, err
+					}
+
+				}
+			}
+		}
 		// Remove finalizer from the policy
 		policy.ObjectMeta.Finalizers = removeString(policy.ObjectMeta.Finalizers, policyFinalizerName)
 		if err := r.Client.Update(ctx, &policy); err != nil {
@@ -226,4 +260,16 @@ func removeString(slice []string, str string) []string {
 	}
 
 	return result
+}
+
+func findNextSafestPolicyName(policies *ottoscaleriov1alpha1.PolicyList, riskIndex int) string {
+	nextSafestPolicy := &ottoscaleriov1alpha1.Policy{}
+	for _, policy := range policies.Items {
+
+		if policy.Spec.RiskIndex < riskIndex {
+			candidatePolicy := policy
+			nextSafestPolicy = &candidatePolicy
+		}
+	}
+	return nextSafestPolicy.Name
 }

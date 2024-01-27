@@ -91,7 +91,6 @@ func (ps *PolicyStore) GetPreviousPolicyByName(name string) (*v1alpha1.Policy, e
 		log.Println("Error when fetching policies.")
 		return nil, err2
 	}
-
 	for i, policy := range policies.Items {
 		if policy.Name == currentPolicy.Name {
 			if i-1 >= 0 {

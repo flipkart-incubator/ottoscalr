@@ -3,15 +3,17 @@ package registry
 import (
 	"context"
 	"fmt"
+	"strconv"
+
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
 )
 
 var DeploymentGVK = schema.GroupVersionKind{
@@ -132,4 +134,21 @@ func (dc *DeploymentClient) Scale(namespace string, name string, replicas int32)
 		return client.IgnoreNotFound(err)
 	}
 	return nil
+}
+
+func (dc *DeploymentClient) GetList(ctx context.Context, labelSelector labels.Selector, namespace string, fieldSelector fields.Selector) ([]client.Object, error) {
+	deploymentList := &appsv1.DeploymentList{}
+	if err := dc.k8sClient.List(ctx, deploymentList, &client.ListOptions{
+		FieldSelector: fieldSelector,
+		LabelSelector: labelSelector,
+		Namespace:     namespace,
+	}); err != nil {
+		return nil, err
+	}
+	var deploymentObjects []client.Object
+	for _, deployment := range deploymentList.Items {
+		candidateDeployment := deployment
+		deploymentObjects = append(deploymentObjects, &candidateDeployment)
+	}
+	return deploymentObjects, nil
 }
