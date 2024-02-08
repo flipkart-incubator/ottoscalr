@@ -43,7 +43,7 @@ func init() {
 var unableToRecommendError = errors.New("Unable to generate recommendation without any breaches.")
 
 const (
-	ScaledObjectField         = "spec.scaleTargetRef.name"
+	ScaledObjectField         = ".spec.scaleTargetRef.name"
 	OttoscalrMaxPodAnnotation = "ottoscalr.io/max-pods"
 )
 
