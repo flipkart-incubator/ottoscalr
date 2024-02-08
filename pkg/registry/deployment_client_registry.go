@@ -1,7 +1,11 @@
 package registry
 
 import (
+	"context"
 	"fmt"
+
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -9,6 +13,7 @@ type ObjectClient interface {
 	GetObject(namespace string, name string) (client.Object, error)
 	GetObjectType() client.Object
 	GetKind() string
+	GetList(ctx context.Context, labelSelector labels.Selector, namespace string, fieldSelector fields.Selector) ([]client.Object, error)
 	GetMaxReplicaFromAnnotation(namespace string, name string) (int, error)
 	GetContainerResourceLimits(namespace string, name string) (float64, error)
 	GetReplicaCount(namespace string, name string) (int, error)

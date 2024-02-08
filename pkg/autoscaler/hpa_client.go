@@ -43,7 +43,8 @@ func (hc *HPAClient) GetList(ctx context.Context, labelSelector labels.Selector,
 	var result []client.Object
 
 	for _, hpa := range hpas.Items {
-		result = append(result, &hpa)
+		candidateHpa := hpa
+		result = append(result, &candidateHpa)
 	}
 
 	return result, nil

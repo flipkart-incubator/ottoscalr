@@ -3,15 +3,17 @@ package registry
 import (
 	"context"
 	"fmt"
+	"strconv"
+
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
 )
 
 var RolloutGVK = schema.GroupVersionKind{
@@ -107,7 +109,7 @@ func (rc *RolloutClient) GetReplicaCount(namespace string, name string) (int, er
 	if err := rc.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: name}, rolloutObject); err != nil {
 		return 0, err
 	}
-	if rolloutObject.Spec.Replicas == nil  {
+	if rolloutObject.Spec.Replicas == nil {
 		return 0, fmt.Errorf("replica count not present")
 	}
 	return int(*rolloutObject.Spec.Replicas), nil
@@ -132,4 +134,24 @@ func (rc *RolloutClient) Scale(namespace string, name string, replicas int32) er
 		return client.IgnoreNotFound(err)
 	}
 	return nil
+}
+
+func (rc *RolloutClient) GetList(ctx context.Context, labelSelector labels.Selector, namespace string, fieldSelector fields.Selector) ([]client.Object, error) {
+	rollouts := &argov1alpha1.RolloutList{}
+	if err := rc.k8sClient.List(ctx, rollouts, &client.ListOptions{
+		FieldSelector: fieldSelector,
+		LabelSelector: labelSelector,
+		Namespace:     namespace,
+	}); err != nil {
+		return nil, err
+	}
+
+	var result []client.Object
+
+	for _, rollout := range rollouts.Items {
+		candidateRollout := rollout
+		result = append(result, &candidateRollout)
+	}
+
+	return result, nil
 }

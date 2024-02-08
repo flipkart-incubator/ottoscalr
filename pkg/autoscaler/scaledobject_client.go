@@ -57,7 +57,8 @@ func (soc *ScaledobjectClient) GetList(ctx context.Context, labelSelector labels
 	var result []client.Object
 
 	for _, scaledObject := range scaledObjects.Items {
-		result = append(result, &scaledObject)
+		candidateScaledobject := scaledObject
+		result = append(result, &candidateScaledobject)
 	}
 
 	return result, nil

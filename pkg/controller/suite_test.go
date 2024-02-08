@@ -22,6 +22,7 @@ import (
 
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/autoscaler"
+	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/registry"
 	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
@@ -151,8 +152,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&PolicyWatcher{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
+		Client:         k8sManager.GetClient(),
+		Scheme:         k8sManager.GetScheme(),
+		clientRegistry: clientsRegistry,
+		policyStore:    *policy.NewPolicyStore(k8sManager.GetClient()),
 		requeueAllFunc: func() {
 			queuedAllRecos = true
 		},
@@ -168,7 +171,7 @@ var _ = BeforeSuite(func() {
 
 	policyRecoReconciler, err := NewPolicyRecommendationReconciler(k8sManager.GetClient(),
 		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(PolicyRecoWorkflowCtrlName),
-		1, 3, recommender, newFakePolicyStore(), reco.NewDefaultPolicyIterator(k8sManager.GetClient()),
+		1, 3, recommender, newFakePolicyStore(), reco.NewDefaultPolicyIterator(k8sManager.GetClient(), clientsRegistry),
 		reco.NewAgingPolicyIterator(k8sManager.GetClient(), policyAge))
 	Expect(err).NotTo(HaveOccurred())
 	err = policyRecoReconciler.
