@@ -202,10 +202,10 @@ var _ = BeforeSuite(func() {
 	fakeMetricsTransformer = append(fakeMetricsTransformer, &FakeMetricsTransformer{})
 
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
-		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 60*time.Second, logger)
 
 	recommender1 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 600*time.Second, logger)
 
 	recommender2 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
 		metricWindow, fakeScraper1, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, logger)

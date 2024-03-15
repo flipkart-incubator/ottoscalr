@@ -42,6 +42,32 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 		})
 	})
 
+	Describe("findOptimalTargetUtilization with scaleUp behaviour", func() {
+		It("should return the optimal target utilization", func() {
+			dataPoints := []metrics.DataPoint{
+				{Timestamp: time.Now().Add(-10 * time.Minute), Value: 60},
+				{Timestamp: time.Now().Add(-9 * time.Minute), Value: 120},
+				{Timestamp: time.Now().Add(-8 * time.Minute), Value: 140},
+				{Timestamp: time.Now().Add(-7 * time.Minute), Value: 50},
+				{Timestamp: time.Now().Add(-6 * time.Minute), Value: 30},
+			}
+			acl := 5 * time.Minute
+			minTarget := 10
+			maxTarget := 60
+			perPodResources := 8.2
+
+			optimalTarget, min, max, err := recommender.findOptimalHPAConfigurations(
+				dataPoints, acl, minTarget, maxTarget, perPodResources, 24, 1, true, 1, 120)
+
+			fmt.Println(optimalTarget, min, max)
+
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(optimalTarget).To(Equal(33))
+			Expect(min).To(Equal(10))
+			Expect(max).To(Equal(24))
+		})
+	})
+
 	var _ = Describe("SimulateHPA", func() {
 		var (
 			dataPoints        []metrics.DataPoint
@@ -115,6 +141,85 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 
 				_, _, err := recommender.simulateHPA(dataPoints, acl, targetUtilization, 8.2, 24, 12)
 				Expect(err).To(HaveOccurred())
+			})
+		})
+	})
+
+	var _ = Describe("SimulateHPA with scaleUp behaviour (No impact of ScaleDown Stabilization)", func() {
+		var (
+			dataPoints        []metrics.DataPoint
+			acl               time.Duration
+			targetUtilization int
+		)
+
+		BeforeEach(func() {
+
+			t1 := time.Now()
+			dataPoints = []metrics.DataPoint{
+				{
+					Timestamp: t1,
+					Value:     50,
+				},
+				{
+					Timestamp: t1.Add(30 * time.Second),
+					Value:     120,
+				},
+				{
+					Timestamp: t1.Add(60 * time.Second),
+					Value:     50,
+				},
+				{
+					Timestamp: t1.Add(90 * time.Second),
+					Value:     60,
+				},
+				{
+					Timestamp: t1.Add(120 * time.Second),
+					Value:     80,
+				},
+				{
+					Timestamp: t1.Add(150 * time.Second),
+					Value:     120,
+				},
+				{
+					Timestamp: t1.Add(180 * time.Second),
+					Value:     130,
+				},
+				{
+					Timestamp: t1.Add(210 * time.Second),
+					Value:     170,
+				},
+				{
+					Timestamp: t1.Add(240 * time.Second),
+					Value:     100,
+				},
+				{
+					Timestamp: t1.Add(270 * time.Second),
+					Value:     180,
+				},
+				{
+					Timestamp: t1.Add(300 * time.Second),
+					Value:     190,
+				},
+			}
+
+			acl = 0 * time.Second
+			targetUtilization = 60
+		})
+
+		Context("with valid inputs", func() {
+			It("should simulate HPA correctly", func() {
+				simulatedDataPoints, min, err := recommender.simulateHPAWithScaleBehaviours(dataPoints, acl, targetUtilization, 8.2, 32, 12, 5, 120)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(simulatedDataPoints).ToNot(BeNil())
+				Expect(len(simulatedDataPoints)).To(Equal(len(dataPoints)))
+				fmt.Fprintf(GinkgoWriter, "Simulated: %v\n", simulatedDataPoints)
+				expectedSimulatedResources := []float64{83.63999999999999, 83.63999999999999, 118.48999999999998, 83.63999999999999, 83.63999999999999, 83.63999999999999, 118.48999999999998, 118.48999999999998, 118.48999999999998, 118.48999999999998, 153.33999999999997}
+				for i, simulatedDataPoint := range simulatedDataPoints {
+					Expect(simulatedDataPoint.Timestamp).To(Equal(dataPoints[i].Timestamp))
+					Expect(simulatedDataPoint.Value).To(Equal(expectedSimulatedResources[i]))
+				}
+				Expect(min).To(Equal(10))
 			})
 		})
 	})

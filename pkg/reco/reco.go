@@ -332,9 +332,9 @@ func (c *CpuUtilizationBasedRecommender) simulateHPAWithScaleBehaviours(dataPoin
 		}
 
 		newReplicas := math.Min(float64(maxReplicas), math.Max(float64(minReplicas), math.Ceil((100*dp.Value)/float64(targetUtilization)/perPodResources)))
-		recentRecommendations = append(recentRecommendations, ReplicaRecommendation{Timestamp: dp.Timestamp, Replicas: int(newReplicas)})
 
 		if newReplicas < currentReplicas {
+			recentRecommendations = append(recentRecommendations, ReplicaRecommendation{Timestamp: dp.Timestamp, Replicas: int(newReplicas)})
 			newReplicas = c.getMaxRecommendationInStabilizationWindowDuration(dp, recentRecommendations)
 		} else {
 			normalizedNewReplicas := normalizeReplicasWithScaleUpBehaviour(currentReplicas, scaleUpEvents, dp, maxScaleUpPods, periodSecondsDuration)
@@ -347,6 +347,7 @@ func (c *CpuUtilizationBasedRecommender) simulateHPAWithScaleBehaviours(dataPoin
 						replicaChange: newReplicas - currentReplicas,
 					})
 			}
+			recentRecommendations = append(recentRecommendations, ReplicaRecommendation{Timestamp: dp.Timestamp, Replicas: int(newReplicas)})
 		}
 		currentReplicas = newReplicas
 		calculatedMinReplicas = math.Min(calculatedMinReplicas, math.Ceil((100*dp.Value)/float64(targetUtilization)/perPodResources))
