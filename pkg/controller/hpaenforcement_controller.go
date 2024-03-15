@@ -19,8 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
+	"strconv"
+
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	m "github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/go-logr/logr"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
@@ -28,6 +32,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -45,7 +50,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"strconv"
 )
 
 const (
@@ -96,6 +100,7 @@ type HPAEnforcementController struct {
 	client.Client
 	Scheme                  *runtime.Scheme
 	Recorder                record.EventRecorder
+	Scraper                 m.Scraper
 	MaxConcurrentReconciles int
 	isDryRun                *bool
 	ExcludedNamespaces      *[]string
@@ -105,12 +110,13 @@ type HPAEnforcementController struct {
 }
 
 func NewHPAEnforcementController(client client.Client,
-	scheme *runtime.Scheme, recorder record.EventRecorder,
+	scheme *runtime.Scheme, recorder record.EventRecorder, scraper m.Scraper,
 	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int) (*HPAEnforcementController, error) {
 	return &HPAEnforcementController{
 		Client:                  client,
 		Scheme:                  scheme,
 		MaxConcurrentReconciles: maxConcurrentReconciles,
+		Scraper:                 scraper,
 		Recorder:                recorder,
 		isDryRun:                isDryRun,
 		ExcludedNamespaces:      excludedNamespaces,
@@ -275,6 +281,33 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 			},
 		})
 	}
+
+	var advancedConfig *kedaapi.AdvancedConfig
+	if reco.EnableScaleUpBehaviourForHPA(r.Client, workload.GetNamespace(), workload.GetObjectKind().GroupVersionKind().Kind, workload.GetName()) {
+		maxScaleUpPods, _ := reco.GetMaxScaleUpPods(r.Client, workload.GetNamespace(), workload.GetObjectKind().GroupVersionKind().Kind, workload.GetName(), int(max))
+		periodSeconds := int32(reco.DefaultPeriodSecondsForScaleUp) //Default periodSeconds to 600 seconds
+		acl, err := r.Scraper.GetACLByWorkload(workload.GetNamespace(), workload.GetName())
+
+		if err == nil {
+			periodSeconds = int32(math.Min((math.Ceil(acl.Minutes()) * 60), float64(periodSeconds)))
+		}
+		advancedConfig = &kedaapi.AdvancedConfig{
+			HorizontalPodAutoscalerConfig: &kedaapi.HorizontalPodAutoscalerConfig{
+				Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+					ScaleUp: &autoscalingv2.HPAScalingRules{
+						Policies: []autoscalingv2.HPAScalingPolicy{
+							{
+								Type:          autoscalingv2.PodsScalingPolicy,
+								Value:         int32(maxScaleUpPods),
+								PeriodSeconds: periodSeconds,
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
 	if !*r.isDryRun {
 		logger.V(0).Info("Creating/Updating ScaledObject for workload.", "workload", workload.GetName())
 
@@ -303,6 +336,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 				MinReplicaCount: &min,
 				MaxReplicaCount: &max,
 				Triggers:        scaleTriggers,
+				Advanced:        advancedConfig,
 			},
 		}
 		// Add triggers
@@ -316,6 +350,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 				MinReplicaCount: &min,
 				MaxReplicaCount: &max,
 				Triggers:        scaleTriggers,
+				Advanced:        advancedConfig,
 			}
 			return nil
 		}); err != nil {

@@ -2,6 +2,9 @@ package reco
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
@@ -17,8 +20,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -201,16 +202,16 @@ var _ = BeforeSuite(func() {
 	fakeMetricsTransformer = append(fakeMetricsTransformer, &FakeMetricsTransformer{})
 
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
-		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, logger)
 
 	recommender1 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, logger)
 
 	recommender2 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		metricWindow, fakeScraper1, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, logger)
+		metricWindow, fakeScraper1, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, logger)
 
 	recommender3 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		28*24*time.Hour, fakeScraper1, fakeMetricsTransformer, 30*time.Second, minTarget, maxTarget, minPercentageMetricsRequired, logger)
+		28*24*time.Hour, fakeScraper1, fakeMetricsTransformer, 30*time.Second, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, logger)
 
 	safestPolicy = &ottoscaleriov1alpha1.Policy{
 		ObjectMeta: metav1.ObjectMeta{Name: "safest-policy"},

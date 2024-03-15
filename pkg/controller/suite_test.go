@@ -18,7 +18,11 @@ package controller
 
 import (
 	"errors"
+	"time"
+
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
+	m "github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/testutil"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
@@ -28,10 +32,10 @@ import (
 	"golang.org/x/net/context"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"time"
+
+	"testing"
 
 	ctrl "sigs.k8s.io/controller-runtime"
-	"testing"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -56,6 +60,7 @@ var (
 	queuedAllRecos                 = false
 	recommender                    *MockRecommender
 	deploymentTriggerControllerEnv *testutil.TestEnvironment
+	fakeScraper                    m.Scraper
 	excludedNamespaces             []string
 	includedNamespaces             []string
 	hpaEnforcerExcludedNamespaces  *[]string
@@ -158,8 +163,10 @@ var _ = BeforeSuite(func() {
 	hpaEnforcerIncludedNamespaces = new([]string)
 	*hpaEnforcerIsDryRun = falseBool
 	*whitelistMode = falseBool
+
+	fakeScraper = newFakeScraper([]metrics.DataPoint{}, []metrics.DataPoint{}, 150*time.Second)
 	hpaenforcer, err := NewHPAEnforcementController(k8sManager.GetClient(),
-		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName),
+		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName), fakeScraper,
 		1, hpaEnforcerIsDryRun, hpaEnforcerExcludedNamespaces, hpaEnforcerIncludedNamespaces, whitelistMode, 3)
 	Expect(err).NotTo(HaveOccurred())
 	err = hpaenforcer.
@@ -296,6 +303,42 @@ func (ps *FakePolicyStore) GetPolicyByName(name string) (*ottoscaleriov1alpha1.P
 	error) {
 	return &ottoscaleriov1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{
 		Name: name}, Spec: ottoscaleriov1alpha1.PolicySpec{}}, nil
+}
+
+type FakeScraper struct {
+	CPUDataPoints    []metrics.DataPoint
+	BreachDataPoints []metrics.DataPoint
+	WorkloadACL      time.Duration
+}
+
+func newFakeScraper(cpuDataPoints, breaches []metrics.DataPoint, acl time.Duration) *FakeScraper {
+	return &FakeScraper{
+		CPUDataPoints:    cpuDataPoints,
+		BreachDataPoints: breaches,
+		WorkloadACL:      acl,
+	}
+}
+
+func (fs *FakeScraper) GetAverageCPUUtilizationByWorkload(namespace,
+	workload string,
+	start time.Time,
+	end time.Time,
+	step time.Duration) ([]metrics.DataPoint, error) {
+	return fs.CPUDataPoints, nil
+}
+
+func (fs *FakeScraper) GetCPUUtilizationBreachDataPoints(namespace,
+	workloadType,
+	workload string,
+	redLineUtilization float64,
+	start time.Time,
+	end time.Time,
+	step time.Duration) ([]metrics.DataPoint, error) {
+	return fs.BreachDataPoints, nil
+}
+func (fs *FakeScraper) GetACLByWorkload(namespace,
+	workload string) (time.Duration, error) {
+	return fs.WorkloadACL, nil
 }
 
 type MockRecommender struct {

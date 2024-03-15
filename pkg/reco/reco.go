@@ -47,22 +47,34 @@ func init() {
 var unableToRecommendError = errors.New("Unable to generate recommendation without any breaches.")
 
 const (
-	ScaledObjectField         = "spec.scaleTargetRef.name"
-	OttoscalrMaxPodAnnotation = "ottoscalr.io/max-pods"
-	OttoscalrMinPodAnnotation = "ottoscalr.io/min-pods"
+	ScaledObjectField              = "spec.scaleTargetRef.name"
+	OttoscalrMaxPodAnnotation      = "ottoscalr.io/max-pods"
+	OttoscalrMinPodAnnotation      = "ottoscalr.io/min-pods"
+	DefaultPeriodSecondsForScaleUp = 600
 )
 
+type timestampedScaleEvent struct {
+	timestamp     time.Time
+	replicaChange float64
+}
+
+type ReplicaRecommendation struct {
+	Timestamp time.Time
+	Replicas  int
+}
+
 type CpuUtilizationBasedRecommender struct {
-	k8sClient                  client.Client
-	redLineUtil                float64
-	metricWindow               time.Duration
-	scraper                    metrics.Scraper
-	metricsTransformer         []metrics.MetricsTransformer
-	metricStep                 time.Duration
-	minTarget                  int
-	maxTarget                  int
-	metricsPercentageThreshold int
-	logger                     logr.Logger
+	k8sClient                    client.Client
+	redLineUtil                  float64
+	metricWindow                 time.Duration
+	scraper                      metrics.Scraper
+	metricsTransformer           []metrics.MetricsTransformer
+	metricStep                   time.Duration
+	minTarget                    int
+	maxTarget                    int
+	metricsPercentageThreshold   int
+	downScaleStabilizationWindow time.Duration
+	logger                       logr.Logger
 }
 
 func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
@@ -73,19 +85,20 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 	metricStep time.Duration,
 	minTarget int,
 	maxTarget int,
-	metricsPercentageThreshold int,
+	metricsPercentageThreshold int, downScaleStabilizationWindow time.Duration,
 	logger logr.Logger) *CpuUtilizationBasedRecommender {
 	return &CpuUtilizationBasedRecommender{
-		k8sClient:                  k8sClient,
-		redLineUtil:                redLineUtil,
-		metricWindow:               metricWindow,
-		scraper:                    scraper,
-		metricsTransformer:         metricsTransformer,
-		metricStep:                 metricStep,
-		minTarget:                  minTarget,
-		maxTarget:                  maxTarget,
-		metricsPercentageThreshold: metricsPercentageThreshold,
-		logger:                     logger,
+		k8sClient:                    k8sClient,
+		redLineUtil:                  redLineUtil,
+		metricWindow:                 metricWindow,
+		scraper:                      scraper,
+		metricsTransformer:           metricsTransformer,
+		metricStep:                   metricStep,
+		minTarget:                    minTarget,
+		maxTarget:                    maxTarget,
+		metricsPercentageThreshold:   metricsPercentageThreshold,
+		downScaleStabilizationWindow: downScaleStabilizationWindow,
+		logger:                       logger,
 	}
 }
 
@@ -150,11 +163,27 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		return nil, err
 	}
 
+	enableScaleUpBehaviour := EnableScaleUpBehaviourForHPA(c.k8sClient, workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	var maxScaleUpPods int
+	var periodSeconds int
+	if enableScaleUpBehaviour {
+		maxScaleUpPods, err = GetMaxScaleUpPods(c.k8sClient, workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name, workloadMaxReplicas)
+		if err != nil {
+			c.logger.Error(err, "Error while getting maxScaleUpPods")
+			return nil, err
+		}
+		periodSeconds = int(math.Min((math.Ceil(acl.Minutes()) * 60), float64(DefaultPeriodSecondsForScaleUp)))
+		if err != nil {
+			c.logger.Error(err, "Error while getting periodSeconds")
+			return nil, err
+		}
+	}
+
 	optimalTargetUtil, minReplicas, maxReplicas, err := c.findOptimalHPAConfigurations(dataPoints,
 		acl,
 		c.minTarget,
 		c.maxTarget,
-		perPodResources, workloadMaxReplicas, workloadMinReplicas)
+		perPodResources, workloadMaxReplicas, workloadMinReplicas, enableScaleUpBehaviour, maxScaleUpPods, periodSeconds)
 	if err != nil {
 		if errors.Is(err, unableToRecommendError) {
 			return &v1alpha1.HPAConfiguration{Min: workloadMaxReplicas, Max: workloadMaxReplicas, TargetMetricValue: c.minTarget}, nil
@@ -244,6 +273,112 @@ func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPo
 	return simulatedDataPoints, int(calculatedMinReplicas), nil
 }
 
+func (c *CpuUtilizationBasedRecommender) simulateHPAWithScaleBehaviours(dataPoints []metrics.DataPoint,
+	acl time.Duration,
+	targetUtilization int,
+	perPodResources float64, maxReplicas int, minReplicas int, maxScaleUpPods int, periodSeconds int) ([]metrics.DataPoint, int, error) {
+
+	targetUtilization = int(math.Floor(float64(targetUtilization) * 1.1))
+	periodSecondsDuration := time.Duration(periodSeconds) * time.Second
+
+	var scaleUpEvents []timestampedScaleEvent
+	var recentRecommendations []ReplicaRecommendation
+
+	if len(dataPoints) == 0 {
+		return []metrics.DataPoint{}, 0, nil
+	}
+	if targetUtilization < 1 || targetUtilization > 100 {
+		return []metrics.DataPoint{}, 0, errors.New(fmt.Sprintf("Invalid value of target utilization: %v."+
+			" Value should be between 1 and 100", targetUtilization))
+	}
+
+	simulatedDataPoints := make([]metrics.DataPoint, len(dataPoints))
+
+	currentReplicas := math.Min(float64(maxReplicas), math.Max(float64(minReplicas), math.Ceil((dataPoints[0].Value*100)/float64(targetUtilization)/perPodResources)))
+	calculatedMinReplicas := math.Ceil((dataPoints[0].Value * 100) / float64(targetUtilization) / perPodResources)
+	currentResources := currentReplicas * perPodResources
+	readyResources := currentResources
+
+	recentRecommendations = append(recentRecommendations, ReplicaRecommendation{Timestamp: dataPoints[0].Timestamp, Replicas: int(currentReplicas)})
+
+	simulatedDataPoints[0] = metrics.DataPoint{Timestamp: dataPoints[0].Timestamp,
+		Value: currentResources * c.redLineUtil}
+
+	//stores the list of all upscale events with a time delay of acl added.
+	readyResourcesTimerList := []TimerEvent{}
+
+	for i, dp := range dataPoints[1:] {
+
+		// Consume timers for all upscale events before the current time.
+		for len(readyResourcesTimerList) > 0 && !dp.Timestamp.Before(readyResourcesTimerList[0].Timestamp) {
+			readyResources += readyResourcesTimerList[0].Delta
+			readyResourcesTimerList = readyResourcesTimerList[1:]
+		}
+
+		//Trim the scale events outside of the periodSeconds
+		cutoff := dp.Timestamp.Add(-periodSecondsDuration)
+		for _, event := range scaleUpEvents {
+			if event.timestamp.Before(cutoff) {
+				scaleUpEvents = scaleUpEvents[1:]
+			}
+		}
+
+		//Trim the recent recommendations outside of the stabilization window
+		stabilizationWindowCutoff := dp.Timestamp.Add(-c.downScaleStabilizationWindow)
+		for _, rec := range recentRecommendations {
+			if rec.Timestamp.Before(stabilizationWindowCutoff) {
+				recentRecommendations = recentRecommendations[1:]
+			}
+		}
+
+		newReplicas := math.Min(float64(maxReplicas), math.Max(float64(minReplicas), math.Ceil((100*dp.Value)/float64(targetUtilization)/perPodResources)))
+		recentRecommendations = append(recentRecommendations, ReplicaRecommendation{Timestamp: dp.Timestamp, Replicas: int(newReplicas)})
+
+		if newReplicas < currentReplicas {
+			newReplicas = c.getMaxRecommendationInStabilizationWindowDuration(dp, recentRecommendations)
+		} else {
+			normalizedNewReplicas := normalizeReplicasWithScaleUpBehaviour(currentReplicas, scaleUpEvents, dp, maxScaleUpPods, periodSecondsDuration)
+
+			newReplicas = math.Min(newReplicas, normalizedNewReplicas)
+			if newReplicas > currentReplicas {
+				scaleUpEvents = append(scaleUpEvents,
+					timestampedScaleEvent{
+						timestamp:     dp.Timestamp,
+						replicaChange: newReplicas - currentReplicas,
+					})
+			}
+		}
+		currentReplicas = newReplicas
+		calculatedMinReplicas = math.Min(calculatedMinReplicas, math.Ceil((100*dp.Value)/float64(targetUtilization)/perPodResources))
+
+		newResources := newReplicas * perPodResources
+		currentResources = newResources
+
+		if newResources > readyResources {
+			delta := newResources - readyResources
+
+			//subtract delta that is already in queue.
+			for _, timer := range readyResourcesTimerList {
+				delta -= timer.Delta
+			}
+
+			if delta > 0 {
+				readyReplicasTimer := TimerEvent{Timestamp: dp.Timestamp.Add(acl), Delta: delta}
+				readyResourcesTimerList = append(readyResourcesTimerList, readyReplicasTimer)
+			}
+
+		} else {
+			readyResources = newResources
+			readyResourcesTimerList = []TimerEvent{}
+		}
+
+		availableResources := readyResources * c.redLineUtil
+		simulatedDataPoints[i+1] = metrics.DataPoint{Timestamp: dp.Timestamp, Value: availableResources}
+	}
+
+	return simulatedDataPoints, int(calculatedMinReplicas), nil
+}
+
 func (c *CpuUtilizationBasedRecommender) hasNoBreachOccurred(original, simulated []metrics.DataPoint) bool {
 	for i := range original {
 		if original[i].Value > simulated[i].Value {
@@ -257,7 +392,7 @@ func (c *CpuUtilizationBasedRecommender) findOptimalHPAConfigurations(dataPoints
 	acl time.Duration,
 	minTarget,
 	maxTarget int,
-	perPodResources float64, maxReplicas int, minReplicas int) (int, int, int, error) {
+	perPodResources float64, maxReplicas int, minReplicas int, enableScaleUpBehaviour bool, maxScaleUpPods int, periodSeconds int) (int, int, int, error) {
 
 	optimalTargetThreshold := 0
 	optimalMin := 0
@@ -272,7 +407,11 @@ func (c *CpuUtilizationBasedRecommender) findOptimalHPAConfigurations(dataPoints
 			mid := low + (high-low)/2
 			target := mid
 			var err error
-			simulatedHPAList, calculatedMin, err = c.simulateHPA(dataPoints, acl, target, perPodResources, maxReplicas, minReplicas)
+			if !enableScaleUpBehaviour {
+				simulatedHPAList, calculatedMin, err = c.simulateHPA(dataPoints, acl, target, perPodResources, maxReplicas, minReplicas)
+			} else {
+				simulatedHPAList, calculatedMin, err = c.simulateHPAWithScaleBehaviours(dataPoints, acl, target, perPodResources, maxReplicas, minReplicas, maxScaleUpPods, periodSeconds)
+			}
 			if err != nil {
 				c.logger.Error(err, "Error while simulating HPA")
 				return -1, minReplicas, maxReplicas, err
@@ -459,4 +598,34 @@ func (c *CpuUtilizationBasedRecommender) isMetricsAboveThreshold(dataPoints []me
 		return false
 	}
 	return true
+}
+
+func normalizeReplicasWithScaleUpBehaviour(currentReplicas float64, scaleUpEvents []timestampedScaleEvent, dp metrics.DataPoint, maxScaleUpPods int, periodSecondsDuration time.Duration) float64 {
+	cutoff := dp.Timestamp.Add(-periodSecondsDuration)
+	var replicasAddedInCurrentPeriod float64
+	for _, events := range scaleUpEvents {
+		if events.timestamp.After(cutoff) {
+			replicasAddedInCurrentPeriod += events.replicaChange
+		}
+	}
+
+	periodStartReplicas := currentReplicas - replicasAddedInCurrentPeriod
+	maximumAllowedReplicas := periodStartReplicas + float64(maxScaleUpPods)
+
+	return maximumAllowedReplicas
+
+}
+
+func (c *CpuUtilizationBasedRecommender) getMaxRecommendationInStabilizationWindowDuration(dp metrics.DataPoint, recentRecommendations []ReplicaRecommendation) float64 {
+	stabilizationWindowCutoff := dp.Timestamp.Add(-c.downScaleStabilizationWindow)
+	max := 0.0
+	for _, rec := range recentRecommendations[0:] {
+		if rec.Timestamp.After(stabilizationWindowCutoff) {
+			if float64(rec.Replicas) > max {
+				max = float64(rec.Replicas)
+			}
+		}
+	}
+
+	return max
 }
