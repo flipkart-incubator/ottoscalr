@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
+
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
@@ -21,7 +23,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"time"
 )
 
 const (
@@ -135,7 +136,24 @@ func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
 			newMinPods, _ = newObj.GetAnnotations()[reco.OttoscalrMinPodAnnotation]
 			oldMinPods, _ = oldObj.GetAnnotations()[reco.OttoscalrMinPodAnnotation]
 
-			if newMaxPods != oldMaxPods || newMinPods != oldMinPods {
+			newEnableScaleUpBehaviourValue, newHasEnableScaleUpBehaviourAnnotation := newObj.GetAnnotations()[reco.OttoscalrEnableScaleUpBehaviourAnnotation]
+			oldEnableScaleUpBehaviourValue, oldHasEnableScaleUpBehaviourAnnotation := oldObj.GetAnnotations()[reco.OttoscalrEnableScaleUpBehaviourAnnotation]
+
+			var newMaxScaleUpPods, oldMaxScaleUpPods string
+			newMaxScaleUpPods, _ = newObj.GetAnnotations()[reco.OttoscalrMaxScaleUpPodsAnnotation]
+			oldMaxScaleUpPods, _ = oldObj.GetAnnotations()[reco.OttoscalrMaxScaleUpPodsAnnotation]
+
+			// Check if a true annotation was added
+			if newHasEnableScaleUpBehaviourAnnotation && !oldHasEnableScaleUpBehaviourAnnotation && newEnableScaleUpBehaviourValue == "true" {
+				return true
+			}
+
+			// Check if a true annotation was removed
+			if oldHasEnableScaleUpBehaviourAnnotation && !newHasEnableScaleUpBehaviourAnnotation && oldEnableScaleUpBehaviourValue == "true" {
+				return true
+			}
+
+			if newMaxPods != oldMaxPods || newMinPods != oldMinPods || newMaxScaleUpPods != oldMaxScaleUpPods {
 				return true
 			}
 
