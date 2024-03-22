@@ -335,7 +335,7 @@ func (c *CpuUtilizationBasedRecommender) simulateHPAWithScaleBehaviours(dataPoin
 
 		if newReplicas < currentReplicas {
 			recentRecommendations = append(recentRecommendations, ReplicaRecommendation{Timestamp: dp.Timestamp, Replicas: int(newReplicas)})
-			newReplicas = c.getMaxRecommendationInStabilizationWindowDuration(dp, recentRecommendations)
+			newReplicas = math.Max(newReplicas, c.getMaxRecommendationInStabilizationWindowDuration(dp, recentRecommendations))
 		} else {
 			normalizedNewReplicas := normalizeReplicasWithScaleUpBehaviour(currentReplicas, scaleUpEvents, dp, maxScaleUpPods, periodSecondsDuration)
 
