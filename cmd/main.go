@@ -248,6 +248,11 @@ func main() {
 		metricsTransformer = append(metricsTransformer, outlierInterpolatorTransformer)
 	}
 
+	downScaleStabilizationWindowInSeconds := 300
+	if config.CpuUtilizationBasedRecommender.DownScaleStabilizationWindowInSeconds == 0 {
+		downScaleStabilizationWindowInSeconds = config.CpuUtilizationBasedRecommender.DownScaleStabilizationWindowInSeconds
+	}
+
 	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
@@ -257,7 +262,7 @@ func main() {
 		config.CpuUtilizationBasedRecommender.MinTarget,
 		config.CpuUtilizationBasedRecommender.MaxTarget,
 		config.CpuUtilizationBasedRecommender.MetricsPercentageThreshold,
-		time.Duration(config.CpuUtilizationBasedRecommender.DownScaleStabilizationWindowInSeconds)*time.Second,
+		time.Duration(downScaleStabilizationWindowInSeconds)*time.Second,
 		logger)
 
 	breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
