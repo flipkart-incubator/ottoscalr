@@ -14,12 +14,11 @@ import (
 )
 
 const (
-	OttoscalrMaxScaleUpPodsAnnotation             = "ottoscalr.io/max-scale-up-pods"
-	OttoscalrMaxScaleUpPodsDefaultValuePercentage = 15
-	OttoscalrEnableScaleUpBehaviourAnnotation     = "ottoscalr.io/enable-scale-up-behaviour"
+	OttoscalrMaxScaleUpPodsAnnotation         = "ottoscalr.io/max-scale-up-pods"
+	OttoscalrEnableScaleUpBehaviourAnnotation = "ottoscalr.io/enable-scale-up-behaviour"
 )
 
-func GetMaxScaleUpPods(k8sClient client.Client, namespace string, objectKind string, objectName string, maxReplicas int) (int, error) {
+func GetMaxScaleUpPods(k8sClient client.Client, namespace string, objectKind string, objectName string, maxReplicas int, defaultMaxScaleUpPodsPercentage int) (int, error) {
 	var obj client.Object
 	switch objectKind {
 	case "Deployment":
@@ -43,7 +42,7 @@ func GetMaxScaleUpPods(k8sClient client.Client, namespace string, objectKind str
 		}
 		return maxScaleUpPods, nil
 	}
-	defaultMaxScaleUpPods := int(math.Ceil(float64(maxReplicas) * (float64(OttoscalrMaxScaleUpPodsDefaultValuePercentage) / 100)))
+	defaultMaxScaleUpPods := int(math.Ceil(float64(maxReplicas) * (float64(defaultMaxScaleUpPodsPercentage) / 100)))
 
 	var maxSurge int
 	var maxUnavailable int
@@ -98,7 +97,11 @@ func GetMaxScaleUpPods(k8sClient client.Client, namespace string, objectKind str
 	return int(math.Max(float64(maxScaleUpPods), float64(defaultMaxScaleUpPods))), nil
 }
 
-func EnableScaleUpBehaviourForHPA(k8sClient client.Client, namespace string, objectKind string, objectName string) bool {
+func EnableScaleUpBehaviourForHPA(k8sClient client.Client, namespace string, objectKind string, objectName string, enableScaleUpBehaviourForAll *bool) bool {
+
+	if *enableScaleUpBehaviourForAll {
+		return true
+	}
 	var obj client.Object
 	switch objectKind {
 	case "Deployment":

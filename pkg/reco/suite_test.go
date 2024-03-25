@@ -51,6 +51,7 @@ var (
 	mockRecommender              *Recommender
 	mockPolicyIterator           *PolicyIterator
 	mockPolicy                   *Policy
+	enableScaleUpBehaviourForAll *bool
 )
 
 var safestPolicy, policy1, policy2 *ottoscaleriov1alpha1.Policy
@@ -201,17 +202,21 @@ var _ = BeforeSuite(func() {
 
 	fakeMetricsTransformer = append(fakeMetricsTransformer, &FakeMetricsTransformer{})
 
+	enableScaleUpBehaviourForAll = new(bool)
+	var falseBool = false
+	*enableScaleUpBehaviourForAll = falseBool
+
 	recommender = NewCpuUtilizationBasedRecommender(k8sClient, redLineUtil,
-		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 60*time.Second, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 60*time.Second, 600, 15, enableScaleUpBehaviourForAll, logger)
 
 	recommender1 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 600*time.Second, logger)
+		metricWindow, fakeScraper, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 600*time.Second, 600, 15, enableScaleUpBehaviourForAll, logger)
 
 	recommender2 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		metricWindow, fakeScraper1, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, logger)
+		metricWindow, fakeScraper1, fakeMetricsTransformer, metricStep, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, 600, 15, enableScaleUpBehaviourForAll, logger)
 
 	recommender3 = NewCpuUtilizationBasedRecommender(k8sManager.GetClient(), redLineUtil,
-		28*24*time.Hour, fakeScraper1, fakeMetricsTransformer, 30*time.Second, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, logger)
+		28*24*time.Hour, fakeScraper1, fakeMetricsTransformer, 30*time.Second, minTarget, maxTarget, minPercentageMetricsRequired, 300*time.Second, 600, 15, enableScaleUpBehaviourForAll, logger)
 
 	safestPolicy = &ottoscaleriov1alpha1.Policy{
 		ObjectMeta: metav1.ObjectMeta{Name: "safest-policy"},

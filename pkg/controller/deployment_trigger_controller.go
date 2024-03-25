@@ -136,24 +136,14 @@ func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
 			newMinPods, _ = newObj.GetAnnotations()[reco.OttoscalrMinPodAnnotation]
 			oldMinPods, _ = oldObj.GetAnnotations()[reco.OttoscalrMinPodAnnotation]
 
-			newEnableScaleUpBehaviourValue, newHasEnableScaleUpBehaviourAnnotation := newObj.GetAnnotations()[reco.OttoscalrEnableScaleUpBehaviourAnnotation]
-			oldEnableScaleUpBehaviourValue, oldHasEnableScaleUpBehaviourAnnotation := oldObj.GetAnnotations()[reco.OttoscalrEnableScaleUpBehaviourAnnotation]
+			newEnableScaleUpBehaviourValue, _ := newObj.GetAnnotations()[reco.OttoscalrEnableScaleUpBehaviourAnnotation]
+			oldEnableScaleUpBehaviourValue, _ := oldObj.GetAnnotations()[reco.OttoscalrEnableScaleUpBehaviourAnnotation]
 
 			var newMaxScaleUpPods, oldMaxScaleUpPods string
 			newMaxScaleUpPods, _ = newObj.GetAnnotations()[reco.OttoscalrMaxScaleUpPodsAnnotation]
 			oldMaxScaleUpPods, _ = oldObj.GetAnnotations()[reco.OttoscalrMaxScaleUpPodsAnnotation]
 
-			// Check if a true annotation was added
-			if newHasEnableScaleUpBehaviourAnnotation && !oldHasEnableScaleUpBehaviourAnnotation && newEnableScaleUpBehaviourValue == "true" {
-				return true
-			}
-
-			// Check if a true annotation was removed
-			if oldHasEnableScaleUpBehaviourAnnotation && !newHasEnableScaleUpBehaviourAnnotation && oldEnableScaleUpBehaviourValue == "true" {
-				return true
-			}
-
-			if newMaxPods != oldMaxPods || newMinPods != oldMinPods || newMaxScaleUpPods != oldMaxScaleUpPods {
+			if newMaxPods != oldMaxPods || newMinPods != oldMinPods || newMaxScaleUpPods != oldMaxScaleUpPods || newEnableScaleUpBehaviourValue != oldEnableScaleUpBehaviourValue {
 				return true
 			}
 

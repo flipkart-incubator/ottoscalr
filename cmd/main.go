@@ -112,12 +112,11 @@ type Config struct {
 	} `yaml:"policyRecommendationRegistrar"`
 
 	CpuUtilizationBasedRecommender struct {
-		MetricWindowInDays                    int `yaml:"metricWindowInDays"`
-		StepSec                               int `yaml:"stepSec"`
-		MinTarget                             int `yaml:"minTarget"`
-		MaxTarget                             int `yaml:"minTarget"`
-		MetricsPercentageThreshold            int `yaml:"metricsPercentageThreshold"`
-		DownScaleStabilizationWindowInSeconds int `yaml:"downScaleStabilizationWindowInSeconds"`
+		MetricWindowInDays         int `yaml:"metricWindowInDays"`
+		StepSec                    int `yaml:"stepSec"`
+		MinTarget                  int `yaml:"minTarget"`
+		MaxTarget                  int `yaml:"minTarget"`
+		MetricsPercentageThreshold int `yaml:"metricsPercentageThreshold"`
 	} `yaml:"cpuUtilizationBasedRecommender"`
 	MetricIngestionTime      float64 `yaml:"metricIngestionTime"`
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
@@ -130,6 +129,13 @@ type Config struct {
 		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
 		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
+
+	HPAScalingPolicies struct {
+		EnableScaleUpBehaviourForAll          *bool `yaml:"enableScaleUpBehaviourForAll"`
+		DownScaleStabilizationWindowInSeconds int   `yaml:"downScaleStabilizationWindowInSeconds"`
+		DefaultScaleUpPeriodSeconds           int   `yaml:"defaultScaleUpPeriodSeconds"`
+		DefaultMaxScaleUpPodsInPercentage     int   `yaml:"defaultMaxScaleUpPodsInPercentage"`
+	} `yaml:"hpaScalingPolicies"`
 }
 
 func main() {
@@ -249,8 +255,8 @@ func main() {
 	}
 
 	downScaleStabilizationWindowInSeconds := 300
-	if config.CpuUtilizationBasedRecommender.DownScaleStabilizationWindowInSeconds == 0 {
-		downScaleStabilizationWindowInSeconds = config.CpuUtilizationBasedRecommender.DownScaleStabilizationWindowInSeconds
+	if config.HPAScalingPolicies.DownScaleStabilizationWindowInSeconds != 0 {
+		downScaleStabilizationWindowInSeconds = config.HPAScalingPolicies.DownScaleStabilizationWindowInSeconds
 	}
 
 	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
@@ -263,6 +269,9 @@ func main() {
 		config.CpuUtilizationBasedRecommender.MaxTarget,
 		config.CpuUtilizationBasedRecommender.MetricsPercentageThreshold,
 		time.Duration(downScaleStabilizationWindowInSeconds)*time.Second,
+		config.HPAScalingPolicies.DefaultScaleUpPeriodSeconds,
+		config.HPAScalingPolicies.DefaultMaxScaleUpPodsInPercentage,
+		config.HPAScalingPolicies.EnableScaleUpBehaviourForAll,
 		logger)
 
 	breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
@@ -316,7 +325,8 @@ func main() {
 
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName), scraper,
-		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas)
+		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas,
+		config.HPAScalingPolicies.DefaultScaleUpPeriodSeconds, config.HPAScalingPolicies.DefaultMaxScaleUpPodsInPercentage, config.HPAScalingPolicies.EnableScaleUpBehaviourForAll)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
 		os.Exit(1)

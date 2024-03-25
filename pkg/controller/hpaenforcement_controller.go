@@ -25,7 +25,7 @@ import (
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	m "github.com/flipkart-incubator/ottoscalr/pkg/metrics"
-	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
+	recoUtils "github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/go-logr/logr"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/prometheus/client_golang/prometheus"
@@ -98,31 +98,38 @@ func init() {
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
 type HPAEnforcementController struct {
 	client.Client
-	Scheme                  *runtime.Scheme
-	Recorder                record.EventRecorder
-	Scraper                 m.Scraper
-	MaxConcurrentReconciles int
-	isDryRun                *bool
-	ExcludedNamespaces      *[]string
-	IncludedNamespaces      *[]string
-	WhitelistMode           *bool
-	MinRequiredReplicas     int
+	Scheme                             *runtime.Scheme
+	Recorder                           record.EventRecorder
+	Scraper                            m.Scraper
+	MaxConcurrentReconciles            int
+	isDryRun                           *bool
+	ExcludedNamespaces                 *[]string
+	IncludedNamespaces                 *[]string
+	WhitelistMode                      *bool
+	MinRequiredReplicas                int
+	defaultScaleUpscaleUpPeriodSeconds int
+	defaultMaxScaleUpPodsPercentage    int
+	enableScaleUpBehaviourForAll       *bool
 }
 
 func NewHPAEnforcementController(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder, scraper m.Scraper,
-	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int) (*HPAEnforcementController, error) {
+	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int,
+	defaultScaleUpscaleUpPeriodSeconds int, defaultMaxScaleUpPodsPercentage int, enableScaleUpBehaviourForAll *bool) (*HPAEnforcementController, error) {
 	return &HPAEnforcementController{
-		Client:                  client,
-		Scheme:                  scheme,
-		MaxConcurrentReconciles: maxConcurrentReconciles,
-		Scraper:                 scraper,
-		Recorder:                recorder,
-		isDryRun:                isDryRun,
-		ExcludedNamespaces:      excludedNamespaces,
-		IncludedNamespaces:      includedNamespaces,
-		WhitelistMode:           whitelistMode,
-		MinRequiredReplicas:     minRequiredReplicas,
+		Client:                             client,
+		Scheme:                             scheme,
+		MaxConcurrentReconciles:            maxConcurrentReconciles,
+		Scraper:                            scraper,
+		Recorder:                           recorder,
+		isDryRun:                           isDryRun,
+		ExcludedNamespaces:                 excludedNamespaces,
+		IncludedNamespaces:                 includedNamespaces,
+		WhitelistMode:                      whitelistMode,
+		MinRequiredReplicas:                minRequiredReplicas,
+		defaultScaleUpscaleUpPeriodSeconds: defaultScaleUpscaleUpPeriodSeconds,
+		defaultMaxScaleUpPodsPercentage:    defaultMaxScaleUpPodsPercentage,
+		enableScaleUpBehaviourForAll:       enableScaleUpBehaviourForAll,
 	}, nil
 }
 
@@ -283,13 +290,12 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	var advancedConfig *kedaapi.AdvancedConfig
-	if reco.EnableScaleUpBehaviourForHPA(r.Client, workload.GetNamespace(), workload.GetObjectKind().GroupVersionKind().Kind, workload.GetName()) {
-		maxScaleUpPods, _ := reco.GetMaxScaleUpPods(r.Client, workload.GetNamespace(), workload.GetObjectKind().GroupVersionKind().Kind, workload.GetName(), int(max))
-		periodSeconds := int32(reco.DefaultPeriodSecondsForScaleUp) //Default periodSeconds to 600 seconds
+	if recoUtils.EnableScaleUpBehaviourForHPA(r.Client, workload.GetNamespace(), workload.GetObjectKind().GroupVersionKind().Kind, workload.GetName(), r.enableScaleUpBehaviourForAll) {
+		maxScaleUpPods, _ := recoUtils.GetMaxScaleUpPods(r.Client, workload.GetNamespace(), workload.GetObjectKind().GroupVersionKind().Kind, workload.GetName(), int(max), r.defaultMaxScaleUpPodsPercentage)
+		scaleUpPeriodSeconds := int32(r.defaultScaleUpscaleUpPeriodSeconds)
 		acl, err := r.Scraper.GetACLByWorkload(workload.GetNamespace(), workload.GetName())
-
 		if err == nil {
-			periodSeconds = int32(math.Min((math.Ceil(acl.Minutes()) * 60), float64(periodSeconds)))
+			scaleUpPeriodSeconds = int32(math.Min((math.Ceil(acl.Minutes()) * 60), float64(scaleUpPeriodSeconds)))
 		}
 		advancedConfig = &kedaapi.AdvancedConfig{
 			HorizontalPodAutoscalerConfig: &kedaapi.HorizontalPodAutoscalerConfig{
@@ -299,7 +305,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 							{
 								Type:          autoscalingv2.PodsScalingPolicy,
 								Value:         int32(maxScaleUpPods),
-								PeriodSeconds: periodSeconds,
+								PeriodSeconds: scaleUpPeriodSeconds,
 							},
 						},
 					},
@@ -457,35 +463,6 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 				return false
 			}
 			return true
-		},
-		GenericFunc: func(e event.GenericEvent) bool {
-			return false
-		},
-	}
-
-	_ = predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			return true
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			return false
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			newObj := e.ObjectNew
-			oldObj := e.ObjectOld
-
-			var newMaxPods, oldMaxPods string
-			newMaxPods, _ = newObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
-			oldMaxPods, _ = oldObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
-
-			annotationChangedPredicate := predicate.AnnotationChangedPredicate{}
-
-			if annotationChangedPredicate.Update(e) {
-				if newMaxPods != oldMaxPods {
-					return true
-				}
-			}
-			return false
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
 			return false

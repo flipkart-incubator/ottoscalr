@@ -91,11 +91,11 @@ var _ = Describe("UtilFunctions", func() {
 			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
 		})
 		It("Should return correct maxScaleUpPods ", func() {
-			maxScaleUpPods, err := GetMaxScaleUpPods(k8sClient, "default", "Rollout", "test-rollout", 100)
+			maxScaleUpPods, err := GetMaxScaleUpPods(k8sClient, "default", "Rollout", "test-rollout", 100, 15)
 			Expect(err).To(BeNil())
 			Expect(maxScaleUpPods).To(Equal(50))
 			//Should be default value 15 as maxSurge is 10 and maxUnavailable is 12
-			maxScaleUpPods, err = GetMaxScaleUpPods(k8sClient, "default", "Deployment", "test-deployment", 100)
+			maxScaleUpPods, err = GetMaxScaleUpPods(k8sClient, "default", "Deployment", "test-deployment", 100, 15)
 			Expect(err).To(BeNil())
 			Expect(maxScaleUpPods).To(Equal(40))
 		})
@@ -188,11 +188,11 @@ var _ = Describe("UtilFunctions", func() {
 			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
 		})
 		It("Should return correct maxScaleUpPods ", func() {
-			maxScaleUpPods, err := GetMaxScaleUpPods(k8sClient, "default", "Rollout", "test-rollout", 100)
+			maxScaleUpPods, err := GetMaxScaleUpPods(k8sClient, "default", "Rollout", "test-rollout", 100, 15)
 			Expect(err).To(BeNil())
 			Expect(maxScaleUpPods).To(Equal(30))
 			//Should be default value 15 as maxSurge is 10 and maxUnavailable is 12
-			maxScaleUpPods, err = GetMaxScaleUpPods(k8sClient, "default", "Deployment", "test-deployment", 100)
+			maxScaleUpPods, err = GetMaxScaleUpPods(k8sClient, "default", "Deployment", "test-deployment", 100, 15)
 			Expect(err).To(BeNil())
 			Expect(maxScaleUpPods).To(Equal(15))
 		})
@@ -286,10 +286,10 @@ var _ = Describe("UtilFunctions", func() {
 			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
 		})
 		It("Should return correct maxScaleUpPods ", func() {
-			maxScaleUpPods, err := GetMaxScaleUpPods(k8sClient, "default", "Rollout", "test-rollout", 200)
+			maxScaleUpPods, err := GetMaxScaleUpPods(k8sClient, "default", "Rollout", "test-rollout", 200, 15)
 			Expect(err).To(BeNil())
 			Expect(maxScaleUpPods).To(Equal(60))
-			maxScaleUpPods, err = GetMaxScaleUpPods(k8sClient, "default", "Deployment", "test-deployment", 200)
+			maxScaleUpPods, err = GetMaxScaleUpPods(k8sClient, "default", "Deployment", "test-deployment", 200, 15)
 			Expect(err).To(BeNil())
 			Expect(maxScaleUpPods).To(Equal(40))
 		})
@@ -360,12 +360,12 @@ var _ = Describe("UtilFunctions", func() {
 		})
 		It("Should return correct maxScaleUpPods ", func() {
 			//No strategy is added, so it will give default value of 15% of maxPods
-			maxScaleUpPods, err := GetMaxScaleUpPods(k8sClient, "default", "Rollout", "test-rollout", 100)
+			maxScaleUpPods, err := GetMaxScaleUpPods(k8sClient, "default", "Rollout", "test-rollout", 100, 15)
 			Expect(err).To(BeNil())
 			Expect(maxScaleUpPods).To(Equal(15))
 
 			//RollingUpdate is added with MaxSurge and MaxUnavailable as 25%
-			maxScaleUpPods, err = GetMaxScaleUpPods(k8sClient, "default", "Deployment", "test-deployment", 100)
+			maxScaleUpPods, err = GetMaxScaleUpPods(k8sClient, "default", "Deployment", "test-deployment", 100, 15)
 			Expect(err).To(BeNil())
 			Expect(maxScaleUpPods).To(Equal(25))
 		})
@@ -438,9 +438,9 @@ var _ = Describe("UtilFunctions", func() {
 			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
 		})
 		It("Should return expected behaviour", func() {
-			enableScaleUpBehaviour := EnableScaleUpBehaviourForHPA(k8sClient, "default", "Rollout", "test-rollout")
+			enableScaleUpBehaviour := EnableScaleUpBehaviourForHPA(k8sClient, "default", "Rollout", "test-rollout", enableScaleUpBehaviourForAll)
 			Expect(enableScaleUpBehaviour).To(Equal(true))
-			enableScaleUpBehaviour = EnableScaleUpBehaviourForHPA(k8sClient, "default", "Deployment", "test-deployment")
+			enableScaleUpBehaviour = EnableScaleUpBehaviourForHPA(k8sClient, "default", "Deployment", "test-deployment", enableScaleUpBehaviourForAll)
 			Expect(enableScaleUpBehaviour).To(Equal(true))
 		})
 
@@ -511,9 +511,9 @@ var _ = Describe("UtilFunctions", func() {
 			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
 		})
 		It("Should return expected behaviour", func() {
-			enableScaleUpBehaviour := EnableScaleUpBehaviourForHPA(k8sClient, "default", "Rollout", "test-rollout")
+			enableScaleUpBehaviour := EnableScaleUpBehaviourForHPA(k8sClient, "default", "Rollout", "test-rollout", enableScaleUpBehaviourForAll)
 			Expect(enableScaleUpBehaviour).To(Equal(false))
-			enableScaleUpBehaviour = EnableScaleUpBehaviourForHPA(k8sClient, "default", "Deployment", "test-deployment")
+			enableScaleUpBehaviour = EnableScaleUpBehaviourForHPA(k8sClient, "default", "Deployment", "test-deployment", enableScaleUpBehaviourForAll)
 			Expect(enableScaleUpBehaviour).To(Equal(false))
 		})
 
