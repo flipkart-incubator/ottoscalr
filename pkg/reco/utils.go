@@ -94,7 +94,7 @@ func GetMaxScaleUpPods(k8sClient client.Client, namespace string, objectKind str
 	}
 	maxScaleUpPods = int(math.Max(float64(maxSurge), float64(maxUnavailable)))
 
-	return int(math.Max(float64(maxScaleUpPods), float64(defaultMaxScaleUpPods))), nil
+	return int(math.Ceil(math.Max(float64(maxScaleUpPods), float64(defaultMaxScaleUpPods)))), nil
 }
 
 func EnableScaleUpBehaviourForHPA(k8sClient client.Client, namespace string, objectKind string, objectName string, enableScaleUpBehaviourForAll *bool) bool {

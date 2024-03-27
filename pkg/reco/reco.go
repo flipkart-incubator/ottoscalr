@@ -40,6 +40,10 @@ var (
 	)
 )
 
+const(
+	HPAScaleTolerationFactor = 1.1
+)
+
 func init() {
 	p8smetrics.Registry.MustRegister(getAverageCPUUtilizationQueryLatency, minPercentageOfDataPointsPresent)
 }
@@ -219,7 +223,7 @@ func (c *CpuUtilizationBasedRecommender) simulateHPA(dataPoints []metrics.DataPo
 	targetUtilization int,
 	perPodResources float64, maxReplicas int, minReplicas int) ([]metrics.DataPoint, int, error) {
 
-	targetUtilization = int(math.Floor(float64(targetUtilization) * 1.1))
+	targetUtilization = int(math.Floor(float64(targetUtilization) * HPAScaleTolerationFactor))
 
 	if len(dataPoints) == 0 {
 		return []metrics.DataPoint{}, 0, nil
@@ -285,7 +289,7 @@ func (c *CpuUtilizationBasedRecommender) simulateHPAWithScaleBehaviours(dataPoin
 	targetUtilization int,
 	perPodResources float64, maxReplicas int, minReplicas int, maxScaleUpPods int, scaleUpPeriodSeconds int) ([]metrics.DataPoint, int, error) {
 
-	targetUtilization = int(math.Floor(float64(targetUtilization) * 1.1))
+	targetUtilization = int(math.Floor(float64(targetUtilization) * HPAScaleTolerationFactor))
 	scaleUpPeriodSecondsDuration := time.Duration(scaleUpPeriodSeconds) * time.Second
 
 	var scaleUpEvents []timestampedScaleEvent

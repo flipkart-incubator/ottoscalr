@@ -89,10 +89,15 @@ var (
 		prometheus.CounterOpts{Name: "hpaenforcer_scaledobjects_deleted_count",
 			Help: "Number of scaled objects created/updated by HPAEnforcer"}, []string{"namespace", "policyreco", "scaledobject"},
 	)
+
+	hpaScaleUpBehaviourEnabled = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "hpa_scale_up_behaviour_enabled",
+			Help: "Indicates if the scale up behaviour is enabled for the workload"}, []string{"namespace", "workload"},
+	)
 )
 
 func init() {
-	metrics.Registry.MustRegister(hpaenforcerScaledObjectUpdatedCounter, hpaenforcerScaledObjectDeletedCounter, hpaenforcerReconcileCounter)
+	metrics.Registry.MustRegister(hpaenforcerScaledObjectUpdatedCounter, hpaenforcerScaledObjectDeletedCounter, hpaenforcerReconcileCounter,hpaScaleUpBehaviourEnabled)
 }
 
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
@@ -291,6 +296,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 
 	var advancedConfig *kedaapi.AdvancedConfig
 	if recoUtils.EnableScaleUpBehaviourForHPA(r.Client, workload.GetNamespace(), workload.GetObjectKind().GroupVersionKind().Kind, workload.GetName(), r.enableScaleUpBehaviourForAll) {
+		hpaScaleUpBehaviourEnabled.WithLabelValues(workload.GetNamespace(), workload.GetName()).Set(1)
 		maxScaleUpPods, _ := recoUtils.GetMaxScaleUpPods(r.Client, workload.GetNamespace(), workload.GetObjectKind().GroupVersionKind().Kind, workload.GetName(), int(max), r.defaultMaxScaleUpPodsPercentage)
 		scaleUpPeriodSeconds := int32(r.defaultScaleUpscaleUpPeriodSeconds)
 		acl, err := r.Scraper.GetACLByWorkload(workload.GetNamespace(), workload.GetName())
@@ -313,7 +319,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 			},
 		}
 	}
-
+	hpaScaleUpBehaviourEnabled.WithLabelValues(workload.GetNamespace(), workload.GetName()).Set(0)
 	if !*r.isDryRun {
 		logger.V(0).Info("Creating/Updating ScaledObject for workload.", "workload", workload.GetName())
 
