@@ -293,7 +293,6 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 			},
 		})
 	}
-	hpaScaleUpBehaviourEnabled.WithLabelValues(workload.GetNamespace(), workload.GetName()).Set(0)
 
 	var advancedConfig *kedaapi.AdvancedConfig
 	if recoUtils.EnableScaleUpBehaviourForHPA(r.Client, workload.GetNamespace(), workload.GetObjectKind().GroupVersionKind().Kind, workload.GetName(), r.enableScaleUpBehaviourForAll) {
@@ -319,6 +318,8 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 				},
 			},
 		}
+	} else {
+		hpaScaleUpBehaviourEnabled.WithLabelValues(workload.GetNamespace(), workload.GetName()).Set(0)
 	}
 	if !*r.isDryRun {
 		logger.V(0).Info("Creating/Updating ScaledObject for workload.", "workload", workload.GetName())
