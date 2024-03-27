@@ -19,6 +19,13 @@ package main
 import (
 	"context"
 	"flag"
+	_ "net/http/pprof"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/controller"
 	"github.com/flipkart-incubator/ottoscalr/pkg/integration"
@@ -29,13 +36,8 @@ import (
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/spf13/viper"
-	_ "net/http/pprof"
-	"os"
-	"os/signal"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
-	"syscall"
-	"time"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -127,6 +129,13 @@ type Config struct {
 		EventScaleUpBufferPeriodInHours int    `yaml:"eventScaleUpBufferPeriodInHours"`
 		CustomEventDataConfigMapName    string `yaml:"customEventDataConfigMapName"`
 	} `yaml:"eventCallIntegration"`
+
+	HPAScalingPolicies struct {
+		EnableScaleUpBehaviourForAll          *bool `yaml:"enableScaleUpBehaviourForAll"`
+		DownScaleStabilizationWindowInSeconds int   `yaml:"downScaleStabilizationWindowInSeconds"`
+		DefaultScaleUpPeriodSeconds           int   `yaml:"defaultScaleUpPeriodSeconds"`
+		DefaultMaxScaleUpPodsInPercentage     int   `yaml:"defaultMaxScaleUpPodsInPercentage"`
+	} `yaml:"hpaScalingPolicies"`
 }
 
 func main() {
@@ -245,6 +254,11 @@ func main() {
 		metricsTransformer = append(metricsTransformer, outlierInterpolatorTransformer)
 	}
 
+	downScaleStabilizationWindowInSeconds := 300
+	if config.HPAScalingPolicies.DownScaleStabilizationWindowInSeconds != 0 {
+		downScaleStabilizationWindowInSeconds = config.HPAScalingPolicies.DownScaleStabilizationWindowInSeconds
+	}
+
 	cpuUtilizationBasedRecommender := reco.NewCpuUtilizationBasedRecommender(mgr.GetClient(),
 		config.BreachMonitor.CpuRedLine,
 		time.Duration(config.CpuUtilizationBasedRecommender.MetricWindowInDays)*24*time.Hour,
@@ -254,6 +268,10 @@ func main() {
 		config.CpuUtilizationBasedRecommender.MinTarget,
 		config.CpuUtilizationBasedRecommender.MaxTarget,
 		config.CpuUtilizationBasedRecommender.MetricsPercentageThreshold,
+		time.Duration(downScaleStabilizationWindowInSeconds)*time.Second,
+		config.HPAScalingPolicies.DefaultScaleUpPeriodSeconds,
+		config.HPAScalingPolicies.DefaultMaxScaleUpPodsInPercentage,
+		config.HPAScalingPolicies.EnableScaleUpBehaviourForAll,
 		logger)
 
 	breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
@@ -306,8 +324,9 @@ func main() {
 	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
 
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
-		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName),
-		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas)
+		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName), scraper,
+		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas,
+		config.HPAScalingPolicies.DefaultScaleUpPeriodSeconds, config.HPAScalingPolicies.DefaultMaxScaleUpPodsInPercentage, config.HPAScalingPolicies.EnableScaleUpBehaviourForAll)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
 		os.Exit(1)

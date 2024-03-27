@@ -6,7 +6,7 @@ require (
 	github.com/argoproj/argo-rollouts v1.4.1
 	github.com/go-logr/logr v1.2.4
 	github.com/hashicorp/go-retryablehttp v0.7.2
-	github.com/kedacore/keda/v2 v2.8.2
+	github.com/kedacore/keda/v2 v2.10.0
 	github.com/onsi/ginkgo/v2 v2.11.0
 	github.com/onsi/gomega v1.27.8
 	github.com/prometheus/client_golang v1.16.0

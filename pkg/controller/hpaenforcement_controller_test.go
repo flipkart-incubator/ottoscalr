@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
+
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -13,8 +17,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"strconv"
-	"time"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 var _ = Describe("Test ScaledObject enforcer", func() {
@@ -199,6 +202,125 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			Expect(scaledObject.Spec.Triggers[0].Type).Should(Equal("cpu"))
 			n, _ := strconv.Atoi(scaledObject.Spec.Triggers[0].Metadata["value"])
 			Expect(n).Should(Equal((policyReco.Spec.CurrentHPAConfiguration.TargetMetricValue)))
+
+		})
+
+		It("Should create a ScaledObject with scaleUp Behavior for a Deployment", func() {
+			policyReco = &v1alpha1.PolicyRecommendation{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      HPAEnforcerPolicyRecoName,
+					Namespace: HPAEnforcerPolicyRecoNamespace,
+				},
+				Spec: v1alpha1.PolicyRecommendationSpec{
+					WorkloadMeta: v1alpha1.WorkloadMeta{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       "Deployment",
+							APIVersion: "apps/v1",
+						},
+						Name: HPAEnforcerPolicyRecoName,
+					},
+					TargetHPAConfiguration: v1alpha1.HPAConfiguration{
+						Min:               60,
+						Max:               100,
+						TargetMetricValue: 50,
+					},
+					CurrentHPAConfiguration: v1alpha1.HPAConfiguration{
+						Min:               20,
+						Max:               100,
+						TargetMetricValue: 40,
+					},
+					Policy:             "random",
+					QueuedForExecution: &falseBool,
+				},
+			}
+			Expect(k8sClient.Create(context.TODO(), policyReco)).To(Succeed())
+			updatedPolicyReco := &v1alpha1.PolicyRecommendation{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{
+				Namespace: HPAEnforcerPolicyRecoNamespace,
+				Name:      HPAEnforcerPolicyRecoName,
+			}, updatedPolicyReco)).To(Succeed())
+			updatedPolicyRecoString, _ := json.MarshalIndent(updatedPolicyReco, "", "   ")
+			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
+			replicas := int32(10)
+			deployment = &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        HPAEnforcerPolicyRecoName,
+					Namespace:   HPAEnforcerPolicyRecoNamespace,
+					Annotations: map[string]string{reco.OttoscalrEnableScaleUpBehaviourAnnotation: "true"},
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: &replicas,
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+					Strategy: appsv1.DeploymentStrategy{
+						RollingUpdate: &appsv1.RollingUpdateDeployment{
+							MaxSurge: &intstr.IntOrString{
+								Type:   intstr.String,
+								StrVal: "20%",
+							},
+							MaxUnavailable: &intstr.IntOrString{
+								Type:   intstr.String,
+								StrVal: "30%",
+							},
+						},
+					},
+
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					}},
+			}
+			Expect(k8sClient.Create(context.TODO(), deployment)).To(Succeed())
+			updatedPolicyReco.Status = v1alpha1.PolicyRecommendationStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:               string(v1alpha1.Initialized),
+						Status:             metav1.ConditionTrue,
+						LastTransitionTime: metav1.Now(),
+						Reason:             PolicyRecommendationCreated,
+						Message:            InitializedMessage,
+					},
+					{
+						Type:               string(v1alpha1.RecoTaskProgress),
+						Status:             metav1.ConditionFalse,
+						Reason:             RecoTaskRecommendationGenerated,
+						Message:            RecommendationGeneratedMessage,
+						LastTransitionTime: metav1.Now(),
+					},
+				}}
+			Expect(k8sClient.Status().Update(context.TODO(), updatedPolicyReco)).To(Succeed())
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{
+				Namespace: HPAEnforcerPolicyRecoNamespace,
+				Name:      HPAEnforcerPolicyRecoName,
+			}, updatedPolicyReco)).To(Succeed())
+			updatedPolicyRecoString, _ = json.MarshalIndent(updatedPolicyReco, "", "   ")
+			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
+
+			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
+			err := k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)
+			Expect(err).To(Not(HaveOccurred()))
+			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
+			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
+			policies := scaledObject.Spec.Advanced.HorizontalPodAutoscalerConfig.Behavior.ScaleUp.Policies
+			Expect(len(policies)).Should(Equal(1))
+			Expect(string(policies[0].Type)).Should(Equal("Pods"))
+			Expect(policies[0].Value).Should(Equal(int32(30)))
+			Expect(policies[0].PeriodSeconds).Should(Equal(int32(180)))
 
 		})
 
@@ -435,6 +557,142 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			Expect(scaledObject.Spec.Triggers[0].Type).Should(Equal("cpu"))
 			n, _ := strconv.Atoi(scaledObject.Spec.Triggers[0].Metadata["value"])
 			Expect(n).Should(Equal((policyReco.Spec.CurrentHPAConfiguration.TargetMetricValue)))
+
+		})
+
+		It("Should create a ScaledObject with scaleUp Behavior for a Rollout", func() {
+			policyReco = &v1alpha1.PolicyRecommendation{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      HPAEnforcerPolicyRecoName,
+					Namespace: HPAEnforcerPolicyRecoNamespace,
+				},
+				Spec: v1alpha1.PolicyRecommendationSpec{
+					WorkloadMeta: v1alpha1.WorkloadMeta{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       argoRolloutsKind,
+							APIVersion: argoRolloutVersion,
+						},
+						Name: HPAEnforcerPolicyRecoName,
+					},
+					TargetHPAConfiguration: v1alpha1.HPAConfiguration{
+						Min:               60,
+						Max:               100,
+						TargetMetricValue: 50,
+					},
+					CurrentHPAConfiguration: v1alpha1.HPAConfiguration{
+						Min:               20,
+						Max:               100,
+						TargetMetricValue: 40,
+					},
+					Policy:             "random",
+					QueuedForExecution: &falseBool,
+				},
+			}
+			Expect(k8sClient.Create(context.TODO(), policyReco)).To(Succeed())
+			updatedPolicyReco := &v1alpha1.PolicyRecommendation{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{
+				Namespace: HPAEnforcerPolicyRecoNamespace,
+				Name:      HPAEnforcerPolicyRecoName,
+			}, updatedPolicyReco)).To(Succeed())
+			updatedPolicyRecoString, _ := json.MarshalIndent(updatedPolicyReco, "", "   ")
+			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
+			fmt.Println("step 1")
+			replicas := int32(10)
+			rollout = &argov1alpha1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        HPAEnforcerPolicyRecoName,
+					Namespace:   HPAEnforcerPolicyRecoNamespace,
+					Annotations: map[string]string{reco.OttoscalrEnableScaleUpBehaviourAnnotation: "true"},
+				},
+				Spec: argov1alpha1.RolloutSpec{
+					Replicas: &replicas,
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+					Strategy: argov1alpha1.RolloutStrategy{
+						Canary: &argov1alpha1.CanaryStrategy{
+							MaxUnavailable: &intstr.IntOrString{
+								Type:   intstr.Int,
+								IntVal: 25,
+							},
+							MaxSurge: &intstr.IntOrString{
+								Type:   intstr.Int,
+								IntVal: 2,
+							},
+						},
+					},
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					}},
+			}
+			Expect(k8sClient.Create(context.TODO(), rollout)).To(Succeed())
+			updatedPolicyReco.Status = v1alpha1.PolicyRecommendationStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:               string(v1alpha1.Initialized),
+						Status:             metav1.ConditionTrue,
+						LastTransitionTime: metav1.Now(),
+						Reason:             PolicyRecommendationCreated,
+						Message:            InitializedMessage,
+					},
+					{
+						Type:               string(v1alpha1.RecoTaskProgress),
+						Status:             metav1.ConditionFalse,
+						Reason:             RecoTaskRecommendationGenerated,
+						Message:            RecommendationGeneratedMessage,
+						LastTransitionTime: metav1.Now(),
+					},
+				}}
+			Expect(k8sClient.Status().Update(context.TODO(), updatedPolicyReco)).To(Succeed())
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{
+				Namespace: HPAEnforcerPolicyRecoNamespace,
+				Name:      HPAEnforcerPolicyRecoName,
+			}, updatedPolicyReco)).To(Succeed())
+			updatedPolicyRecoString, _ = json.MarshalIndent(updatedPolicyReco, "", "   ")
+			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
+
+			updatedPolicyReco = &v1alpha1.PolicyRecommendation{}
+			Eventually(func() bool {
+				err := k8sClient.Get(context.TODO(), types.NamespacedName{
+					Namespace: HPAEnforcerPolicyRecoNamespace,
+					Name:      HPAEnforcerPolicyRecoName,
+				}, updatedPolicyReco)
+				if err != nil {
+					return false
+				}
+				for _, v := range updatedPolicyReco.Status.Conditions {
+					if v.Type == string(v1alpha1.HPAEnforced) {
+						return true
+					}
+				}
+				return false
+			}, timeout, interval).Should(BeTrue())
+
+			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
+			err := k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)
+			Expect(err).To(Not(HaveOccurred()))
+			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
+			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
+			policies := scaledObject.Spec.Advanced.HorizontalPodAutoscalerConfig.Behavior.ScaleUp.Policies
+			Expect(len(policies)).Should(Equal(1))
+			Expect(string(policies[0].Type)).Should(Equal("Pods"))
+			Expect(policies[0].Value).Should(Equal(int32(25)))
+			Expect(policies[0].PeriodSeconds).Should(Equal(int32(180)))
 
 		})
 
