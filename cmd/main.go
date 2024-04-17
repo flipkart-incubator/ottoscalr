@@ -91,9 +91,10 @@ type Config struct {
 	} `yaml:"periodicTrigger"`
 
 	PolicyRecommendationController struct {
-		MaxConcurrentReconciles int    `yaml:"maxConcurrentReconciles"`
-		MinRequiredReplicas     int    `yaml:"minRequiredReplicas"`
-		PolicyExpiryAge         string `yaml:"policyExpiryAge"`
+		MaxConcurrentReconciles      int    `yaml:"maxConcurrentReconciles"`
+		MinRequiredReplicas          int    `yaml:"minRequiredReplicas"`
+		DefaultMinReplicasPercentage int    `yaml:"defaultMinReplicasPercentage"`
+		PolicyExpiryAge              string `yaml:"policyExpiryAge"`
 	} `yaml:"policyRecommendationController"`
 
 	HPAEnforcer struct {
@@ -284,7 +285,7 @@ func main() {
 
 	policyRecoReconciler, err := controller.NewPolicyRecommendationReconciler(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.PolicyRecoWorkflowCtrlName),
-		config.PolicyRecommendationController.MaxConcurrentReconciles, config.PolicyRecommendationController.MinRequiredReplicas, cpuUtilizationBasedRecommender, policyStore, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL), breachAnalyzer)
+		config.PolicyRecommendationController.MaxConcurrentReconciles, config.PolicyRecommendationController.MinRequiredReplicas, config.PolicyRecommendationController.DefaultMinReplicasPercentage, cpuUtilizationBasedRecommender, policyStore, reco.NewDefaultPolicyIterator(mgr.GetClient()), reco.NewAgingPolicyIterator(mgr.GetClient(), agingPolicyTTL), breachAnalyzer)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize policy reco reconciler")
 		os.Exit(1)

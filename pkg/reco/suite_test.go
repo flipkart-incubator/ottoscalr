@@ -223,7 +223,7 @@ var _ = BeforeSuite(func() {
 		Spec: ottoscaleriov1alpha1.PolicySpec{
 			IsDefault:               false,
 			RiskIndex:               1,
-			MinReplicaPercentageCut: 80,
+			MinReplicaPercentageCut: 100,
 			TargetUtilization:       10,
 		},
 	}

@@ -19,6 +19,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,8 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"strconv"
-	"time"
 
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -112,9 +113,9 @@ type PolicyRecommendationReconciler struct {
 
 func NewPolicyRecommendationReconciler(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder,
-	maxConcurrentReconciles int, minRequiredReplicas int, recommender reco.Recommender, policyStore policy.Store, policyIterators ...reco.PolicyIterator) (*PolicyRecommendationReconciler, error) {
+	maxConcurrentReconciles int, minRequiredReplicas int, defaultMinReplicasPercentage int, recommender reco.Recommender, policyStore policy.Store, policyIterators ...reco.PolicyIterator) (*PolicyRecommendationReconciler, error) {
 	recoWfBuilder := reco.NewRecommendationWorkflowBuilder().
-		WithRecommender(recommender).WithMinRequiredReplicas(minRequiredReplicas).WithPolicyStore(policyStore).WithK8sClient(client)
+		WithRecommender(recommender).WithMinRequiredReplicas(minRequiredReplicas).WithPolicyStore(policyStore).WithDefaultMinReplicasPercentage(defaultMinReplicasPercentage).WithK8sClient(client)
 	for _, pi := range policyIterators {
 		recoWfBuilder = recoWfBuilder.WithPolicyIterator(pi)
 	}

@@ -40,7 +40,7 @@ var (
 	)
 )
 
-const(
+const (
 	HPAScaleTolerationFactor = 1.1
 )
 
@@ -173,7 +173,6 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		c.logger.Error(err, "Error while getting getContainerCPULimitsSum")
 		return nil, err
 	}
-	fmt.Println("EnableScaleUp: ", c.enableScaleUpBehaviourForAll)
 	enableScaleUpBehaviour := EnableScaleUpBehaviourForHPA(c.k8sClient, workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name, c.enableScaleUpBehaviourForAll)
 	var maxScaleUpPods int
 	var scaleUpPeriodSeconds int

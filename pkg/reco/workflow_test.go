@@ -278,6 +278,36 @@ var _ = Describe("RecommendationWorkflow", func() {
 			})
 		})
 
+		Context("MaxReplicas equal to MinReplicas(No Op)", func() {
+			It("should return the processed targetRecoConfig", func() {
+
+				mockPolicy = &Policy{
+					Name:                    "mockPolicy",
+					RiskIndex:               10,
+					MinReplicaPercentageCut: 100,
+					TargetUtilization:       20,
+				}
+				DeferCleanup(func() {
+					mockPolicy = nil
+				})
+				recoWorkflow, err := recoWorkflowBuilder.WithRecommender(&MockRecommender{
+					Min:       10,
+					Threshold: 5,
+					Max:       10,
+				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).WithK8sClient(k8sClient).WithDefaultMinReplicasPercentage(50).Build()
+				Expect(recoWorkflow).NotTo(BeNil())
+				Expect(err).NotTo(HaveOccurred())
+				_, targetConfig, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
+					Name:      "test",
+					Namespace: "default",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(targetConfig.Min).To(Equal(5))
+				Expect(targetConfig.Max).To(Equal(10))
+				Expect(targetConfig.TargetMetricValue).To(Equal(10))
+			})
+		})
+
 		Context("MaxReplicas greater than or equal to 3 and minReplicas less than 3", func() {
 			It("should return the processed targetRecoConfig", func() {
 
