@@ -59,6 +59,7 @@ const (
 	hpaEnforcementDisabledAnnotation = "ottoscalr.io/skip-hpa-enforcement"
 	hpaEnforcementEnabledAnnotation  = "ottoscalr.io/enable-hpa-enforcement"
 	rolloutWaveAnnotation            = "ottoscalr.io/rollout-wave"
+	disableEventAutoscalerAnnotation = "ottoscalr.io/disable-event-scaler"
 )
 
 var (
@@ -391,6 +392,11 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 
 func isEventScalerEnabled(workload client.Object) bool {
 	//TODO: define based on annotation
+	if v, ok := workload.GetAnnotations()[disableEventAutoscalerAnnotation]; ok {
+		if allow, _ := strconv.ParseBool(v); allow {
+			return false
+		}
+	}
 	return true
 }
 
