@@ -123,3 +123,34 @@ func EnableScaleUpBehaviourForHPA(k8sClient client.Client, namespace string, obj
 
 	return false
 }
+
+func getMinPods(k8sClient client.Client, namespace string, objectKind string, objectName string) (int, error) {
+	minPods := 1
+
+	var obj client.Object
+	switch objectKind {
+	case "Deployment":
+		obj = &appsv1.Deployment{}
+	case "Rollout":
+		obj = &rolloutv1alpha1.Rollout{}
+	default:
+		return 0, fmt.Errorf("unsupported objectKind: %s", objectKind)
+	}
+
+	if err := k8sClient.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: objectName}, obj); err != nil {
+		return 0, err
+	}
+
+	minPodAnnotation, ok := obj.GetAnnotations()[OttoscalrMinPodAnnotation]
+
+	if ok {
+		var err error
+		minPods, err = strconv.Atoi(minPodAnnotation)
+		if err != nil {
+			return 0, fmt.Errorf("unable to convert minPods from string to int: %s", err)
+		}
+
+	}
+
+	return minPods, nil
+}
