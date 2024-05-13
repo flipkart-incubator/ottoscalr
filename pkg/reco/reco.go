@@ -40,7 +40,7 @@ var (
 	)
 )
 
-const(
+const (
 	HPAScaleTolerationFactor = 1.1
 )
 
@@ -138,7 +138,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		return nil, err
 	}
 
-	workloadMinReplicas, err := c.getMinPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	workloadMinReplicas, err := getMinPods(c.k8sClient, workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
 	if err != nil {
 		c.logger.Error(err, "Error while getting getMinPods")
 		return nil, err
@@ -173,7 +173,6 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		c.logger.Error(err, "Error while getting getContainerCPULimitsSum")
 		return nil, err
 	}
-	fmt.Println("EnableScaleUp: ", c.enableScaleUpBehaviourForAll)
 	enableScaleUpBehaviour := EnableScaleUpBehaviourForHPA(c.k8sClient, workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name, c.enableScaleUpBehaviourForAll)
 	var maxScaleUpPods int
 	var scaleUpPeriodSeconds int
@@ -570,37 +569,6 @@ func (c *CpuUtilizationBasedRecommender) getMaxPods(namespace string, objectKind
 	}
 
 	return maxPods, nil
-}
-
-func (c *CpuUtilizationBasedRecommender) getMinPods(namespace string, objectKind string, objectName string) (int, error) {
-	minPods := 1
-
-	var obj client.Object
-	switch objectKind {
-	case "Deployment":
-		obj = &appsv1.Deployment{}
-	case "Rollout":
-		obj = &rolloutv1alpha1.Rollout{}
-	default:
-		return 0, fmt.Errorf("unsupported objectKind: %s", objectKind)
-	}
-
-	if err := c.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: objectName}, obj); err != nil {
-		return 0, err
-	}
-
-	minPodAnnotation, ok := obj.GetAnnotations()[OttoscalrMinPodAnnotation]
-
-	if ok {
-		var err error
-		minPods, err = strconv.Atoi(minPodAnnotation)
-		if err != nil {
-			return 0, fmt.Errorf("unable to convert minPods from string to int: %s", err)
-		}
-
-	}
-
-	return minPods, nil
 }
 
 func (c *CpuUtilizationBasedRecommender) isMetricsAboveThreshold(dataPoints []metrics.DataPoint) bool {

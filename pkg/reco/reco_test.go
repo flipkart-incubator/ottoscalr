@@ -874,13 +874,13 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 		})
 
 		It("should return the replicas from annotations for the deployment if the annotation is present", func() {
-			minReplicas, err := recommender1.getMinPods(deploymentNamespace, "Deployment", deploymentName)
+			minReplicas, err := getMinPods(recommender1.k8sClient, deploymentNamespace, "Deployment", deploymentName)
 			Expect(err).To(BeNil())
 			Expect(minReplicas).To(Equal(3))
 		})
 
 		It("should return minReplicas as 1 if the annotation is not present", func() {
-			maxReplicas, err := recommender1.getMinPods(rolloutNamespace, "Rollout", rolloutName)
+			maxReplicas, err := getMinPods(recommender1.k8sClient, rolloutNamespace, "Rollout", rolloutName)
 			Expect(err).To(BeNil())
 			Expect(maxReplicas).To(Equal(1))
 		})
