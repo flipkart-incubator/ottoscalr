@@ -67,6 +67,7 @@ func (h *K8sTriggerHandler) queuePolicyRecommendations() {
 		}, policyRecommendation)
 		if err != nil {
 			h.logger.Error(err, "Error while getting policyRecommendation.", "workload", workload)
+			h.queuedForExecutionCh <- workload
 			continue
 		}
 
@@ -75,7 +76,8 @@ func (h *K8sTriggerHandler) queuePolicyRecommendations() {
 
 		err = h.k8sClient.Update(context.TODO(), policyRecommendation, client.FieldOwner(TRIGGER_HANDLER_K8S))
 		if err != nil {
-			h.logger.Error(err, "Error while updating policyRecommendation.", "workload", workload)
+			h.logger.Error(err, "Error while updating policyRecommendation. Requeuing", "workload", workload)
+			h.queuedForExecutionCh <- workload
 			continue
 		}
 
