@@ -3,16 +3,19 @@ package reco
 import (
 	"context"
 	"errors"
+	"time"
+
+	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
-	"time"
 )
 
 var (
@@ -20,6 +23,10 @@ var (
 		prometheus.CounterOpts{Name: "policyage_expired_counter",
 			Help: "Number of policyrecos reconcile errored counter"}, []string{"namespace", "policyreco", "workloadKind", "workload"},
 	)
+)
+
+const (
+	DefaultPolicyAnnotation = "ottoscalr.io/default-policy"
 )
 
 func init() {
@@ -39,16 +46,52 @@ type PolicyIterator interface {
 }
 
 type DefaultPolicyIterator struct {
-	store policy.Store
+	k8sClient client.Client
+	store     policy.Store
 }
 
 func NewDefaultPolicyIterator(k8sClient client.Client) *DefaultPolicyIterator {
 	return &DefaultPolicyIterator{
-		store: policy.NewPolicyStore(k8sClient),
+		k8sClient: k8sClient,
+		store:     policy.NewPolicyStore(k8sClient),
 	}
 }
 
 func (pi *DefaultPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta) (*Policy, error) {
+	logger := log.FromContext(ctx)
+
+	var obj client.Object
+	switch wm.Kind {
+	case "Deployment":
+		obj = &appsv1.Deployment{}
+	case "Rollout":
+		obj = &rolloutv1alpha1.Rollout{}
+	default:
+		return pi.GetGlobalDefaultPolicy(ctx)
+	}
+
+	if err := pi.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: wm.Namespace, Name: wm.Name}, obj); err != nil {
+		return nil,err
+	}
+	defaultPolicyName, ok := obj.GetAnnotations()[DefaultPolicyAnnotation]
+	if ok {
+		logger.V(0).Info("Workload has default policy annotation set", "workload", wm, "defaultPolicy", defaultPolicyName)
+		policy, err := pi.store.GetPolicyByName(defaultPolicyName)
+		if err == nil {
+			return &Policy{
+				Name:                    policy.Name,
+				RiskIndex:               policy.Spec.RiskIndex,
+				MinReplicaPercentageCut: policy.Spec.MinReplicaPercentageCut,
+				TargetUtilization:       policy.Spec.TargetUtilization,
+			}, nil
+		}
+		logger.V(0).Error(err, "Error fetching this policy.", "workload", wm, "defaultPolicy", defaultPolicyName)
+		logger.V(0).Info("Falling back to global default policy")
+	}
+	return pi.GetGlobalDefaultPolicy(ctx)
+}
+
+func (pi *DefaultPolicyIterator) GetGlobalDefaultPolicy(ctx context.Context) (*Policy, error) {
 	logger := log.FromContext(ctx)
 	policy, err := pi.store.GetDefaultPolicy()
 	if err != nil {

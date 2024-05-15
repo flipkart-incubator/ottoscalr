@@ -3,18 +3,21 @@ package reco
 import (
 	"context"
 	"fmt"
+	"time"
+
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"time"
 )
 
 var _ = Describe("PolicyIterators", func() {
 
 	const DeploymentName = "test-deploy-tul19"
-	const DeploymentNamespace = "test-namespace"
+	const DeploymentNamespace = "default"
 	var defaultPI, agingPI PolicyIterator
 	var wm WorkloadMeta
 
@@ -27,6 +30,9 @@ var _ = Describe("PolicyIterators", func() {
 		agingPI = NewAgingPolicyIterator(fakeK8SClient, policyAge)
 		Expect(agingPI).NotTo(BeNil())
 		wm = WorkloadMeta{
+			TypeMeta: metav1.TypeMeta{
+				Kind: "Deployment",
+			},
 			Name:      DeploymentName,
 			Namespace: DeploymentNamespace,
 		}
@@ -35,10 +41,83 @@ var _ = Describe("PolicyIterators", func() {
 
 	Context("DefaultPolicyIterator", func() {
 		It("Should return only default policy", func() {
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      DeploymentName,
+					Namespace: DeploymentNamespace,
+				},
+
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(fakeK8SClient.Create(ctx, deployment)).Should(Succeed())
+			time.Sleep(1 * time.Second)
 			policy, err := defaultPI.NextPolicy(ctx, wm)
 			Expect(err).To(BeNil())
 			Expect(policy).NotTo(BeNil())
 			Expect(policy.Name).Should(Equal(policy1.Name))
+			Expect(fakeK8SClient.Delete(ctx, deployment))
+		})
+
+		It("Should return workload specific default policy if default policy annotation is set", func() {
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      DeploymentName,
+					Namespace: DeploymentNamespace,
+					Annotations: map[string]string{
+						DefaultPolicyAnnotation: policy2.Name,
+					},
+				},
+
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(fakeK8SClient.Create(ctx, deployment)).Should(Succeed())
+			time.Sleep(1 * time.Second)
+			policy, err := defaultPI.NextPolicy(ctx, wm)
+			Expect(err).To(BeNil())
+			Expect(policy).NotTo(BeNil())
+			Expect(policy.Name).Should(Equal(policy2.Name))
 		})
 	})
 
