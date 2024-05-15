@@ -2,6 +2,8 @@ package trigger
 
 import (
 	"context"
+	"time"
+
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -67,6 +69,7 @@ func (h *K8sTriggerHandler) queuePolicyRecommendations() {
 		}, policyRecommendation)
 		if err != nil {
 			h.logger.Error(err, "Error while getting policyRecommendation.", "workload", workload)
+			h.requeueWithDelay(workload)
 			continue
 		}
 
@@ -75,7 +78,8 @@ func (h *K8sTriggerHandler) queuePolicyRecommendations() {
 
 		err = h.k8sClient.Update(context.TODO(), policyRecommendation, client.FieldOwner(TRIGGER_HANDLER_K8S))
 		if err != nil {
-			h.logger.Error(err, "Error while updating policyRecommendation.", "workload", workload)
+			h.logger.Error(err, "Error while updating policyRecommendation. Requeuing", "workload", workload)
+			h.requeueWithDelay(workload)
 			continue
 		}
 
@@ -114,4 +118,12 @@ func getSubresourcePatchOptions(fieldOwner string) *client.SubResourcePatchOptio
 	return &client.SubResourcePatchOptions{
 		PatchOptions: patchOpts,
 	}
+}
+
+func (h *K8sTriggerHandler) requeueWithDelay(workload types.NamespacedName) {
+	h.logger.V(0).Info("Requeuing workload for execution", "workload", workload)
+	go func(workload types.NamespacedName) {
+		time.Sleep(1 * time.Second)
+		h.queuedForExecutionCh <- workload
+	}(workload)
 }
