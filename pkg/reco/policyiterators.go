@@ -71,7 +71,7 @@ func (pi *DefaultPolicyIterator) NextPolicy(ctx context.Context, wm WorkloadMeta
 	}
 
 	if err := pi.k8sClient.Get(context.Background(), types.NamespacedName{Namespace: wm.Namespace, Name: wm.Name}, obj); err != nil {
-		return pi.GetGlobalDefaultPolicy(ctx)
+		return nil,err
 	}
 	defaultPolicyName, ok := obj.GetAnnotations()[DefaultPolicyAnnotation]
 	if ok {
