@@ -119,12 +119,15 @@ type HPAEnforcementController struct {
 	defaultScaleUpscaleUpPeriodSeconds int
 	defaultMaxScaleUpPodsPercentage    int
 	enableScaleUpBehaviourForAll       *bool
+	qpsServiceName                     string
+	qpsServiceNamespace                string
 }
 
 func NewHPAEnforcementController(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder, scraper m.Scraper,
 	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int,
-	defaultScaleUpscaleUpPeriodSeconds int, defaultMaxScaleUpPodsPercentage int, enableScaleUpBehaviourForAll *bool) (*HPAEnforcementController, error) {
+	defaultScaleUpscaleUpPeriodSeconds int, defaultMaxScaleUpPodsPercentage int, enableScaleUpBehaviourForAll *bool,
+	qpsServiceName string, qpsServiceNamespace string) (*HPAEnforcementController, error) {
 	return &HPAEnforcementController{
 		Client:                             client,
 		Scheme:                             scheme,
@@ -139,6 +142,8 @@ func NewHPAEnforcementController(client client.Client,
 		defaultScaleUpscaleUpPeriodSeconds: defaultScaleUpscaleUpPeriodSeconds,
 		defaultMaxScaleUpPodsPercentage:    defaultMaxScaleUpPodsPercentage,
 		enableScaleUpBehaviourForAll:       enableScaleUpBehaviourForAll,
+		qpsServiceName:                     qpsServiceName,
+		qpsServiceNamespace:                qpsServiceNamespace,
 	}, nil
 }
 
@@ -820,8 +825,8 @@ func (r *HPAEnforcementController) findQPSMetricsServerService(ctx context.Conte
 
 	svc := &corev1.Service{}
 	err := r.Get(ctx, types.NamespacedName{
-		Namespace: "autoscaling-testing-playground",
-		Name:      "qps-metrics-server-test-service",
+		Namespace: r.qpsServiceNamespace,
+		Name:      r.qpsServiceName,
 	}, svc)
 	if err != nil {
 		return nil, err
