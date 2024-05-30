@@ -33,6 +33,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -60,6 +61,8 @@ const (
 	hpaEnforcementEnabledAnnotation  = "ottoscalr.io/enable-hpa-enforcement"
 	rolloutWaveAnnotation            = "ottoscalr.io/rollout-wave"
 	disableEventAutoscalerAnnotation = "ottoscalr.io/disable-event-scaler"
+	enbaleQPSBasedAutoscaling        = "ottoscalr.io/enable-qps-based-autoscaling"
+	QPSThreshold                     = "ottoscalr.io/qps-threshold"
 )
 
 var (
@@ -293,6 +296,38 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 				"scalingStrategy": "scaleToMax",
 			},
 		})
+	}
+
+	//QPSBasedAutoscaling Required
+	if isQPSBasedAutoscalingRequired(workload) {
+		getQPSThreshold, err := getQPSThresholdForWorkload(workload)
+		if err != nil {
+			logger.Error(err, "Error getting QPS threshold for workload")
+			return ctrl.Result{}, err
+		}
+		getService, err := r.findServiceForWorkload(ctx, workload)
+		if err != nil {
+			logger.Error(err, "Error getting service for workload")
+			return ctrl.Result{}, err
+		}
+		getQPSMetricsServerService, err := r.findQPSMetricsServerService(ctx, workload)
+		if err != nil {
+			logger.Error(err, "Error getting QPS Metrics Server Service")
+			return ctrl.Result{}, err
+		}
+		ip := getQPSMetricsServerService.Spec.ClusterIP
+		port := getQPSMetricsServerService.Spec.Ports[0].Port
+		qpsUrl := fmt.Sprintf("http://%s:%d/apis/v1/qps/namespaces/%s/services/%s", ip, port, workload.GetNamespace(), getService.GetName())
+		scaleTriggers = append(scaleTriggers, kedaapi.ScaleTriggers{
+			Type:             "metrics-api",
+			UseCachedMetrics: true,
+			Metadata: map[string]string{
+				"targetValue":   fmt.Sprint(getQPSThreshold),
+				"url":           qpsUrl,
+				"valueLocation": "QPSValue",
+			},
+		})
+
 	}
 
 	var advancedConfig *kedaapi.AdvancedConfig
@@ -708,4 +743,89 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 	}
 	r.Recorder.Event(&policyreco, eventTypeNormal, "ScaledObjectDeleted", fmt.Sprintf("Workload has be rescaled to max replicas '%d' from the deleted scaledobject.", maxPods))
 	return nil
+}
+
+func isQPSBasedAutoscalingRequired(workload client.Object) bool {
+	if v, ok := workload.GetAnnotations()[enbaleQPSBasedAutoscaling]; ok {
+		if allow, _ := strconv.ParseBool(v); allow {
+			return true
+		}
+	}
+
+	return false
+}
+
+func getQPSThresholdForWorkload(workload client.Object) (float64, error) {
+	if v, ok := workload.GetAnnotations()[QPSThreshold]; ok {
+		return strconv.ParseFloat(v, 64)
+	}
+	return 0, fmt.Errorf("QPS Threshold not found")
+}
+
+// Should return only if there is one service for the workload. else error
+func (r *HPAEnforcementController) findServiceForWorkload(ctx context.Context, workload client.Object) (*corev1.Service, error) {
+
+	var podTemplateSpec *corev1.PodTemplateSpec
+	switch v := workload.(type) {
+	case *appsv1.Deployment:
+		podTemplateSpec = &v.Spec.Template
+	case *argov1alpha1.Rollout:
+		podTemplateSpec = &v.Spec.Template
+	default:
+		return nil, fmt.Errorf("unsupported object type")
+	}
+
+	if podTemplateSpec.Labels == nil {
+		return nil, fmt.Errorf("no labels present on the workload to fetch service")
+	}
+
+	labelSet := podTemplateSpec.Labels
+	//find service for this workload. Should only be one service per workload
+	svcList := &corev1.ServiceList{}
+	err := r.List(ctx, svcList, &client.ListOptions{
+		Namespace: workload.GetNamespace(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	requiredSvcList := make([]corev1.Service, 0)
+
+	for _, svc := range svcList.Items {
+		allMatch := true
+		for key, value := range svc.Spec.Selector {
+
+			if val, ok := labelSet[key]; !ok || val != value {
+				allMatch = false
+				break
+			}
+		}
+		if allMatch {
+			requiredSvcList = append(requiredSvcList, svc)
+		}
+	}
+
+	if len(requiredSvcList) == 1 {
+		return &requiredSvcList[0], nil
+	}
+
+	if len(requiredSvcList) > 1 {
+		return nil, fmt.Errorf("More than one service found for workload")
+	}
+
+	return nil, fmt.Errorf("Service not found for workload")
+}
+
+func (r *HPAEnforcementController) findQPSMetricsServerService(ctx context.Context, workload client.Object) (*corev1.Service, error) {
+
+	svc := &corev1.Service{}
+	err := r.Get(ctx, types.NamespacedName{
+		Namespace: "autoscaling-testing-playground",
+		Name:      "qps-metrics-server-test-service",
+	}, svc)
+	if err != nil {
+		return nil, err
+	}
+
+	return svc, nil
 }
