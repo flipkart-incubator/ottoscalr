@@ -119,15 +119,15 @@ type HPAEnforcementController struct {
 	defaultScaleUpscaleUpPeriodSeconds int
 	defaultMaxScaleUpPodsPercentage    int
 	enableScaleUpBehaviourForAll       *bool
-	qpsServiceName                     string
-	qpsServiceNamespace                string
+	qpsMetricsServerService            string
+	qpsThreshold                       float64
 }
 
 func NewHPAEnforcementController(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder, scraper m.Scraper,
 	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int,
 	defaultScaleUpscaleUpPeriodSeconds int, defaultMaxScaleUpPodsPercentage int, enableScaleUpBehaviourForAll *bool,
-	qpsServiceName string, qpsServiceNamespace string) (*HPAEnforcementController, error) {
+	qpsMetricsServerService string, qpsThreshold float64) (*HPAEnforcementController, error) {
 	return &HPAEnforcementController{
 		Client:                             client,
 		Scheme:                             scheme,
@@ -142,8 +142,8 @@ func NewHPAEnforcementController(client client.Client,
 		defaultScaleUpscaleUpPeriodSeconds: defaultScaleUpscaleUpPeriodSeconds,
 		defaultMaxScaleUpPodsPercentage:    defaultMaxScaleUpPodsPercentage,
 		enableScaleUpBehaviourForAll:       enableScaleUpBehaviourForAll,
-		qpsServiceName:                     qpsServiceName,
-		qpsServiceNamespace:                qpsServiceNamespace,
+		qpsMetricsServerService:            qpsMetricsServerService,
+		qpsThreshold:                       qpsThreshold,
 	}, nil
 }
 
@@ -305,7 +305,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 
 	//QPSBasedAutoscaling Required
 	if isQPSBasedAutoscalingRequired(workload) {
-		getQPSThreshold, err := getQPSThresholdForWorkload(workload)
+		getQPSThreshold, err := r.getQPSThresholdForWorkload(workload)
 		if err != nil {
 			logger.Error(err, "Error getting QPS threshold for workload")
 			return ctrl.Result{}, err
@@ -315,14 +315,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 			logger.Error(err, "Error getting service for workload")
 			return ctrl.Result{}, err
 		}
-		getQPSMetricsServerService, err := r.findQPSMetricsServerService(ctx, workload)
-		if err != nil {
-			logger.Error(err, "Error getting QPS Metrics Server Service")
-			return ctrl.Result{}, err
-		}
-		ip := getQPSMetricsServerService.Spec.ClusterIP
-		port := getQPSMetricsServerService.Spec.Ports[0].Port
-		qpsUrl := fmt.Sprintf("http://%s:%d/apis/v1/qps/namespaces/%s/services/%s", ip, port, workload.GetNamespace(), getService.GetName())
+		qpsUrl := fmt.Sprintf("http://%s/apis/v1/qps/namespaces/%s/services/%s", r.qpsMetricsServerService, workload.GetNamespace(), getService.GetName())
 		scaleTriggers = append(scaleTriggers, kedaapi.ScaleTriggers{
 			Type:             "metrics-api",
 			UseCachedMetrics: true,
@@ -760,9 +753,13 @@ func isQPSBasedAutoscalingRequired(workload client.Object) bool {
 	return false
 }
 
-func getQPSThresholdForWorkload(workload client.Object) (float64, error) {
+func (r *HPAEnforcementController) getQPSThresholdForWorkload(workload client.Object) (float64, error) {
 	if v, ok := workload.GetAnnotations()[QPSThreshold]; ok {
-		return strconv.ParseFloat(v, 64)
+		qpsValue, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, err
+		}
+		return qpsValue * r.qpsThreshold, nil
 	}
 	return 0, fmt.Errorf("QPS Threshold not found")
 }
@@ -819,18 +816,4 @@ func (r *HPAEnforcementController) findServiceForWorkload(ctx context.Context, w
 	}
 
 	return nil, fmt.Errorf("Service not found for workload")
-}
-
-func (r *HPAEnforcementController) findQPSMetricsServerService(ctx context.Context, workload client.Object) (*corev1.Service, error) {
-
-	svc := &corev1.Service{}
-	err := r.Get(ctx, types.NamespacedName{
-		Namespace: r.qpsServiceNamespace,
-		Name:      r.qpsServiceName,
-	}, svc)
-	if err != nil {
-		return nil, err
-	}
-
-	return svc, nil
 }
