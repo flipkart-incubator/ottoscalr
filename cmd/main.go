@@ -140,8 +140,8 @@ type Config struct {
 
 	QPSBasedAutoscaling struct {
 		QpsMetricsServerService string  `yaml:"qpsMetricsServerService"`
-		QpsThreshold            float64 `yaml:"qpsThresholdPercentage"`
-	}
+		QpsThresholdFactor      float64 `yaml:"qpsThresholdFactor"`
+	} `yaml:"qpsBasedAutoscaling"`
 }
 
 func main() {
@@ -333,7 +333,7 @@ func main() {
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName), scraper,
 		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas,
 		config.HPAScalingPolicies.DefaultScaleUpPeriodSeconds, config.HPAScalingPolicies.DefaultMaxScaleUpPodsInPercentage, config.HPAScalingPolicies.EnableScaleUpBehaviourForAll,
-		config.QPSBasedAutoscaling.QpsMetricsServerService, config.QPSBasedAutoscaling.QpsThreshold)
+		config.QPSBasedAutoscaling.QpsMetricsServerService, config.QPSBasedAutoscaling.QpsThresholdFactor)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
 		os.Exit(1)

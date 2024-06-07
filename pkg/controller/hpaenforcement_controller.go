@@ -62,7 +62,7 @@ const (
 	rolloutWaveAnnotation            = "ottoscalr.io/rollout-wave"
 	disableEventAutoscalerAnnotation = "ottoscalr.io/disable-event-scaler"
 	enbaleQPSBasedAutoscaling        = "ottoscalr.io/enable-qps-based-autoscaling"
-	QPSThreshold                     = "ottoscalr.io/qps-threshold"
+	QPSThresholdFactor               = "ottoscalr.io/qps-threshold"
 )
 
 var (
@@ -120,14 +120,14 @@ type HPAEnforcementController struct {
 	defaultMaxScaleUpPodsPercentage    int
 	enableScaleUpBehaviourForAll       *bool
 	qpsMetricsServerService            string
-	qpsThreshold                       float64
+	qpsThresholdFactor                 float64
 }
 
 func NewHPAEnforcementController(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder, scraper m.Scraper,
 	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int,
 	defaultScaleUpscaleUpPeriodSeconds int, defaultMaxScaleUpPodsPercentage int, enableScaleUpBehaviourForAll *bool,
-	qpsMetricsServerService string, qpsThreshold float64) (*HPAEnforcementController, error) {
+	qpsMetricsServerService string, qpsThresholdFactor float64) (*HPAEnforcementController, error) {
 	return &HPAEnforcementController{
 		Client:                             client,
 		Scheme:                             scheme,
@@ -143,7 +143,7 @@ func NewHPAEnforcementController(client client.Client,
 		defaultMaxScaleUpPodsPercentage:    defaultMaxScaleUpPodsPercentage,
 		enableScaleUpBehaviourForAll:       enableScaleUpBehaviourForAll,
 		qpsMetricsServerService:            qpsMetricsServerService,
-		qpsThreshold:                       qpsThreshold,
+		qpsThresholdFactor:                 qpsThresholdFactor,
 	}, nil
 }
 
@@ -754,12 +754,12 @@ func isQPSBasedAutoscalingRequired(workload client.Object) bool {
 }
 
 func (r *HPAEnforcementController) getQPSThresholdForWorkload(workload client.Object) (float64, error) {
-	if v, ok := workload.GetAnnotations()[QPSThreshold]; ok {
+	if v, ok := workload.GetAnnotations()[QPSThresholdFactor]; ok {
 		qpsValue, err := strconv.ParseFloat(v, 64)
 		if err != nil {
 			return 0, err
 		}
-		return qpsValue * r.qpsThreshold, nil
+		return qpsValue * r.qpsThresholdFactor, nil
 	}
 	return 0, fmt.Errorf("QPS Threshold not found")
 }
