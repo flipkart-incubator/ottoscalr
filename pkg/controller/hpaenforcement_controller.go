@@ -755,11 +755,11 @@ func isQPSBasedAutoscalingRequired(workload client.Object) bool {
 
 func (r *HPAEnforcementController) getQPSThresholdForWorkload(workload client.Object) (float64, error) {
 	if v, ok := workload.GetAnnotations()[QPSThresholdFactor]; ok {
-		qpsValue, err := strconv.ParseFloat(v, 64)
+		qpsThresold, err := strconv.ParseFloat(v, 64)
 		if err != nil {
 			return 0, err
 		}
-		return qpsValue * r.qpsThresholdFactor, nil
+		return qpsThresold * r.qpsThresholdFactor, nil
 	}
 	return 0, fmt.Errorf("QPS Threshold not found")
 }
