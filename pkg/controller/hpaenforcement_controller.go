@@ -61,8 +61,7 @@ const (
 	hpaEnforcementEnabledAnnotation  = "ottoscalr.io/enable-hpa-enforcement"
 	rolloutWaveAnnotation            = "ottoscalr.io/rollout-wave"
 	disableEventAutoscalerAnnotation = "ottoscalr.io/disable-event-scaler"
-	enbaleQPSBasedAutoscaling        = "ottoscalr.io/enable-qps-based-autoscaling"
-	QPSThresholdFactor               = "ottoscalr.io/qps-threshold"
+	QPSThreshold                     = "ottoscalr.io/qps-threshold"
 )
 
 var (
@@ -304,23 +303,23 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	//QPSBasedAutoscaling Required
-	if isQPSBasedAutoscalingRequired(workload) {
-		getQPSThreshold, err := r.getQPSThresholdForWorkload(workload)
-		if err != nil {
-			logger.Error(err, "Error getting QPS threshold for workload")
-			return ctrl.Result{}, err
-		}
+	isQPSBasedAutoscalingEnabled, qpsThreshold, err := r.checkQPSBasedAutoscalingAnnotation(workload)
+	if err != nil {
+		logger.Error(err, "Error checking QPS based autoscaling annotation")
+		return ctrl.Result{}, err
+	}
+	if isQPSBasedAutoscalingEnabled {
 		getService, err := r.findServiceForWorkload(ctx, workload)
 		if err != nil {
 			logger.Error(err, "Error getting service for workload")
 			return ctrl.Result{}, err
 		}
-		qpsUrl := fmt.Sprintf("http://%s/apis/v1/qps/namespaces/%s/services/%s", r.qpsMetricsServerService, workload.GetNamespace(), getService.GetName())
+		qpsUrl := fmt.Sprintf("http://%s/apis/v1/qps/namespaces/%s/services/%s/workloads/%s", r.qpsMetricsServerService, workload.GetNamespace(), getService.GetName(), workload.GetName())
 		scaleTriggers = append(scaleTriggers, kedaapi.ScaleTriggers{
 			Type:             "metrics-api",
 			UseCachedMetrics: true,
 			Metadata: map[string]string{
-				"targetValue":   fmt.Sprint(getQPSThreshold),
+				"targetValue":   fmt.Sprint(qpsThreshold * r.qpsThresholdFactor),
 				"url":           qpsUrl,
 				"valueLocation": "QPSValue",
 			},
@@ -743,25 +742,16 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 	return nil
 }
 
-func isQPSBasedAutoscalingRequired(workload client.Object) bool {
-	if v, ok := workload.GetAnnotations()[enbaleQPSBasedAutoscaling]; ok {
-		if allow, _ := strconv.ParseBool(v); allow {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (r *HPAEnforcementController) getQPSThresholdForWorkload(workload client.Object) (float64, error) {
-	if v, ok := workload.GetAnnotations()[QPSThresholdFactor]; ok {
+func (r *HPAEnforcementController) checkQPSBasedAutoscalingAnnotation(workload client.Object) (bool, float64, error) {
+	if v, ok := workload.GetAnnotations()[QPSThreshold]; ok {
 		qpsThresold, err := strconv.ParseFloat(v, 64)
 		if err != nil {
-			return 0, err
+			return false, 0, err
 		}
-		return qpsThresold * r.qpsThresholdFactor, nil
+		return true, qpsThresold, nil
 	}
-	return 0, fmt.Errorf("QPS Threshold not found")
+
+	return false, 0, nil
 }
 
 // Should return only if there is one service for the workload. else error
@@ -812,8 +802,8 @@ func (r *HPAEnforcementController) findServiceForWorkload(ctx context.Context, w
 	}
 
 	if len(requiredSvcList) > 1 {
-		return nil, fmt.Errorf("More than one service found for workload")
+		return nil, fmt.Errorf("more than one service found for workload")
 	}
 
-	return nil, fmt.Errorf("Service not found for workload")
+	return nil, fmt.Errorf("service not found for workload")
 }
