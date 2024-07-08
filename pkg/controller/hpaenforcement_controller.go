@@ -799,13 +799,18 @@ func (r *HPAEnforcementController) findServiceForWorkload(ctx context.Context, w
 	requiredSvcList := make([]corev1.Service, 0)
 
 	for _, svc := range svcList.Items {
-		matchedLabels := 0
+		allMatch := true
+		if len(svc.Spec.Selector) == 0 {
+			continue
+		}
+		
 		for key, value := range svc.Spec.Selector {
-			if val, ok := labelSet[key]; ok && val == value {
-				matchedLabels++
+			if val, ok := labelSet[key]; !ok || val != value {
+				allMatch = false
+				break
 			}
 		}
-		if matchedLabels == len(labelSet) && matchedLabels > 0 {
+		if allMatch {
 			requiredSvcList = append(requiredSvcList, svc)
 		}
 	}
