@@ -62,6 +62,7 @@ const (
 	rolloutWaveAnnotation            = "ottoscalr.io/rollout-wave"
 	disableEventAutoscalerAnnotation = "ottoscalr.io/disable-event-scaler"
 	QPSThreshold                     = "ottoscalr.io/qps-threshold"
+	useCachedMetricsAnnotation       = "ottoscalr.io/use-cached-metrics"
 )
 
 var (
@@ -97,6 +98,16 @@ var (
 		prometheus.GaugeOpts{Name: "hpa_scale_up_behaviour_enabled",
 			Help: "Indicates if the scale up behaviour is enabled for the workload"}, []string{"namespace", "workload"},
 	)
+
+	hpaQPSBasedAutoscalingEnabled = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "hpa_qps_based_autoscaling_enabled",
+			Help: "Indicates if the QPS based autoscaling is enabled for the workload"}, []string{"namespace", "workload"},
+	)
+
+	hpaQPSBasedAutoscalingError = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "hpa_qps_based_autoscaling_error",
+			Help: "Indicates if the QPS based autoscaling has some error for the workload"}, []string{"namespace", "workload"},
+	)
 )
 
 func init() {
@@ -120,13 +131,14 @@ type HPAEnforcementController struct {
 	enableScaleUpBehaviourForAll       *bool
 	qpsMetricsServerService            string
 	qpsThresholdFactor                 float64
+	defaultUseCachedMetrics            *bool
 }
 
 func NewHPAEnforcementController(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder, scraper m.Scraper,
 	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int,
 	defaultScaleUpscaleUpPeriodSeconds int, defaultMaxScaleUpPodsPercentage int, enableScaleUpBehaviourForAll *bool,
-	qpsMetricsServerService string, qpsThresholdFactor float64) (*HPAEnforcementController, error) {
+	qpsMetricsServerService string, qpsThresholdFactor float64, defaultUseCacheMetrics *bool) (*HPAEnforcementController, error) {
 	return &HPAEnforcementController{
 		Client:                             client,
 		Scheme:                             scheme,
@@ -143,6 +155,7 @@ func NewHPAEnforcementController(client client.Client,
 		enableScaleUpBehaviourForAll:       enableScaleUpBehaviourForAll,
 		qpsMetricsServerService:            qpsMetricsServerService,
 		qpsThresholdFactor:                 qpsThresholdFactor,
+		defaultUseCachedMetrics:            defaultUseCacheMetrics,
 	}, nil
 }
 
@@ -305,25 +318,27 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 	//QPSBasedAutoscaling Required
 	isQPSBasedAutoscalingEnabled, qpsThreshold, err := r.checkQPSBasedAutoscalingAnnotation(workload)
 	if err != nil {
+		// If there's an error in checking the QPS based autoscaling annotation, we'll skip the QPS based autoscaling
 		logger.Error(err, "Error checking QPS based autoscaling annotation")
-		return ctrl.Result{}, err
 	}
 	if isQPSBasedAutoscalingEnabled {
+		hpaQPSBasedAutoscalingEnabled.WithLabelValues(workload.GetNamespace(), workload.GetName()).Set(1)
 		getService, err := r.findServiceForWorkload(ctx, workload)
-		if err != nil {
+		if err == nil {
+			qpsUrl := fmt.Sprintf("http://%s/apis/v1/qps/namespaces/%s/services/%s/workloads/%s", r.qpsMetricsServerService, workload.GetNamespace(), getService.GetName(), workload.GetName())
+			scaleTriggers = append(scaleTriggers, kedaapi.ScaleTriggers{
+				Type:             "metrics-api",
+				UseCachedMetrics: r.useCachedMetrics(workload),
+				Metadata: map[string]string{
+					"targetValue":   fmt.Sprint(qpsThreshold * r.qpsThresholdFactor),
+					"url":           qpsUrl,
+					"valueLocation": "QPSValue",
+				},
+			})
+		} else {
+			hpaQPSBasedAutoscalingError.WithLabelValues(workload.GetNamespace(), workload.GetName()).Set(1)
 			logger.Error(err, "Error getting service for workload")
-			return ctrl.Result{}, err
 		}
-		qpsUrl := fmt.Sprintf("http://%s/apis/v1/qps/namespaces/%s/services/%s/workloads/%s", r.qpsMetricsServerService, workload.GetNamespace(), getService.GetName(), workload.GetName())
-		scaleTriggers = append(scaleTriggers, kedaapi.ScaleTriggers{
-			Type:             "metrics-api",
-			UseCachedMetrics: true,
-			Metadata: map[string]string{
-				"targetValue":   fmt.Sprint(qpsThreshold * r.qpsThresholdFactor),
-				"url":           qpsUrl,
-				"valueLocation": "QPSValue",
-			},
-		})
 
 	}
 
@@ -784,15 +799,13 @@ func (r *HPAEnforcementController) findServiceForWorkload(ctx context.Context, w
 	requiredSvcList := make([]corev1.Service, 0)
 
 	for _, svc := range svcList.Items {
-		allMatch := true
+		matchedLabels := 0
 		for key, value := range svc.Spec.Selector {
-
-			if val, ok := labelSet[key]; !ok || val != value {
-				allMatch = false
-				break
+			if val, ok := labelSet[key]; ok && val == value {
+				matchedLabels++
 			}
 		}
-		if allMatch {
+		if matchedLabels == len(labelSet) && matchedLabels > 0 {
 			requiredSvcList = append(requiredSvcList, svc)
 		}
 	}
@@ -806,4 +819,19 @@ func (r *HPAEnforcementController) findServiceForWorkload(ctx context.Context, w
 	}
 
 	return nil, fmt.Errorf("service not found for workload")
+}
+
+func (r *HPAEnforcementController) useCachedMetrics(workload client.Object) bool {
+
+	if v, ok := workload.GetAnnotations()[useCachedMetricsAnnotation]; ok {
+		if allow, _ := strconv.ParseBool(v); !allow {
+			return false
+		}
+	}
+
+	if r.defaultUseCachedMetrics != nil && !*r.defaultUseCachedMetrics {
+		return false
+	}
+
+	return true
 }

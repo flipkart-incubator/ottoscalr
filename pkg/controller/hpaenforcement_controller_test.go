@@ -1458,6 +1458,158 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 
 		})
 
+		It("Should create a ScaledObject with QPS based autoscaling for a Deployment if qps threshold is there", func() {
+			policyReco = &v1alpha1.PolicyRecommendation{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      HPAEnforcerPolicyRecoName,
+					Namespace: HPAEnforcerPolicyRecoNamespace,
+				},
+				Spec: v1alpha1.PolicyRecommendationSpec{
+					WorkloadMeta: v1alpha1.WorkloadMeta{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       "Deployment",
+							APIVersion: "apps/v1",
+						},
+						Name: HPAEnforcerPolicyRecoName,
+					},
+					TargetHPAConfiguration: v1alpha1.HPAConfiguration{
+						Min:               60,
+						Max:               100,
+						TargetMetricValue: 50,
+					},
+					CurrentHPAConfiguration: v1alpha1.HPAConfiguration{
+						Min:               20,
+						Max:               100,
+						TargetMetricValue: 40,
+					},
+					Policy:             "random",
+					QueuedForExecution: &falseBool,
+				},
+			}
+			Expect(k8sClient.Create(context.TODO(), policyReco)).To(Succeed())
+			updatedPolicyReco := &v1alpha1.PolicyRecommendation{}
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{
+				Namespace: HPAEnforcerPolicyRecoNamespace,
+				Name:      HPAEnforcerPolicyRecoName,
+			}, updatedPolicyReco)).To(Succeed())
+			updatedPolicyRecoString, _ := json.MarshalIndent(updatedPolicyReco, "", "   ")
+			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
+			replicas := int32(10)
+			deployment = &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        HPAEnforcerPolicyRecoName,
+					Namespace:   HPAEnforcerPolicyRecoNamespace,
+					Annotations: map[string]string{hpaEnforcementEnabledAnnotation: "true", QPSThreshold: "80"},
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: &replicas,
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test-app",
+						},
+					},
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "test-app",
+							},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "test-container",
+									Image: "nginx:1.17.5",
+								},
+							},
+						},
+					}},
+			}
+			Expect(k8sClient.Create(context.TODO(), deployment)).To(Succeed())
+			time.Sleep(2 * time.Second)
+
+			service := &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      HPAEnforcerPolicyRecoName,
+					Namespace: HPAEnforcerPolicyRecoNamespace,
+				},
+				Spec: v1.ServiceSpec{
+					Selector: map[string]string{
+						"app": "test-app",
+					},
+					Ports: []v1.ServicePort{
+						{
+							Port: 80,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(context.TODO(), service)).To(Succeed())
+			updatedPolicyReco.Status = v1alpha1.PolicyRecommendationStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:               string(v1alpha1.Initialized),
+						Status:             metav1.ConditionTrue,
+						LastTransitionTime: metav1.Now(),
+						Reason:             PolicyRecommendationCreated,
+						Message:            InitializedMessage,
+					},
+					{
+						Type:               string(v1alpha1.RecoTaskProgress),
+						Status:             metav1.ConditionFalse,
+						Reason:             RecoTaskRecommendationGenerated,
+						Message:            RecommendationGeneratedMessage,
+						LastTransitionTime: metav1.Now(),
+					},
+				}}
+			Expect(k8sClient.Status().Update(context.TODO(), updatedPolicyReco)).To(Succeed())
+			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{
+				Namespace: HPAEnforcerPolicyRecoNamespace,
+				Name:      HPAEnforcerPolicyRecoName,
+			}, updatedPolicyReco)).To(Succeed())
+			updatedPolicyRecoString, _ = json.MarshalIndent(updatedPolicyReco, "", "   ")
+			fmt.Fprintf(GinkgoWriter, "%s\n", updatedPolicyRecoString)
+
+			updatedPolicyReco = &v1alpha1.PolicyRecommendation{}
+			Eventually(func() bool {
+				err := k8sClient.Get(context.TODO(), types.NamespacedName{
+					Namespace: HPAEnforcerPolicyRecoNamespace,
+					Name:      HPAEnforcerPolicyRecoName,
+				}, updatedPolicyReco)
+				if err != nil {
+					return false
+				}
+				for _, v := range updatedPolicyReco.Status.Conditions {
+					if v.Type == string(v1alpha1.HPAEnforced) {
+						return true
+					}
+				}
+				return false
+			}, timeout, interval).Should(BeTrue())
+
+			scaledObject = &kedaapi.ScaledObject{}
+			time.Sleep(2 * time.Second)
+			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).Should(Succeed())
+			scaledObjectString, _ := json.MarshalIndent(scaledObject, "", "   ")
+			fmt.Fprintf(GinkgoWriter, "%s\n", scaledObjectString)
+			fmt.Println("step 20")
+			Expect(scaledObject.OwnerReferences[0].Name).Should(Equal(deployment.Name))
+			Expect(scaledObject.OwnerReferences[0].Kind).Should(Equal("Deployment"))
+			Expect(scaledObject.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
+			Expect(scaledObject.Spec.ScaleTargetRef.Name).Should(Equal(deployment.Name))
+			Expect(scaledObject.Spec.ScaleTargetRef.Kind).Should(Equal("Deployment"))
+			Expect(scaledObject.Spec.ScaleTargetRef.APIVersion).Should(Equal("apps/v1"))
+			Expect(int(*scaledObject.Spec.MaxReplicaCount)).Should(Equal(policyReco.Spec.CurrentHPAConfiguration.Max))
+			Expect(int(*scaledObject.Spec.MinReplicaCount)).Should(Equal(policyReco.Spec.CurrentHPAConfiguration.Min))
+			Expect(len(scaledObject.Spec.Triggers)).Should(Equal(3))
+			Expect(scaledObject.Spec.Triggers[0].Type).Should(Equal("cpu"))
+			n, _ := strconv.Atoi(scaledObject.Spec.Triggers[0].Metadata["value"])
+			Expect(n).Should(Equal((policyReco.Spec.CurrentHPAConfiguration.TargetMetricValue)))
+
+			Expect(scaledObject.Spec.Triggers[2].Type).Should(Equal("metrics-api"))
+			Expect(scaledObject.Spec.Triggers[2].Metadata["targetValue"]).Should(Equal("64"))
+
+		})
+
 		It("Should not create a ScaledObject for a Deployment", func() {
 			policyReco = &v1alpha1.PolicyRecommendation{
 				ObjectMeta: metav1.ObjectMeta{

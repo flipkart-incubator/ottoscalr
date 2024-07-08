@@ -147,7 +147,7 @@ func (r *DeploymentTriggerController) SetupWithManager(mgr ctrl.Manager) error {
 			newQPSValue, _ = newObj.GetAnnotations()[QPSThreshold]
 			oldQPSValue, _ = oldObj.GetAnnotations()[QPSThreshold]
 
-			if newMaxPods != oldMaxPods || newMinPods != oldMinPods || newMaxScaleUpPods != oldMaxScaleUpPods || newEnableScaleUpBehaviourValue != oldEnableScaleUpBehaviourValue || newQPSValue != oldQPSValue{
+			if newMaxPods != oldMaxPods || newMinPods != oldMinPods || newMaxScaleUpPods != oldMaxScaleUpPods || newEnableScaleUpBehaviourValue != oldEnableScaleUpBehaviourValue || newQPSValue != oldQPSValue {
 				return true
 			}
 
