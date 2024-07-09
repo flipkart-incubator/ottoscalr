@@ -111,7 +111,7 @@ var (
 )
 
 func init() {
-	metrics.Registry.MustRegister(hpaenforcerScaledObjectUpdatedCounter, hpaenforcerScaledObjectDeletedCounter, hpaenforcerReconcileCounter, hpaScaleUpBehaviourEnabled)
+	metrics.Registry.MustRegister(hpaenforcerScaledObjectUpdatedCounter, hpaenforcerScaledObjectDeletedCounter, hpaenforcerReconcileCounter, hpaScaleUpBehaviourEnabled, hpaQPSBasedAutoscalingEnabled, hpaQPSBasedAutoscalingError)
 }
 
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
@@ -803,7 +803,7 @@ func (r *HPAEnforcementController) findServiceForWorkload(ctx context.Context, w
 		if len(svc.Spec.Selector) == 0 {
 			continue
 		}
-		
+
 		for key, value := range svc.Spec.Selector {
 			if val, ok := labelSet[key]; !ok || val != value {
 				allMatch = false
