@@ -3,18 +3,19 @@ package metrics
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
-	"github.com/prometheus/client_golang/api"
-	"github.com/prometheus/client_golang/api/prometheus/v1"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/model"
 	"math"
-	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/api"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
+	p8smetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 const (
@@ -90,13 +91,14 @@ type Scraper interface {
 
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
 type PrometheusScraper struct {
-	api                 []PrometheusInstance
-	metricRegistry      *MetricNameRegistry
-	queryTimeout        time.Duration
-	rangeQuerySplitter  *RangeQuerySplitter
-	metricIngestionTime float64
-	metricProbeTime     float64
-	logger              logr.Logger
+	api                  []PrometheusInstance
+	metricRegistry       *MetricNameRegistry
+	queryTimeout         time.Duration
+	rangeQuerySplitter   *RangeQuerySplitter
+	metricIngestionTime  float64
+	metricProbeTime      float64
+	nodeStartUpTimeInSec int
+	logger               logr.Logger
 }
 
 type MetricNameRegistry struct {
@@ -121,7 +123,7 @@ func (ps *PrometheusScraper) GetACLByWorkload(namespace string, workload string)
 	if err != nil {
 		return 0.0, fmt.Errorf("error getting pod bootstrap time: %v", err)
 	}
-	totalACL := ps.metricIngestionTime + ps.metricProbeTime + podBootStrapTime
+	totalACL := float64(ps.nodeStartUpTimeInSec) + ps.metricIngestionTime + ps.metricProbeTime + podBootStrapTime
 	return time.Duration(totalACL) * time.Second, nil
 }
 
@@ -160,6 +162,7 @@ func NewPrometheusScraper(apiUrls []string,
 	splitInterval time.Duration,
 	metricIngestionTime float64,
 	metricProbeTime float64,
+	nodeStartUpTimeInSec int,
 	logger logr.Logger) (*PrometheusScraper, error) {
 
 	var prometheusInstances []PrometheusInstance
@@ -180,12 +183,13 @@ func NewPrometheusScraper(apiUrls []string,
 	}
 
 	return &PrometheusScraper{api: prometheusInstances,
-		metricRegistry:      NewKubePrometheusMetricNameRegistry(),
-		queryTimeout:        timeout,
-		rangeQuerySplitter:  NewRangeQuerySplitter(splitInterval),
-		metricProbeTime:     metricProbeTime,
-		metricIngestionTime: metricIngestionTime,
-		logger:              logger}, nil
+		metricRegistry:       NewKubePrometheusMetricNameRegistry(),
+		queryTimeout:         timeout,
+		rangeQuerySplitter:   NewRangeQuerySplitter(splitInterval),
+		metricProbeTime:      metricProbeTime,
+		metricIngestionTime:  metricIngestionTime,
+		nodeStartUpTimeInSec: nodeStartUpTimeInSec,
+		logger:               logger}, nil
 }
 
 // GetAverageCPUUtilizationByWorkload returns the average CPU utilization for the given workload type and name in the
