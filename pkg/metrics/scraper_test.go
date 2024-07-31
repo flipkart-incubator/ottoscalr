@@ -124,11 +124,11 @@ var _ = Describe("PrometheusScraper", func() {
 
 			autoscalingLag1, err := scraper.GetACLByWorkload("test-ns-1", "test-workload-1")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(autoscalingLag1).To(Equal(45.0 * time.Second))
+			Expect(autoscalingLag1).To(Equal(50.0 * time.Second))
 
 			autoscalingLag2, err := scraper.GetACLByWorkload("test-ns-2", "test-workload-3")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(autoscalingLag2).To(Equal(65.0 * time.Second))
+			Expect(autoscalingLag2).To(Equal(70.0 * time.Second))
 		})
 	})
 

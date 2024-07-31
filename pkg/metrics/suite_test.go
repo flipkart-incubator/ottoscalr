@@ -18,13 +18,14 @@ package metrics
 
 import (
 	"fmt"
+	"net/http"
+	"testing"
+	"time"
+
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"net/http"
-	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -126,10 +127,11 @@ var _ = BeforeSuite(func() {
 			podCreatedTimeMetric:  podCreatedTimeMetric,
 			podReadyTimeMetric:    podReadyTimeMetric,
 		},
-		queryTimeout:        30 * time.Second,
-		rangeQuerySplitter:  NewRangeQuerySplitter(1 * time.Second),
-		metricIngestionTime: metricIngestionTime,
-		metricProbeTime:     metricProbeTime,
+		queryTimeout:         30 * time.Second,
+		rangeQuerySplitter:   NewRangeQuerySplitter(1 * time.Second),
+		metricIngestionTime:  metricIngestionTime,
+		metricProbeTime:      metricProbeTime,
+		nodeStartUpTimeInSec: 5,
 	}
 
 	go func() {

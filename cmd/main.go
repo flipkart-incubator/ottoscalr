@@ -121,6 +121,7 @@ type Config struct {
 	} `yaml:"cpuUtilizationBasedRecommender"`
 	MetricIngestionTime      float64 `yaml:"metricIngestionTime"`
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
+	NodeStartUpTimeInSec     int     `yaml:"nodeStartUpTimeInSec"`
 	EnableMetricsTransformer *bool   `yaml:"enableMetricsTransformation"`
 	EventCallIntegration     struct {
 		EventCalendarAPIEndpoint        string `yaml:"eventCalendarAPIEndpoint"`
@@ -212,6 +213,7 @@ func main() {
 		time.Duration(config.MetricsScraper.QuerySplitIntervalHr)*time.Hour,
 		config.MetricIngestionTime,
 		config.MetricProbeTime,
+		config.NodeStartUpTimeInSec,
 		logger,
 	)
 	if err != nil {
