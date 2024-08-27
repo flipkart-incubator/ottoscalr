@@ -286,7 +286,9 @@ func (rw *RecommendationWorkflowImpl) transformTargetRecoConfig(targetRecoConfig
 		minPodValue, _ := getMinPods(rw.k8sClient, wm.Namespace, wm.Kind, wm.Name)
 
 		targetMetricValue = policyList.Items[0].Spec.TargetUtilization
-		minReplicas = int(math.Max(float64(minPodValue), math.Ceil(float64(maxReplicas)*float64(rw.defaultMinReplicasPercentage)/100)))
+
+		//min should not be greater than max.
+		minReplicas = int(math.Min(float64(maxReplicas), (math.Max(float64(minPodValue), math.Ceil(float64(maxReplicas)*float64(rw.defaultMinReplicasPercentage)/100)))))
 	}
 
 	if maxReplicas >= rw.minRequiredReplicas && minReplicas < rw.minRequiredReplicas {
