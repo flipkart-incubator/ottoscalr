@@ -678,8 +678,8 @@ func (r *HPAEnforcementController) isWhitelistedNamespace(namespace string) bool
 func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx context.Context, policyreco v1alpha1.PolicyRecommendation, workload client.Object, logger logr.Logger) error {
 	var maxPods int32
 	// Check the annotation maxReplica as well
-	maxPodAnnotation, ok := workload.GetAnnotations()[recoUtils.OttoscalrMaxPodAnnotation]
-	if ok {
+	maxPodAnnotation, maxPodAnnotationPresent := workload.GetAnnotations()[recoUtils.OttoscalrMaxPodAnnotation]
+	if maxPodAnnotationPresent {
 		maxPodsValue, err := strconv.Atoi(maxPodAnnotation)
 		if err != nil {
 			logger.V(0).Error(err, "Error parsing maxPods annotation")
@@ -711,7 +711,7 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 	logger.V(0).Info("Deleting the ScaledObject and resetting workload spec.replicas")
 
 	for _, scaledObject := range scaledObjects.Items {
-		if !ok && scaledObject.Spec.MaxReplicaCount != nil {
+		if !maxPodAnnotationPresent && scaledObject.Spec.MaxReplicaCount != nil {
 			maxPods = *scaledObject.Spec.MaxReplicaCount
 		}
 		deletePropagationPolicy := metav1.DeletePropagationForeground
