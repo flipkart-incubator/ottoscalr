@@ -676,47 +676,60 @@ func (r *HPAEnforcementController) isWhitelistedNamespace(namespace string) bool
 }
 
 func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx context.Context, policyreco v1alpha1.PolicyRecommendation, workload client.Object, logger logr.Logger) error {
-	scaledObjects := &kedaapi.ScaledObjectList{}
-	labelSelector, err := labels.Parse(fmt.Sprintf("%s=%s", createdByLabelKey, createdByLabelValue))
-	if err != nil {
-		logger.V(0).Error(err, "Unable to parse label selector string.")
-		return err
-	}
-	// List only scaledObjects created by this controller
-	if err := r.List(ctx, scaledObjects, &client.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector(scaledObjectField, policyreco.GetName()),
-		LabelSelector: labelSelector,
-		Namespace:     policyreco.GetNamespace(),
-	}); err != nil && client.IgnoreNotFound(err) != nil {
-		return err
-	}
-
-	if len(scaledObjects.Items) == 0 {
-		return nil
-	}
-	logger.V(0).Info(fmt.Sprintf("Found %d scaledobject(s) for policyreco %s.", len(scaledObjects.Items), policyreco.Name))
-	logger.V(0).Info("Deleting the ScaledObject and resetting workload spec.replicas")
 	var maxPods int32
-	for _, scaledObject := range scaledObjects.Items {
-		if scaledObject.Spec.MaxReplicaCount != nil {
-			maxPods = *scaledObject.Spec.MaxReplicaCount
-		}
-		deletePropagationPolicy := metav1.DeletePropagationForeground
-		err := r.Delete(ctx, &scaledObject, &client.DeleteOptions{
-			PropagationPolicy: &deletePropagationPolicy,
-		})
-		r.Recorder.Event(&policyreco, eventTypeNormal, "ScaledObjectDeleted", fmt.Sprintf("The ScaledObject '%s' has been deleted.", scaledObject.Name))
+	// Check the annotation maxReplica as well
+	maxPodAnnotation, ok := workload.GetAnnotations()[recoUtils.OttoscalrMaxPodAnnotation]
+	if ok {
+		maxPodsValue, err := strconv.Atoi(maxPodAnnotation)
 		if err != nil {
-			logger.V(0).Error(err, "Error while deleting the scaledobject", "scaledobject", scaledObject)
-			return client.IgnoreNotFound(err)
+			logger.V(0).Error(err, "Error parsing maxPods annotation")
+			return err
 		}
-		hpaenforcerScaledObjectDeletedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, scaledObject.Name).Inc()
-		logger.V(0).Info("Deleted ScaledObject for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "scaledobject.name", scaledObject.Name, "scaledobject.namespace", scaledObject.Namespace, "maxReplicas", *scaledObject.Spec.MaxReplicaCount)
-	}
+		maxPods = int32(maxPodsValue)
 
-	if maxPods == 0 {
-		logger.Info("ScaledObject maxReplicas is not configured. Not resetting the workload.spec.replicas.")
-		return nil
+	} else {
+		scaledObjects := &kedaapi.ScaledObjectList{}
+		labelSelector, err := labels.Parse(fmt.Sprintf("%s=%s", createdByLabelKey, createdByLabelValue))
+		if err != nil {
+			logger.V(0).Error(err, "Unable to parse label selector string.")
+			return err
+		}
+		// List only scaledObjects created by this controller
+		if err := r.List(ctx, scaledObjects, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(scaledObjectField, policyreco.GetName()),
+			LabelSelector: labelSelector,
+			Namespace:     policyreco.GetNamespace(),
+		}); err != nil && client.IgnoreNotFound(err) != nil {
+			return err
+		}
+
+		if len(scaledObjects.Items) == 0 {
+			return nil
+		}
+		logger.V(0).Info(fmt.Sprintf("Found %d scaledobject(s) for policyreco %s.", len(scaledObjects.Items), policyreco.Name))
+		logger.V(0).Info("Deleting the ScaledObject and resetting workload spec.replicas")
+
+		for _, scaledObject := range scaledObjects.Items {
+			if scaledObject.Spec.MaxReplicaCount != nil {
+				maxPods = *scaledObject.Spec.MaxReplicaCount
+			}
+			deletePropagationPolicy := metav1.DeletePropagationForeground
+			err := r.Delete(ctx, &scaledObject, &client.DeleteOptions{
+				PropagationPolicy: &deletePropagationPolicy,
+			})
+			r.Recorder.Event(&policyreco, eventTypeNormal, "ScaledObjectDeleted", fmt.Sprintf("The ScaledObject '%s' has been deleted.", scaledObject.Name))
+			if err != nil {
+				logger.V(0).Error(err, "Error while deleting the scaledobject", "scaledobject", scaledObject)
+				return client.IgnoreNotFound(err)
+			}
+			hpaenforcerScaledObjectDeletedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, scaledObject.Name).Inc()
+			logger.V(0).Info("Deleted ScaledObject for the policyreco.", "policyreco.name", policyreco.GetName(), "policyreco.namespace", policyreco.GetNamespace(), "scaledobject.name", scaledObject.Name, "scaledobject.namespace", scaledObject.Namespace, "maxReplicas", *scaledObject.Spec.MaxReplicaCount)
+		}
+
+		if maxPods == 0 {
+			logger.Info("ScaledObject maxReplicas is not configured. Not resetting the workload.spec.replicas.")
+			return nil
+		}
 	}
 
 	var workloadPatch client.Object
@@ -743,16 +756,8 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 			},
 		}
 	} else {
-		logger.Error(err, "Unrecognized workload type")
+		logger.Error(fmt.Errorf("workload kind not supported"), "Unrecognized workload type")
 		return nil
-	}
-	//Check the annotation maxReplica as well
-	maxPodAnnotation, ok := workload.GetAnnotations()[recoUtils.OttoscalrMaxPodAnnotation]
-	if ok {
-		maxPodsValue, err := strconv.Atoi(maxPodAnnotation)
-		if err == nil {
-			maxPods = int32(math.Min(float64(maxPods), float64(maxPodsValue)))
-		}
 	}
 
 	scale := &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: maxPods}}

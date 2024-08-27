@@ -4073,7 +4073,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 			Eventually(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject), timeout, interval).ShouldNot(Succeed())
 		})
 
-		It("Should delete the ScaledObject for a Deployment and set the replica to max of scaled", func() {
+		It("Should delete the ScaledObject for a Deployment and set the replica to maxPod annotation if present", func() {
 			initialMax := 100
 			policyReco = &v1alpha1.PolicyRecommendation{
 				ObjectMeta: metav1.ObjectMeta{
@@ -4115,6 +4115,9 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      HPAEnforcerPolicyRecoName,
 					Namespace: HPAEnforcerPolicyRecoNamespace,
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "110",
+					},
 				},
 				Spec: appsv1.DeploymentSpec{
 					Replicas: &replicas,
@@ -4232,7 +4235,7 @@ var _ = Describe("Test ScaledObject enforcer", func() {
 					return -1
 				}
 				return int(*deployment.Spec.Replicas)
-			}, timeout, interval).Should(Equal(initialMax))
+			}, timeout, interval).Should(Equal(110))
 
 			scaledObject = &kedaapi.ScaledObject{}
 			Expect(k8sClient.Get(context.TODO(), types.NamespacedName{Namespace: HPAEnforcerPolicyRecoNamespace, Name: HPAEnforcerPolicyRecoName}, scaledObject)).Should(Succeed())
