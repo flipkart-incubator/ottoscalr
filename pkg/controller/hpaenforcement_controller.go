@@ -756,7 +756,7 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 			},
 		}
 	} else {
-		logger.Error(fmt.Errorf("workload kind not supported"), "Unrecognized workload type")
+		logger.Error(err, "Unrecognized workload type")
 		return nil
 	}
 
