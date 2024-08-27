@@ -25,7 +25,6 @@ import (
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	m "github.com/flipkart-incubator/ottoscalr/pkg/metrics"
-	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	recoUtils "github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/go-logr/logr"
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
@@ -748,11 +747,11 @@ func (r *HPAEnforcementController) deleteControllerManagedScaledObject(ctx conte
 		return nil
 	}
 	//Check the annotation maxReplica as well
-	maxPodAnnotation, ok := workload.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
+	maxPodAnnotation, ok := workload.GetAnnotations()[recoUtils.OttoscalrMaxPodAnnotation]
 	if ok {
 		maxPodsValue, err := strconv.Atoi(maxPodAnnotation)
 		if err == nil {
-			maxPods = int32(maxPodsValue)
+			maxPods = int32(math.Min(float64(maxPods), float64(maxPodsValue)))
 		}
 	}
 
