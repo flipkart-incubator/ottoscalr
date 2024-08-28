@@ -312,6 +312,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	hpaDecouplingController := controller.NewHPADecouplingController(mgr.GetClient(), mgr.GetScheme())
+	if err = hpaDecouplingController.
+		SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "HPADecouplingController")
+		os.Exit(1)
+	}
+
 	triggerHandler := trigger.NewK8sTriggerHandler(mgr.GetClient(), logger)
 	triggerHandler.Start()
 

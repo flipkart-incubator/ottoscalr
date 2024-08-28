@@ -1,0 +1,214 @@
+package controller
+
+import (
+	"context"
+	"strconv"
+	"time"
+
+	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
+	"github.com/go-logr/logr"
+	kedav1alpha1 "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
+)
+
+const (
+	HPADecouplingCtrlName              = "HPADecouplingController"
+	AutoscalingPausedAnnotation        = "ottoscalr.io/autoscaling-paused"
+	AutoscalingPausedReplicaAnnotation = "ottoscalr.io/autoscaling-paused-replicas"
+)
+
+type HPADecouplingController struct {
+	Client client.Client
+	Scheme *runtime.Scheme
+}
+
+func NewHPADecouplingController(client client.Client,
+	scheme *runtime.Scheme,
+) *HPADecouplingController {
+	return &HPADecouplingController{
+		Client: client,
+		Scheme: scheme,
+	}
+}
+
+// +kubebuilder:rbac:groups=argoproj.io,resources=rollouts,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
+// +kubebuilder:rbac:groups=your-group.io,resources=policyrecommendations,verbs=create;get;list;watch;update;delete
+//+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
+
+func (r *HPADecouplingController) Reconcile(ctx context.Context,
+	request ctrl.Request) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger = logger.WithValues("request", request).WithName(HPADecouplingCtrlName)
+
+	// Check if Rollout is enqueued
+	rollout := argov1alpha1.Rollout{}
+	err := r.Client.Get(ctx, request.NamespacedName, &rollout)
+	if err == nil {
+		// Rollout exists, update the scaledobject
+		return ctrl.Result{}, r.updateScaledObject(ctx, &rollout, r.Scheme, logger)
+	}
+
+	if !errors.IsNotFound(err) {
+		// Error occurred
+		logger.Error(err, "Failed to get Rollout. Requeue the request")
+		return ctrl.Result{RequeueAfter: 1 * time.Second}, err
+	}
+
+	// Rollout isn't queued. Check if Deployment is enqueued
+	deployment := appsv1.Deployment{}
+	err = r.Client.Get(ctx, request.NamespacedName, &deployment)
+	if err == nil {
+		// Deployment exists, update the scaledobject
+		return ctrl.Result{}, r.updateScaledObject(ctx, &deployment, r.Scheme, logger)
+	}
+
+	if !errors.IsNotFound(err) {
+		logger.Error(err, "Failed to get Deployment. Requeue the request")
+		return ctrl.Result{RequeueAfter: 1 * time.Second}, err
+	}
+
+	logger.Info("Rollout or Deployment not found.")
+	return ctrl.Result{}, nil
+
+}
+
+func (r *HPADecouplingController) updateScaledObject(ctx context.Context,
+	object client.Object,
+	scheme *runtime.Scheme,
+	logger logr.Logger) error {
+
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		so := &kedav1alpha1.ScaledObject{}
+		err := r.Client.Get(ctx, types.NamespacedName{Namespace: object.GetNamespace(), Name: object.GetName()}, so)
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				logger.Error(err, "Failed to get ScaledObject")
+				return err
+			}
+			return nil
+		}
+
+		// If scaledobject is not created by ottoscalr
+		if so.Labels[createdByLabelKey] != createdByLabelValue {
+			return nil
+		}
+
+		// Get the max pod annotation value
+		maxReplicaValue, ok := object.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
+		if ok {
+			maxReplica, err := strconv.Atoi(maxReplicaValue)
+			if err != nil {
+				logger.Error(err, "Failed to convert maxReplicaValue to int")
+				return err
+			}
+			//update the scaledobject
+			maxReplicaInt32 := int32(maxReplica)
+			so.Spec.MaxReplicaCount = &maxReplicaInt32
+		}
+
+		autoscalingPaused, ok := object.GetAnnotations()[AutoscalingPausedAnnotation]
+		if ok {
+			if autoscalingPaused == "" {
+				delete(so.Annotations, AutoscalingPausedAnnotation)
+			} else {
+				so.Annotations[AutoscalingPausedAnnotation] = autoscalingPaused
+			}
+		}
+
+		autoscalingPausedReplicas, ok := object.GetAnnotations()[AutoscalingPausedReplicaAnnotation]
+		if ok {
+			if autoscalingPausedReplicas == "" {
+				delete(so.Annotations, AutoscalingPausedReplicaAnnotation)
+			} else {
+				so.Annotations[AutoscalingPausedReplicaAnnotation] = autoscalingPausedReplicas
+			}
+		}
+
+		err = r.Client.Update(ctx, so)
+		if err != nil {
+			logger.Error(err, "Failed to update ScaledObject")
+			return err
+		}
+		logger.Info("ScaledObject updated successfully", "name", so.Name, "namespace", so.Namespace)
+		return nil
+	})
+
+	if err != nil {
+		logger.Error(err, "Failed to update ScaledObject")
+		return err
+	}
+	return nil
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *HPADecouplingController) SetupWithManager(mgr ctrl.Manager) error {
+	annotationUpdatePredicate := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			newObj := e.ObjectNew
+			oldObj := e.ObjectOld
+
+			var newMaxPods, oldMaxPods string
+			newMaxPods = newObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
+			oldMaxPods = oldObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
+
+			var newAutoscalingPaused, oldAutoscalingPaused string
+			newAutoscalingPaused = newObj.GetAnnotations()[AutoscalingPausedAnnotation]
+			oldAutoscalingPaused = oldObj.GetAnnotations()[AutoscalingPausedAnnotation]
+
+			var newAutoscalingPausedReplicas, oldAutoscalingPausedReplicas string
+			newAutoscalingPausedReplicas = newObj.GetAnnotations()[AutoscalingPausedReplicaAnnotation]
+			oldAutoscalingPausedReplicas = oldObj.GetAnnotations()[AutoscalingPausedReplicaAnnotation]
+
+			// If maxPods or autoscaling paused annotation is updated
+			if newMaxPods != oldMaxPods || newAutoscalingPaused != oldAutoscalingPaused || newAutoscalingPausedReplicas != oldAutoscalingPausedReplicas {
+				return true
+			}
+
+			return false
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+
+	enqueueFunc := func(obj client.Object) []reconcile.Request {
+		return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: obj.GetName(),
+			Namespace: obj.GetNamespace()}}}
+	}
+
+	return ctrl.NewControllerManagedBy(mgr).
+		Named(HPADecouplingCtrlName).
+		Watches(
+			&source.Kind{Type: &argov1alpha1.Rollout{}},
+			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
+			builder.WithPredicates(annotationUpdatePredicate),
+		).
+		Watches(
+			&source.Kind{Type: &appsv1.Deployment{}},
+			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
+			builder.WithPredicates(annotationUpdatePredicate),
+		).
+		Complete(r)
+}
