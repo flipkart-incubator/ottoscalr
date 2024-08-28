@@ -26,9 +26,11 @@ import (
 )
 
 const (
-	HPADecouplingCtrlName              = "HPADecouplingController"
-	AutoscalingPausedAnnotation        = "ottoscalr.io/autoscaling-paused"
-	AutoscalingPausedReplicaAnnotation = "ottoscalr.io/autoscaling-paused-replicas"
+	HPADecouplingCtrlName                  = "HPADecouplingController"
+	AutoscalingPausedAnnotation            = "ottoscalr.io/autoscaling-paused"
+	AutoscalingPausedReplicaAnnotation     = "ottoscalr.io/autoscaling-paused-replicas"
+	KedaAutoscalingPausedAnnotation        = "autoscaling.keda.sh/paused"
+	KedaAutoscalingPausedReplicaAnnotation = "autoscaling.keda.sh/paused-replicas"
 )
 
 type HPADecouplingController struct {
@@ -124,20 +126,22 @@ func (r *HPADecouplingController) updateScaledObject(ctx context.Context,
 
 		autoscalingPaused, ok := object.GetAnnotations()[AutoscalingPausedAnnotation]
 		if ok {
-			if autoscalingPaused == "" {
-				delete(so.Annotations, AutoscalingPausedAnnotation)
-			} else {
-				so.Annotations[AutoscalingPausedAnnotation] = autoscalingPaused
+			if so.Annotations == nil {
+				so.Annotations = make(map[string]string)
 			}
+			so.Annotations[KedaAutoscalingPausedAnnotation] = autoscalingPaused
+		} else {
+			delete(so.Annotations, KedaAutoscalingPausedAnnotation)
 		}
 
 		autoscalingPausedReplicas, ok := object.GetAnnotations()[AutoscalingPausedReplicaAnnotation]
 		if ok {
-			if autoscalingPausedReplicas == "" {
-				delete(so.Annotations, AutoscalingPausedReplicaAnnotation)
-			} else {
-				so.Annotations[AutoscalingPausedReplicaAnnotation] = autoscalingPausedReplicas
+			if so.Annotations == nil {
+				so.Annotations = make(map[string]string)
 			}
+			so.Annotations[KedaAutoscalingPausedReplicaAnnotation] = autoscalingPausedReplicas
+		} else {
+			delete(so.Annotations, KedaAutoscalingPausedReplicaAnnotation)
 		}
 
 		err = r.Client.Update(ctx, so)
