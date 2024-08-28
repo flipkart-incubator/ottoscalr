@@ -297,7 +297,26 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 
 	logger.V(0).Info("Reconciling PolicyRecommendation to create/update ScaleObject.")
 	min := int32(policyreco.Spec.CurrentHPAConfiguration.Min)
-	max := int32(policyreco.Spec.CurrentHPAConfiguration.Max)
+
+	//Get the maxReplicas from the annotation. If not present, use the maxReplicas from the policy recommendation
+	//This is done so that scaledobject's maxReplicaUpdated by hpaDecouplingController is not overwritten by this controller.
+	//HPA decoupling controller updates the maxReplicas based on the maxReplicas annotation in the deployment as soon as it updates which provides faster
+	//change of maxReplicaCount which will be more helpful in case of any issues.
+
+	var max int32
+	workloadMaxPodAnnotation, ok := workload.GetAnnotations()[recoUtils.OttoscalrMaxPodAnnotation]
+	if ok {
+		maxReplicas, err := strconv.Atoi(workloadMaxPodAnnotation)
+		if err != nil {
+			logger.Error(err, "Failed to convert maxReplicaValue to int")
+			return ctrl.Result{}, err
+		}
+		max = int32(maxReplicas)
+	} else {
+		max = int32(policyreco.Spec.CurrentHPAConfiguration.Max)
+	}
+
+	min = int32(math.Min(float64(min), float64(max)))
 	scaleTriggers := []kedaapi.ScaleTriggers{
 		{
 			Type: "cpu",

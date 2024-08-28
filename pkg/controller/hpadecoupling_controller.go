@@ -121,6 +121,9 @@ func (r *HPADecouplingController) updateScaledObject(ctx context.Context,
 			}
 			//update the scaledobject
 			maxReplicaInt32 := int32(maxReplica)
+			if *so.Spec.MinReplicaCount < maxReplicaInt32 {
+				so.Spec.MinReplicaCount = &maxReplicaInt32
+			}
 			so.Spec.MaxReplicaCount = &maxReplicaInt32
 		}
 
