@@ -200,6 +200,61 @@ func (r *HPADecouplingController) SetupWithManager(mgr ctrl.Manager) error {
 		},
 	}
 
+	scaledObjectUpdatePredicate := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			newObj := e.ObjectNew
+
+			if newObj.GetLabels()[createdByLabelKey] != createdByLabelValue {
+				return false
+			}
+
+			so := newObj.(*kedav1alpha1.ScaledObject)
+			if so.Spec.MaxReplicaCount == nil {
+				return false
+			}
+			maxReplicaCount := so.Spec.MaxReplicaCount
+
+			var obj client.Object
+			if so.Spec.ScaleTargetRef == nil {
+				return false
+			}
+			if so.Spec.ScaleTargetRef.Kind == "Deployment" {
+				obj = &appsv1.Deployment{}
+			} else if so.Spec.ScaleTargetRef.Kind == "Rollout" {
+				obj = &argov1alpha1.Rollout{}
+			} else {
+				return false
+			}
+
+			err := r.Client.Get(context.Background(), types.NamespacedName{Namespace: so.Namespace, Name: so.Name}, obj)
+			if err != nil {
+				return false
+			}
+
+			maxPodAnnotation,ok := obj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
+			if ok {
+				maxPod, err := strconv.Atoi(maxPodAnnotation)
+				if err != nil {
+					return false
+				}
+				if *maxReplicaCount != int32(maxPod) {
+					return true
+				}
+			}
+			return false
+
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+
 	enqueueFunc := func(obj client.Object) []reconcile.Request {
 		return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: obj.GetName(),
 			Namespace: obj.GetNamespace()}}}
@@ -216,6 +271,11 @@ func (r *HPADecouplingController) SetupWithManager(mgr ctrl.Manager) error {
 			&source.Kind{Type: &appsv1.Deployment{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
 			builder.WithPredicates(annotationUpdatePredicate),
+		).
+		Watches(
+			&source.Kind{Type: &kedav1alpha1.ScaledObject{}},
+			handler.EnqueueRequestsFromMapFunc(enqueueFunc), //Using same enqueue function as ScaledObject name is same as Deployment name
+			builder.WithPredicates(scaledObjectUpdatePredicate),
 		).
 		Complete(r)
 }
