@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	HPADecouplingCtrlName                  = "HPADecouplingController"
+	HPADecouplingCtrlName = "HPADecouplingController"
 )
 
 type HPADecouplingController struct {
@@ -162,8 +162,7 @@ func (r *HPADecouplingController) SetupWithManager(mgr ctrl.Manager) error {
 			newMaxPods = newObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
 			oldMaxPods = oldObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
 
-
-			// If maxPods or autoscaling paused annotation is updated
+			// If maxPods annotation is updated
 			if newMaxPods != oldMaxPods {
 				return true
 			}
@@ -187,6 +186,10 @@ func (r *HPADecouplingController) SetupWithManager(mgr ctrl.Manager) error {
 			oldSo := e.ObjectOld.(*kedav1alpha1.ScaledObject)
 
 			var newMaxReplicaCount, oldMaxReplicaCount int32
+
+			if newSo.Spec.MaxReplicaCount == nil || oldSo.Spec.MaxReplicaCount == nil {
+				return false
+			}
 			newMaxReplicaCount = *newSo.Spec.MaxReplicaCount
 			oldMaxReplicaCount = *oldSo.Spec.MaxReplicaCount
 
