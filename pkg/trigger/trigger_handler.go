@@ -6,6 +6,7 @@ import (
 
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -69,7 +70,9 @@ func (h *K8sTriggerHandler) queuePolicyRecommendations() {
 		}, policyRecommendation)
 		if err != nil {
 			h.logger.Error(err, "Error while getting policyRecommendation.", "workload", workload)
-			h.requeueWithDelay(workload)
+			if !errors.IsNotFound(err) {
+				h.requeueWithDelay(workload)
+			}
 			continue
 		}
 
