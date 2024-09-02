@@ -123,6 +123,8 @@ func (r *ScaledObjectManagerController) updateScaledObject(ctx context.Context,
 				}
 				//update the scaledobject with max pod annotation value
 				so.Spec.MaxReplicaCount = &maxReplicaInt32
+
+				//We don't update minReplicaCount via this controller. This is just a sanity check in case max replica count is less than min replica count
 				if *so.Spec.MinReplicaCount > maxReplicaInt32 {
 					so.Spec.MinReplicaCount = &maxReplicaInt32
 				}
