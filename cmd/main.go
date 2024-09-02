@@ -312,7 +312,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	hpaDecouplingController := controller.NewHPADecouplingController(mgr.GetClient(), mgr.GetScheme())
+	hpaDecouplingController := controller.NewScaledObjectManagerController(mgr.GetClient(), mgr.GetScheme())
 	if err = hpaDecouplingController.
 		SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HPADecouplingController")

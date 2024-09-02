@@ -26,18 +26,18 @@ import (
 )
 
 const (
-	HPADecouplingCtrlName = "HPADecouplingController"
+	HPADecouplingCtrlName = "ScaledObjectManagerController"
 )
 
-type HPADecouplingController struct {
+type ScaledObjectManagerController struct {
 	Client client.Client
 	Scheme *runtime.Scheme
 }
 
-func NewHPADecouplingController(client client.Client,
+func NewScaledObjectManagerController(client client.Client,
 	scheme *runtime.Scheme,
-) *HPADecouplingController {
-	return &HPADecouplingController{
+) *ScaledObjectManagerController {
+	return &ScaledObjectManagerController{
 		Client: client,
 		Scheme: scheme,
 	}
@@ -49,7 +49,7 @@ func NewHPADecouplingController(client client.Client,
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=ottoscaler.io,resources=policyrecommendations/finalizers,verbs=update
 
-func (r *HPADecouplingController) Reconcile(ctx context.Context,
+func (r *ScaledObjectManagerController) Reconcile(ctx context.Context,
 	request ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger = logger.WithValues("request", request).WithName(HPADecouplingCtrlName)
@@ -86,7 +86,7 @@ func (r *HPADecouplingController) Reconcile(ctx context.Context,
 
 }
 
-func (r *HPADecouplingController) updateScaledObject(ctx context.Context,
+func (r *ScaledObjectManagerController) updateScaledObject(ctx context.Context,
 	object client.Object,
 	scheme *runtime.Scheme,
 	logger logr.Logger) error {
@@ -146,7 +146,7 @@ func (r *HPADecouplingController) updateScaledObject(ctx context.Context,
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *HPADecouplingController) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ScaledObjectManagerController) SetupWithManager(mgr ctrl.Manager) error {
 	annotationUpdatePredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return false
