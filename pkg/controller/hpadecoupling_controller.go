@@ -27,10 +27,6 @@ import (
 
 const (
 	HPADecouplingCtrlName                  = "HPADecouplingController"
-	AutoscalingPausedAnnotation            = "ottoscalr.io/autoscaling-paused"
-	AutoscalingPausedReplicaAnnotation     = "ottoscalr.io/autoscaling-paused-replicas"
-	KedaAutoscalingPausedAnnotation        = "autoscaling.keda.sh/paused"
-	KedaAutoscalingPausedReplicaAnnotation = "autoscaling.keda.sh/paused-replicas"
 )
 
 type HPADecouplingController struct {
@@ -119,32 +115,18 @@ func (r *HPADecouplingController) updateScaledObject(ctx context.Context,
 				logger.Error(err, "Failed to convert maxReplicaValue to int")
 				return err
 			}
-			//update the scaledobject
 			maxReplicaInt32 := int32(maxReplica)
-			if *so.Spec.MinReplicaCount > maxReplicaInt32 {
-				so.Spec.MinReplicaCount = &maxReplicaInt32
+			if so.Spec.MaxReplicaCount != nil && so.Spec.MinReplicaCount != nil {
+				// If maxReplicaCount eqaul to max pod annotation value, return
+				if *so.Spec.MaxReplicaCount == maxReplicaInt32 {
+					return nil
+				}
+				//update the scaledobject with max pod annotation value
+				so.Spec.MaxReplicaCount = &maxReplicaInt32
+				if *so.Spec.MinReplicaCount > maxReplicaInt32 {
+					so.Spec.MinReplicaCount = &maxReplicaInt32
+				}
 			}
-			so.Spec.MaxReplicaCount = &maxReplicaInt32
-		}
-
-		autoscalingPaused, ok := object.GetAnnotations()[AutoscalingPausedAnnotation]
-		if ok {
-			if so.Annotations == nil {
-				so.Annotations = make(map[string]string)
-			}
-			so.Annotations[KedaAutoscalingPausedAnnotation] = autoscalingPaused
-		} else {
-			delete(so.Annotations, KedaAutoscalingPausedAnnotation)
-		}
-
-		autoscalingPausedReplicas, ok := object.GetAnnotations()[AutoscalingPausedReplicaAnnotation]
-		if ok {
-			if so.Annotations == nil {
-				so.Annotations = make(map[string]string)
-			}
-			so.Annotations[KedaAutoscalingPausedReplicaAnnotation] = autoscalingPausedReplicas
-		} else {
-			delete(so.Annotations, KedaAutoscalingPausedReplicaAnnotation)
 		}
 
 		err = r.Client.Update(ctx, so)
@@ -180,16 +162,9 @@ func (r *HPADecouplingController) SetupWithManager(mgr ctrl.Manager) error {
 			newMaxPods = newObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
 			oldMaxPods = oldObj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
 
-			var newAutoscalingPaused, oldAutoscalingPaused string
-			newAutoscalingPaused = newObj.GetAnnotations()[AutoscalingPausedAnnotation]
-			oldAutoscalingPaused = oldObj.GetAnnotations()[AutoscalingPausedAnnotation]
-
-			var newAutoscalingPausedReplicas, oldAutoscalingPausedReplicas string
-			newAutoscalingPausedReplicas = newObj.GetAnnotations()[AutoscalingPausedReplicaAnnotation]
-			oldAutoscalingPausedReplicas = oldObj.GetAnnotations()[AutoscalingPausedReplicaAnnotation]
 
 			// If maxPods or autoscaling paused annotation is updated
-			if newMaxPods != oldMaxPods || newAutoscalingPaused != oldAutoscalingPaused || newAutoscalingPausedReplicas != oldAutoscalingPausedReplicas {
+			if newMaxPods != oldMaxPods {
 				return true
 			}
 
@@ -208,46 +183,14 @@ func (r *HPADecouplingController) SetupWithManager(mgr ctrl.Manager) error {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			newObj := e.ObjectNew
+			newSo := e.ObjectNew.(*kedav1alpha1.ScaledObject)
+			oldSo := e.ObjectOld.(*kedav1alpha1.ScaledObject)
 
-			if newObj.GetLabels()[createdByLabelKey] != createdByLabelValue {
-				return false
-			}
+			var newMaxReplicaCount, oldMaxReplicaCount int32
+			newMaxReplicaCount = *newSo.Spec.MaxReplicaCount
+			oldMaxReplicaCount = *oldSo.Spec.MaxReplicaCount
 
-			so := newObj.(*kedav1alpha1.ScaledObject)
-			if so.Spec.MaxReplicaCount == nil {
-				return false
-			}
-			maxReplicaCount := so.Spec.MaxReplicaCount
-
-			var obj client.Object
-			if so.Spec.ScaleTargetRef == nil {
-				return false
-			}
-			if so.Spec.ScaleTargetRef.Kind == "Deployment" {
-				obj = &appsv1.Deployment{}
-			} else if so.Spec.ScaleTargetRef.Kind == "Rollout" {
-				obj = &argov1alpha1.Rollout{}
-			} else {
-				return false
-			}
-
-			err := r.Client.Get(context.Background(), types.NamespacedName{Namespace: so.Namespace, Name: so.Name}, obj)
-			if err != nil {
-				return false
-			}
-
-			maxPodAnnotation,ok := obj.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
-			if ok {
-				maxPod, err := strconv.Atoi(maxPodAnnotation)
-				if err != nil {
-					return false
-				}
-				if *maxReplicaCount != int32(maxPod) {
-					return true
-				}
-			}
-			return false
+			return newMaxReplicaCount != oldMaxReplicaCount
 
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
@@ -274,7 +217,7 @@ func (r *HPADecouplingController) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		Watches(
 			&source.Kind{Type: &kedav1alpha1.ScaledObject{}},
-			handler.EnqueueRequestsFromMapFunc(enqueueFunc), //Using same enqueue function as ScaledObject name is same as Deployment name
+			handler.EnqueueRequestsFromMapFunc(enqueueFunc), //Using same enqueue function as deployment name is same as scaledobject name
 			builder.WithPredicates(scaledObjectUpdatePredicate),
 		).
 		Complete(r)
