@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	HPADecouplingCtrlName = "ScaledObjectManagerController"
+	ScaledObjectManagerCtrlName = "ScaledObjectManagerController"
 )
 
 type ScaledObjectManagerController struct {
@@ -52,7 +52,7 @@ func NewScaledObjectManagerController(client client.Client,
 func (r *ScaledObjectManagerController) Reconcile(ctx context.Context,
 	request ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger = logger.WithValues("request", request).WithName(HPADecouplingCtrlName)
+	logger = logger.WithValues("request", request).WithName(ScaledObjectManagerCtrlName)
 
 	// Check if Rollout is enqueued
 	rollout := argov1alpha1.Rollout{}
@@ -209,7 +209,7 @@ func (r *ScaledObjectManagerController) SetupWithManager(mgr ctrl.Manager) error
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		Named(HPADecouplingCtrlName).
+		Named(ScaledObjectManagerCtrlName).
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),

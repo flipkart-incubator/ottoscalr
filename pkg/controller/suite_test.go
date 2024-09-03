@@ -173,6 +173,10 @@ var _ = BeforeSuite(func() {
 		SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	scaledObjectManagerController := NewScaledObjectManagerController(k8sManager.GetClient(), k8sManager.GetScheme())
+	err = scaledObjectManagerController.SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	go func() {
 		defer GinkgoRecover()
 		err = k8sManager.Start(ctx)
