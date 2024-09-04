@@ -208,6 +208,15 @@ func (r *ScaledObjectManagerController) SetupWithManager(mgr ctrl.Manager) error
 			Namespace: obj.GetNamespace()}}}
 	}
 
+	scaleTargetEnqueueFunc := func(obj client.Object) []reconcile.Request {
+		so := obj.(*kedav1alpha1.ScaledObject)
+		if so.Spec.ScaleTargetRef == nil {
+			return nil
+		}
+		return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: so.Spec.ScaleTargetRef.Name,
+			Namespace: so.Namespace}}}
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(ScaledObjectManagerCtrlName).
 		Watches(
@@ -222,7 +231,7 @@ func (r *ScaledObjectManagerController) SetupWithManager(mgr ctrl.Manager) error
 		).
 		Watches(
 			&source.Kind{Type: &kedav1alpha1.ScaledObject{}},
-			handler.EnqueueRequestsFromMapFunc(enqueueFunc), //Using same enqueue function as deployment name is same as scaledobject name
+			handler.EnqueueRequestsFromMapFunc(scaleTargetEnqueueFunc),
 			builder.WithPredicates(scaledObjectUpdatePredicate),
 		).
 		Complete(r)

@@ -144,6 +144,8 @@ type Config struct {
 		QpsThresholdFactor      float64 `yaml:"qpsThresholdFactor"`
 		UseCachedMetrics        *bool   `yaml:"useCachedMetrics"`
 	} `yaml:"qpsBasedAutoscaling"`
+
+	EnableScaledObjectManagerController *bool `yaml:"enableScaledObjectManagerController"`
 }
 
 func main() {
@@ -312,11 +314,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	scaledObjectManagerController := controller.NewScaledObjectManagerController(mgr.GetClient(), mgr.GetScheme())
-	if err = scaledObjectManagerController.
-		SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "HPADecouplingController")
-		os.Exit(1)
+	if *config.EnableScaledObjectManagerController {
+		scaledObjectManagerController := controller.NewScaledObjectManagerController(mgr.GetClient(), mgr.GetScheme())
+		if err = scaledObjectManagerController.
+			SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "ScaledObjectManagerController")
+			os.Exit(1)
+		}
 	}
 
 	triggerHandler := trigger.NewK8sTriggerHandler(mgr.GetClient(), logger)
