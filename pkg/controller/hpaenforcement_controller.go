@@ -40,6 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -401,26 +402,36 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 			},
 		}
 		// Add triggers
-		if result, err := controllerutil.CreateOrUpdate(ctx, r.Client, &scaledObj, func() error {
-			scaledObj.Spec = kedaapi.ScaledObjectSpec{
-				ScaleTargetRef: &kedaapi.ScaleTarget{
-					Name:       workload.GetName(),
-					APIVersion: workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
-					Kind:       workload.GetObjectKind().GroupVersionKind().Kind,
-				},
-				MinReplicaCount: &min,
-				MaxReplicaCount: &max,
-				Triggers:        scaleTriggers,
-				Advanced:        advancedConfig,
+		var result controllerutil.OperationResult
+		err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			var innerErr error
+			result, innerErr = controllerutil.CreateOrUpdate(ctx, r.Client, &scaledObj, func() error {
+				scaledObj.Spec = kedaapi.ScaledObjectSpec{
+					ScaleTargetRef: &kedaapi.ScaleTarget{
+						Name:       workload.GetName(),
+						APIVersion: workload.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+						Kind:       workload.GetObjectKind().GroupVersionKind().Kind,
+					},
+					MinReplicaCount: &min,
+					MaxReplicaCount: &max,
+					Triggers:        scaleTriggers,
+					Advanced:        advancedConfig,
+				}
+				return nil
+			})
+			if innerErr != nil {
+				logger.V(0).Error(innerErr, "Error creating or updating scaledobject")
 			}
-			return nil
-		}); err != nil {
+			return innerErr
+		})
+
+		if err != nil {
 			logger.V(0).Error(err, "Error creating or updating scaledobject")
 			return ctrl.Result{}, err
-		} else {
-			hpaenforcerScaledObjectUpdatedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, scaledObj.Name, string(result)).Inc()
-			logger.V(0).Info(fmt.Sprintf("Result of the create or update operation is '%s\n'", result))
 		}
+
+		hpaenforcerScaledObjectUpdatedCounter.WithLabelValues(policyreco.Namespace, policyreco.Name, scaledObj.Name, string(result)).Inc()
+		logger.V(0).Info(fmt.Sprintf("Result of the create or update operation is '%s\n'", result))
 
 	} else {
 		logger.V(0).Info("Skipping creating ScaledObject for workload as the controller is deployed in dryRun mode.", "workload", workload.GetName())
