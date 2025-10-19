@@ -195,22 +195,17 @@ func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Con
 	logger logr.Logger) error {
 
 	//Create only if ottoscalr.io/max-pod annotation is present and replicas are above threshold
-	replicasCount, err := getReplicasFromMaxPodAnnotation(object)
+	replicasCount, _ := getReplicasFromMaxPodAnnotation(object)
 	if replicasCount == 0 {
 		return nil
 	}
 
 	if replicasCount <= controller.MinReplicasRequiredToGeneratePolicy {
-		logger.Info("Replicas below threshold, deleting policy recommendation if exists", "replicas", replicasCount, "threshold", controller.MinReplicasRequiredToGeneratePolicy)
-		namespacedName := types.NamespacedName{
-			Name:      object.GetName(),
-			Namespace: object.GetNamespace(),
-		}
-		return controller.deletePolicyRecommendationIfExists(ctx, namespacedName, logger)
+		return nil
 	}
 
 	// Create the PolicyRecommendation
-	_, err = controller.createPolicyRecommendation(ctx, object, scheme, logger)
+	_, err := controller.createPolicyRecommendation(ctx, object, scheme, logger)
 
 	if err == nil {
 		controller.MonitorManager.RegisterMonitor(object.GetObjectKind().GroupVersionKind().Kind,
@@ -223,39 +218,17 @@ func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Con
 	return err
 }
 
-func (controller *PolicyRecommendationRegistrar) deletePolicyRecommendationIfExists(ctx context.Context,
-	namespacedName types.NamespacedName,
-	logger logr.Logger) error {
-
-	policyRecommendation := ottoscaleriov1alpha1.PolicyRecommendation{}
-	err := controller.Client.Get(ctx, namespacedName, &policyRecommendation)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("PolicyRecommendation not found, nothing to delete")
-			return nil
-		}
-		logger.Error(err, "Error getting PolicyRecommendation")
-		return err
-	}
-
-	// PolicyRecommendation exists, delete it
-	err = controller.Client.Delete(ctx, &policyRecommendation)
-	if err != nil {
-		logger.Error(err, "Error deleting PolicyRecommendation")
-		return err
-	}
-
-	logger.Info("PolicyRecommendation deleted successfully")
-	policyRecoWorkloadGauge.DeletePartialMatch(prometheus.Labels{"namespace": namespacedName.Namespace, "policyreco": namespacedName.Name})
-	return nil
-}
-
 // SetupWithManager sets up the controller with the Manager.
 func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manager) error {
 	// TODO: Filter out system and blacklisted namespaces
 	createAndUpdatePredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return true
+			obj := e.Object
+			replicas, _ := getReplicasFromMaxPodAnnotation(obj)
+			if replicas == 0 {
+				return false
+			}
+			return replicas > controller.MinReplicasRequiredToGeneratePolicy
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return false
