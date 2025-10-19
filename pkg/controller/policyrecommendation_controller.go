@@ -429,7 +429,8 @@ func (r *PolicyRecommendationReconciler) SetupWithManagerForBreachWorkflow(mgr c
 	// predicates to filter events only when breach condition transitions from true to false
 	breachWorkflowPredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return false
+			obj := e.Object.(*v1alpha1.PolicyRecommendation)
+			return fetchHasBreached(obj)
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return false
