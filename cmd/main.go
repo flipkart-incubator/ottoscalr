@@ -361,7 +361,7 @@ func main() {
 
 	if err = controller.NewPolicyRecommendationRegistrar(mgr.GetClient(),
 		mgr.GetScheme(),
-		config.PolicyRecommendationRegistrar.RequeueDelayMs,
+		config.PolicyRecommendationRegistrar.RequeueDelayMs, config.PolicyRecommendationController.MinRequiredReplicas,
 		monitorManager,
 		policyStore, excludedNamespaces, includedNamespaces).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller",

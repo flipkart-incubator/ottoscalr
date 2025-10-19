@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"time"
+
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
@@ -25,7 +27,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"time"
 )
 
 var (
@@ -44,28 +45,31 @@ const PolicyRecoRegistrarCtrlName = "PolicyRecommendationRegistrar"
 // PolicyRecommendationRegistrar reconciles a Deployment or ArgoRollout
 // object to ensure a PolicyRecommendation exists.
 type PolicyRecommendationRegistrar struct {
-	Client               client.Client
-	Scheme               *runtime.Scheme
-	MonitorManager       trigger.MonitorManager
-	RequeueDelayDuration time.Duration
-	PolicyStore          policy.Store
-	ExcludedNamespaces   []string
-	IncludedNamespaces   []string
+	Client                              client.Client
+	Scheme                              *runtime.Scheme
+	MonitorManager                      trigger.MonitorManager
+	RequeueDelayDuration                time.Duration
+	MinReplicasRequiredToGeneratePolicy int
+	PolicyStore                         policy.Store
+	ExcludedNamespaces                  []string
+	IncludedNamespaces                  []string
 }
 
 func NewPolicyRecommendationRegistrar(client client.Client,
 	scheme *runtime.Scheme,
 	requeueDelayMs int,
+	minReplicasRequiredToGeneratePolicy int,
 	monitorManager trigger.MonitorManager,
 	policyStore policy.Store, excludedNamespaces []string, includedNamespaces []string) *PolicyRecommendationRegistrar {
 	return &PolicyRecommendationRegistrar{
-		Client:               client,
-		Scheme:               scheme,
-		MonitorManager:       monitorManager,
-		RequeueDelayDuration: time.Duration(requeueDelayMs) * time.Millisecond,
-		PolicyStore:          policyStore,
-		ExcludedNamespaces:   excludedNamespaces,
-		IncludedNamespaces:   includedNamespaces,
+		Client:                              client,
+		Scheme:                              scheme,
+		MonitorManager:                      monitorManager,
+		RequeueDelayDuration:                time.Duration(requeueDelayMs) * time.Millisecond,
+		MinReplicasRequiredToGeneratePolicy: minReplicasRequiredToGeneratePolicy,
+		PolicyStore:                         policyStore,
+		ExcludedNamespaces:                  excludedNamespaces,
+		IncludedNamespaces:                  includedNamespaces,
 	}
 }
 
@@ -85,8 +89,13 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	rollout := argov1alpha1.Rollout{}
 	err := controller.Client.Get(ctx, request.NamespacedName, &rollout)
 	if err == nil {
-		// Rollout exists, create policy recommendation
-		return ctrl.Result{}, controller.handleReconcile(ctx, &rollout, controller.Scheme, logger)
+		if rollout.Spec.Replicas != nil && *rollout.Spec.Replicas > int32(controller.MinReplicasRequiredToGeneratePolicy) {
+			// Rollout exists and has more than minRequiredReplicas, create policy recommendation
+			return ctrl.Result{}, controller.handleReconcile(ctx, &rollout, controller.Scheme, logger)
+		} else if rollout.Spec.Replicas != nil {
+			// Rollout exists but has less than minRequiredReplicas, delete policy recommendation if exists
+			return ctrl.Result{}, controller.deletePolicyRecommendationIfExists(ctx, request.NamespacedName, logger)
+		}
 	}
 
 	if !errors.IsNotFound(err) {
@@ -99,8 +108,13 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	deployment := appsv1.Deployment{}
 	err = controller.Client.Get(ctx, request.NamespacedName, &deployment)
 	if err == nil {
-		// Deployment exists, create policy recommendation
-		return ctrl.Result{}, controller.handleReconcile(ctx, &deployment, controller.Scheme, logger)
+		if deployment.Spec.Replicas != nil && *deployment.Spec.Replicas > int32(controller.MinReplicasRequiredToGeneratePolicy) {
+			// Deployment exists and has more than minRequiredReplicas, create policy recommendation
+			return ctrl.Result{}, controller.handleReconcile(ctx, &deployment, controller.Scheme, logger)
+		} else if deployment.Spec.Replicas != nil {
+			// Deployment exists but has less than minRequiredReplicas, delete policy recommendation if exists
+			return ctrl.Result{}, controller.deletePolicyRecommendationIfExists(ctx, request.NamespacedName, logger)
+		}
 	}
 
 	if errors.IsNotFound(err) {
@@ -112,7 +126,7 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 		return ctrl.Result{RequeueAfter: controller.RequeueDelayDuration}, err
 	}
 
-	logger.Info("Rollout or Deployment not found. It could have been deleted.")
+	logger.Info("Rollout or Deployment not found or has insufficient replicas. It could have been deleted.")
 	return ctrl.Result{}, nil
 }
 
@@ -203,10 +217,37 @@ func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Con
 	return err
 }
 
+func (controller *PolicyRecommendationRegistrar) deletePolicyRecommendationIfExists(ctx context.Context,
+	namespacedName types.NamespacedName,
+	logger logr.Logger) error {
+
+	policyRecommendation := ottoscaleriov1alpha1.PolicyRecommendation{}
+	err := controller.Client.Get(ctx, namespacedName, &policyRecommendation)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("PolicyRecommendation not found, nothing to delete")
+			return nil
+		}
+		logger.Error(err, "Error getting PolicyRecommendation")
+		return err
+	}
+
+	// PolicyRecommendation exists, delete it
+	err = controller.Client.Delete(ctx, &policyRecommendation)
+	if err != nil {
+		logger.Error(err, "Error deleting PolicyRecommendation")
+		return err
+	}
+
+	logger.Info("PolicyRecommendation deleted successfully")
+	policyRecoWorkloadGauge.DeletePartialMatch(prometheus.Labels{"namespace": namespacedName.Namespace, "policyreco": namespacedName.Name})
+	return nil
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manager) error {
 	// TODO: Filter out system and blacklisted namespaces
-	createPredicate := predicate.Funcs{
+	createAndUpdatePredicateForDeployment := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return true
 		},
@@ -214,6 +255,53 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
+			newObj := e.ObjectNew.(*appsv1.Deployment)
+			oldObj := e.ObjectOld.(*appsv1.Deployment)
+
+			if newObj.Spec.Replicas != nil && oldObj.Spec.Replicas != nil {
+				//Enqueue if replica count has increased from below minReplicas to above minReplicas or vice versa
+				if *newObj.Spec.Replicas > int32(controller.MinReplicasRequiredToGeneratePolicy) &&
+					*oldObj.Spec.Replicas <= int32(controller.MinReplicasRequiredToGeneratePolicy) {
+					return true
+				}
+
+				//Remove PolicyRecommendation if replica count has decreased from above minReplicas to below minReplicas
+				if *newObj.Spec.Replicas <= int32(controller.MinReplicasRequiredToGeneratePolicy) &&
+					*oldObj.Spec.Replicas > int32(controller.MinReplicasRequiredToGeneratePolicy) {
+					return true
+				}
+			}
+			return false
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+
+	createAndUpdatePredicateForRollout := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			newObj := e.ObjectNew.(*argov1alpha1.Rollout)
+			oldObj := e.ObjectOld.(*argov1alpha1.Rollout)
+
+			if newObj.Spec.Replicas != nil && oldObj.Spec.Replicas != nil {
+				//Enqueue if replica count has increased from below minReplicas to above minReplicas or vice versa
+				if *newObj.Spec.Replicas > int32(controller.MinReplicasRequiredToGeneratePolicy) &&
+					*oldObj.Spec.Replicas <= int32(controller.MinReplicasRequiredToGeneratePolicy) {
+					return true
+				}
+
+				//Remove PolicyRecommendation if replica count has decreased from above minReplicas to below minReplicas
+				if *newObj.Spec.Replicas <= int32(controller.MinReplicasRequiredToGeneratePolicy) &&
+					*oldObj.Spec.Replicas > int32(controller.MinReplicasRequiredToGeneratePolicy) {
+					return true
+				}
+			}
 			return false
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
@@ -261,12 +349,12 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
-			builder.WithPredicates(createPredicate),
+			builder.WithPredicates(createAndUpdatePredicateForRollout),
 		).
 		Watches(
 			&source.Kind{Type: &appsv1.Deployment{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
-			builder.WithPredicates(createPredicate),
+			builder.WithPredicates(createAndUpdatePredicateForDeployment),
 		).
 		Watches(
 			&source.Kind{Type: &ottoscaleriov1alpha1.PolicyRecommendation{}},
