@@ -7,6 +7,7 @@ import (
 
 	rolloutv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
+	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -43,18 +44,19 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		AfterEach(func() {
 			Expect(k8sClient.Delete(ctx, rollout)).Should(Succeed())
 		})
-		It("Should Create a new PolicyRecommendation if replicas is more than minRequiredToGeneratePolicy", func() {
+		It("Should Create a new PolicyRecommendation if max-pods annotation is more than minRequiredToGeneratePolicy", func() {
 			By("By creating a new Rollout")
 			ctx := context.TODO()
-			replicas := int32(5)
 			rollout = &rolloutv1alpha1.Rollout{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      RolloutName,
 					Namespace: RolloutNamespace,
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "5",
+					},
 				},
 
 				Spec: rolloutv1alpha1.RolloutSpec{
-					Replicas: &replicas,
 					Template: v1.PodTemplateSpec{
 						Spec: v1.PodSpec{
 							Containers: []v1.Container{
@@ -104,18 +106,19 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			By("Testing that monitor has been queuedAllRecos")
 			Eventually(Expect(queuedAllRecos).Should(BeTrue()))
 		})
-		It("Should not create a new PolicyRecommendation if replicas is less than or equal to minRequiredToGeneratePolicy", func() {
+		It("Should not create a new PolicyRecommendation if max-pods annotation is less than or equal to minRequiredToGeneratePolicy", func() {
 			By("By creating a new Rollout")
 			ctx := context.TODO()
-			replicas := int32(3)
 			rollout = &rolloutv1alpha1.Rollout{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      RolloutName + "-low-replicas",
 					Namespace: RolloutNamespace,
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "3",
+					},
 				},
 
 				Spec: rolloutv1alpha1.RolloutSpec{
-					Replicas: &replicas,
 					Template: v1.PodTemplateSpec{
 						Spec: v1.PodSpec{
 							Containers: []v1.Container{
@@ -148,18 +151,19 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		AfterEach(func() {
 			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
 		})
-		It("Should Create a new PolicyRecommendation if replicas is more than minRequiredToGeneratePolicy", func() {
+		It("Should Create a new PolicyRecommendation if max-pods annotation is more than minRequiredToGeneratePolicy", func() {
 			By("By creating a new Deployment")
 			ctx := context.TODO()
-			replicas := int32(5)
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DeploymentName,
 					Namespace: DeploymentNamespace,
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "5",
+					},
 				},
 
 				Spec: appsv1.DeploymentSpec{
-					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"app": "test-app",
@@ -220,18 +224,19 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Eventually(Expect(queuedAllRecos).Should(BeTrue()))
 		})
 
-		It("Should not create a new PolicyRecommendation if replicas is less than or equal to minRequiredToGeneratePolicy", func() {
+		It("Should not create a new PolicyRecommendation if max-pods annotation is less than or equal to minRequiredToGeneratePolicy", func() {
 			By("By creating a new Deployment")
 			ctx := context.TODO()
-			replicas := int32(3)
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DeploymentName + "-low-replicas",
 					Namespace: DeploymentNamespace,
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "3",
+					},
 				},
 
 				Spec: appsv1.DeploymentSpec{
-					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"app": "test-app",
@@ -275,18 +280,19 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		AfterEach(func() {
 			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
 		})
-		It("Should create a PolicyRecommendation again when deleted if replicas is greater than minRequiredToGeneratePolicy", func() {
+		It("Should create a PolicyRecommendation again when deleted if max-pods annotation is greater than minRequiredToGeneratePolicy", func() {
 			By("By reconciling the owner deployment")
 			ctx := context.Background()
-			replicas := int32(5)
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DeploymentName,
 					Namespace: DeploymentNamespace,
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "5",
+					},
 				},
 
 				Spec: appsv1.DeploymentSpec{
-					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"app": "test-app",
@@ -388,15 +394,16 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		})
 		It("Should Not Create a new PolicyRecommendation", func() {
 			By("By creating a new Deployment")
-			replicas := int32(5)
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DeploymentName,
 					Namespace: "namespace1",
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "5",
+					},
 				},
 
 				Spec: appsv1.DeploymentSpec{
-					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"app": "test-app",
@@ -452,15 +459,16 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		ctx := context.TODO()
 
 		BeforeEach(func() {
-			replicas := int32(5)
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DeploymentName,
 					Namespace: DeploymentNamespace,
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "5",
+					},
 				},
 
 				Spec: appsv1.DeploymentSpec{
-					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"app": "test-app",
@@ -540,18 +548,19 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 		AfterEach(func() {
 			Expect(k8sClient.Delete(ctx, deployment)).Should(Succeed())
 		})
-		It("Should Create a new PolicyRecommendation if previous replicas was less than minRequiredToGeneratePolicy and updated replicas is more than minRequiredToGeneratePolicy ", func() {
+		It("Should Create a new PolicyRecommendation if previous max-pods annotation was less than minRequiredToGeneratePolicy and updated max-pods annotation is more than minRequiredToGeneratePolicy ", func() {
 			By("By creating a new Deployment")
 			ctx := context.TODO()
-			replicas := int32(3)
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DeploymentName + "-update-replicas",
 					Namespace: DeploymentNamespace,
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "3",
+					},
 				},
 
 				Spec: appsv1.DeploymentSpec{
-					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"app": "test-app",
@@ -590,8 +599,10 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 				createdDeployment)
 			Expect(err).ToNot(HaveOccurred())
 
-			newReplicas := int32(7)
-			createdDeployment.Spec.Replicas = &newReplicas
+			if createdDeployment.Annotations == nil {
+				createdDeployment.Annotations = make(map[string]string)
+			}
+			createdDeployment.Annotations[reco.OttoscalrMaxPodAnnotation] = "7"
 			err = k8sClient.Update(ctx, createdDeployment)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -622,18 +633,19 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Eventually(Expect(queuedAllRecos).Should(BeTrue()))
 		})
 
-		It("Should Delete the PolicyRecommendation if previous replicas was more than minRequiredToGeneratePolicy and updated replicas is less than minRequiredToGeneratePolicy", func() {
+		It("Should Delete the PolicyRecommendation if previous max-pods annotation was more than minRequiredToGeneratePolicy and updated max-pods annotation is less than minRequiredToGeneratePolicy", func() {
 			By("By creating a new Deployment")
 			ctx := context.TODO()
-			replicas := int32(5)
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DeploymentName + "-update-replicas-1",
 					Namespace: DeploymentNamespace,
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "5",
+					},
 				},
 
 				Spec: appsv1.DeploymentSpec{
-					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"app": "test-app",
@@ -677,14 +689,16 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			Expect(createdPolicy.OwnerReferences[0].Kind).Should(Equal("Deployment"))
 			Expect(createdPolicy.OwnerReferences[0].APIVersion).Should(Equal("apps/v1"))
 
-			newReplicas := int32(2)
 			createdDeployment := &appsv1.Deployment{}
 			err := k8sClient.Get(ctx,
 				types.NamespacedName{Name: DeploymentName + "-update-replicas-1", Namespace: DeploymentNamespace},
 				createdDeployment)
 			Expect(err).ToNot(HaveOccurred())
 
-			createdDeployment.Spec.Replicas = &newReplicas
+			if createdDeployment.Annotations == nil {
+				createdDeployment.Annotations = make(map[string]string)
+			}
+			createdDeployment.Annotations[reco.OttoscalrMaxPodAnnotation] = "2"
 			err = k8sClient.Update(ctx, createdDeployment)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -698,7 +712,7 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
-	Context("When PolicyRecommendation Exists and replicas are less than minRequiredToGeneratePolicy", func() {
+	Context("When PolicyRecommendation Exists and max-pods annotation is less than minRequiredToGeneratePolicy", func() {
 		var deployment *appsv1.Deployment
 		var createdPolicy *ottoscaleriov1alpha1.PolicyRecommendation
 
@@ -741,15 +755,16 @@ var _ = Describe("PolicyRecommendationRegistrar controller", func() {
 			).Should(Succeed())
 
 			// Create deployment to trigger reconcile
-			replicas := int32(1)
 			deployment = &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DeploymentName + "-update-replicas-2",
 					Namespace: DeploymentNamespace,
+					Annotations: map[string]string{
+						reco.OttoscalrMaxPodAnnotation: "1",
+					},
 				},
 
 				Spec: appsv1.DeploymentSpec{
-					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"app": "test-app",
