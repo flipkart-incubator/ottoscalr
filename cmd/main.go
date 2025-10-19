@@ -307,6 +307,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = policyRecoReconciler.SetupWithManagerForBreachWorkflow(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PolicyRecommendationBreachWorkflow")
+		os.Exit(1)
+	}
+
 	deploymentTriggerReconciler := controller.NewDeploymentTriggerController(mgr.GetClient(), mgr.GetScheme())
 	if err = deploymentTriggerReconciler.
 		SetupWithManager(mgr); err != nil {

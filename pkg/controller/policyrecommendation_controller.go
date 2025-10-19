@@ -41,6 +41,7 @@ import (
 
 const (
 	PolicyRecoWorkflowCtrlName = "RecoWorkflowController"
+	BreachWorkflowCtrlName     = "BreachWorkflowController"
 	RecoQueuedStatusManager    = "RecoQueuedStatusManager"
 	eventTypeNormal            = "Normal"
 	eventTypeWarning           = "Warning"
@@ -342,6 +343,20 @@ func fetchInitializedTime(policyreco *v1alpha1.PolicyRecommendation) time.Time {
 	return time.Now()
 }
 
+func fetchHasBreached(policyreco *v1alpha1.PolicyRecommendation) bool {
+	if policyreco == nil {
+		return false
+	}
+	hasBreached := false
+	for _, condition := range policyreco.Status.Conditions {
+		if condition.Type == string(v1alpha1.HasBreached) {
+			hasBreached, _ = strconv.ParseBool(string(condition.Status))
+			return hasBreached
+		}
+	}
+	return hasBreached
+}
+
 func retrieveTransitionTime(hpaConfigToBeApplied *v1alpha1.HPAConfiguration, policyreco *v1alpha1.PolicyRecommendation, generatedAt metav1.Time) metav1.Time {
 	if hpaConfigToBeApplied == nil && policyreco != nil {
 		return *policyreco.Spec.TransitionedAt
@@ -406,5 +421,41 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		WithEventFilter(compoundPredicate).
 		Named(PolicyRecoWorkflowCtrlName).
+		Complete(r)
+}
+
+// SetupBreachWorkflowWithManager sets up the breach workflow controller with the Manager.
+func (r *PolicyRecommendationReconciler) SetupWithManagerForBreachWorkflow(mgr ctrl.Manager) error {
+	// predicates to filter events only when breach condition transitions from true to false
+	breachWorkflowPredicate := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			obj := e.Object.(*v1alpha1.PolicyRecommendation)
+			return fetchHasBreached(obj)
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldObj := e.ObjectOld.(*v1alpha1.PolicyRecommendation)
+			newObj := e.ObjectNew.(*v1alpha1.PolicyRecommendation)
+
+			oldBreachConditionStatus := fetchHasBreached(oldObj)
+			newBreachConditionStatus := fetchHasBreached(newObj)
+
+			// only process updates where HasBreached condition transitions from false to true
+			if !oldBreachConditionStatus && newBreachConditionStatus {
+				return true
+			}
+			return false
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&v1alpha1.PolicyRecommendation{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
+		WithEventFilter(breachWorkflowPredicate).
+		Named(BreachWorkflowCtrlName).
 		Complete(r)
 }
