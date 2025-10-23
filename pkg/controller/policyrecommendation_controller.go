@@ -426,7 +426,7 @@ func (r *PolicyRecommendationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 
 // SetupBreachWorkflowWithManager sets up the breach workflow controller with the Manager.
 func (r *PolicyRecommendationReconciler) SetupWithManagerForBreachWorkflow(mgr ctrl.Manager) error {
-	// predicates to filter events only when breach condition transitions from true to false
+	// predicates to filter events only when breach condition transitions from false to true
 	breachWorkflowPredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			obj := e.Object.(*v1alpha1.PolicyRecommendation)
