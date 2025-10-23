@@ -127,12 +127,13 @@ var _ = BeforeSuite(func() {
 	includedNamespaces = []string{}
 
 	err = (&PolicyRecommendationRegistrar{
-		Client:             k8sManager.GetClient(),
-		Scheme:             k8sManager.GetScheme(),
-		MonitorManager:     &FakeMonitorManager{},
-		PolicyStore:        newFakePolicyStore(),
-		ExcludedNamespaces: excludedNamespaces,
-		IncludedNamespaces: includedNamespaces,
+		Client:                              k8sManager.GetClient(),
+		Scheme:                              k8sManager.GetScheme(),
+		MonitorManager:                      &FakeMonitorManager{},
+		MinReplicasRequiredToGeneratePolicy: 3,
+		PolicyStore:                         newFakePolicyStore(),
+		ExcludedNamespaces:                  excludedNamespaces,
+		IncludedNamespaces:                  includedNamespaces,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

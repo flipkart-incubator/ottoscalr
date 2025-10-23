@@ -2,9 +2,13 @@ package controller
 
 import (
 	"context"
+	"strconv"
+	"time"
+
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/policy"
+	"github.com/flipkart-incubator/ottoscalr/pkg/reco"
 	"github.com/flipkart-incubator/ottoscalr/pkg/trigger"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,7 +29,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"time"
 )
 
 var (
@@ -44,28 +47,31 @@ const PolicyRecoRegistrarCtrlName = "PolicyRecommendationRegistrar"
 // PolicyRecommendationRegistrar reconciles a Deployment or ArgoRollout
 // object to ensure a PolicyRecommendation exists.
 type PolicyRecommendationRegistrar struct {
-	Client               client.Client
-	Scheme               *runtime.Scheme
-	MonitorManager       trigger.MonitorManager
-	RequeueDelayDuration time.Duration
-	PolicyStore          policy.Store
-	ExcludedNamespaces   []string
-	IncludedNamespaces   []string
+	Client                              client.Client
+	Scheme                              *runtime.Scheme
+	MonitorManager                      trigger.MonitorManager
+	RequeueDelayDuration                time.Duration
+	MinReplicasRequiredToGeneratePolicy int
+	PolicyStore                         policy.Store
+	ExcludedNamespaces                  []string
+	IncludedNamespaces                  []string
 }
 
 func NewPolicyRecommendationRegistrar(client client.Client,
 	scheme *runtime.Scheme,
 	requeueDelayMs int,
+	minReplicasRequiredToGeneratePolicy int,
 	monitorManager trigger.MonitorManager,
 	policyStore policy.Store, excludedNamespaces []string, includedNamespaces []string) *PolicyRecommendationRegistrar {
 	return &PolicyRecommendationRegistrar{
-		Client:               client,
-		Scheme:               scheme,
-		MonitorManager:       monitorManager,
-		RequeueDelayDuration: time.Duration(requeueDelayMs) * time.Millisecond,
-		PolicyStore:          policyStore,
-		ExcludedNamespaces:   excludedNamespaces,
-		IncludedNamespaces:   includedNamespaces,
+		Client:                              client,
+		Scheme:                              scheme,
+		MonitorManager:                      monitorManager,
+		RequeueDelayDuration:                time.Duration(requeueDelayMs) * time.Millisecond,
+		MinReplicasRequiredToGeneratePolicy: minReplicasRequiredToGeneratePolicy,
+		PolicyStore:                         policyStore,
+		ExcludedNamespaces:                  excludedNamespaces,
+		IncludedNamespaces:                  includedNamespaces,
 	}
 }
 
@@ -112,7 +118,7 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 		return ctrl.Result{RequeueAfter: controller.RequeueDelayDuration}, err
 	}
 
-	logger.Info("Rollout or Deployment not found. It could have been deleted.")
+	logger.Info("Rollout or Deployment not found or has insufficient replicas. It could have been deleted.")
 	return ctrl.Result{}, nil
 }
 
@@ -190,6 +196,17 @@ func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Con
 	scheme *runtime.Scheme,
 	logger logr.Logger) error {
 
+	//Create only if ottoscalr.io/max-pod annotation is present and replicas are above threshold
+	replicasCount, _ := getReplicasFromMaxPodAnnotation(object)
+	if replicasCount == 0 {
+		return nil
+	}
+
+	if replicasCount <= controller.MinReplicasRequiredToGeneratePolicy {
+		return nil
+	}
+
+	// Create the PolicyRecommendation
 	_, err := controller.createPolicyRecommendation(ctx, object, scheme, logger)
 
 	if err == nil {
@@ -206,14 +223,31 @@ func (controller *PolicyRecommendationRegistrar) handleReconcile(ctx context.Con
 // SetupWithManager sets up the controller with the Manager.
 func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manager) error {
 	// TODO: Filter out system and blacklisted namespaces
-	createPredicate := predicate.Funcs{
+	createAndUpdatePredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return true
+			obj := e.Object
+			replicas, _ := getReplicasFromMaxPodAnnotation(obj)
+			if replicas == 0 {
+				return false
+			}
+			return replicas > controller.MinReplicasRequiredToGeneratePolicy
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
+			newObj := e.ObjectNew
+			oldObj := e.ObjectOld
+
+			//Enqueue if replica count has increased from below minReplicas to above minReplicas required to generate policy
+			var newMaxPods, oldMaxPods int
+			newMaxPods, _ = getReplicasFromMaxPodAnnotation(newObj)
+			oldMaxPods, _ = getReplicasFromMaxPodAnnotation(oldObj)
+
+			if (oldMaxPods <= controller.MinReplicasRequiredToGeneratePolicy && newMaxPods > controller.MinReplicasRequiredToGeneratePolicy) {
+				return true
+			}
+
 			return false
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
@@ -261,12 +295,12 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 		Watches(
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
-			builder.WithPredicates(createPredicate),
+			builder.WithPredicates(createAndUpdatePredicate),
 		).
 		Watches(
 			&source.Kind{Type: &appsv1.Deployment{}},
 			handler.EnqueueRequestsFromMapFunc(enqueueFunc),
-			builder.WithPredicates(createPredicate),
+			builder.WithPredicates(createAndUpdatePredicate),
 		).
 		Watches(
 			&source.Kind{Type: &ottoscaleriov1alpha1.PolicyRecommendation{}},
@@ -286,6 +320,20 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 		).
 		WithEventFilter(namespaceFilter).
 		Complete(controller)
+}
+
+func getReplicasFromMaxPodAnnotation(object client.Object) (int, error) {
+	replicasStr, ok := object.GetAnnotations()[reco.OttoscalrMaxPodAnnotation]
+	if !ok {
+		return 0, nil
+	}
+
+	replicas, err := strconv.Atoi(replicasStr)
+	if err != nil {
+		return 0, err
+	}
+
+	return replicas, nil
 }
 
 func (controller *PolicyRecommendationRegistrar) isWhitelistedNamespace(namespace string) bool {
