@@ -91,6 +91,7 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	rollout := argov1alpha1.Rollout{}
 	err := controller.Client.Get(ctx, request.NamespacedName, &rollout)
 	if err == nil {
+		// Rollout exists, create policy recommendation
 		return ctrl.Result{}, controller.handleReconcile(ctx, &rollout, controller.Scheme, logger)
 	}
 
@@ -104,6 +105,7 @@ func (controller *PolicyRecommendationRegistrar) Reconcile(ctx context.Context,
 	deployment := appsv1.Deployment{}
 	err = controller.Client.Get(ctx, request.NamespacedName, &deployment)
 	if err == nil {
+		// Deployment exists, create policy recommendation
 		return ctrl.Result{}, controller.handleReconcile(ctx, &deployment, controller.Scheme, logger)
 	}
 
@@ -242,8 +244,7 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 			newMaxPods, _ = getReplicasFromMaxPodAnnotation(newObj)
 			oldMaxPods, _ = getReplicasFromMaxPodAnnotation(oldObj)
 
-			if (oldMaxPods <= controller.MinReplicasRequiredToGeneratePolicy && newMaxPods > controller.MinReplicasRequiredToGeneratePolicy) ||
-				(oldMaxPods > controller.MinReplicasRequiredToGeneratePolicy && newMaxPods <= controller.MinReplicasRequiredToGeneratePolicy) {
+			if (oldMaxPods <= controller.MinReplicasRequiredToGeneratePolicy && newMaxPods > controller.MinReplicasRequiredToGeneratePolicy) {
 				return true
 			}
 
