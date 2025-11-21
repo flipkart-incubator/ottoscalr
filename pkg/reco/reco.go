@@ -40,7 +40,7 @@ var (
 	)
 
 	potentialSavingsPercentage = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{Name: "potential_savings_percentage",
+		prometheus.GaugeOpts{Name: "workload_potential_savings_percentage",
 			Help: "Potential savings percentage achieved by applying the recommendation"},
 		[]string{"namespace", "workload"},
 	)
