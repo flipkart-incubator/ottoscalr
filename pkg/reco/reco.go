@@ -202,6 +202,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		perPodResources, workloadMaxReplicas, workloadMinReplicas, enableScaleUpBehaviour, maxScaleUpPods, scaleUpPeriodSeconds)
 	if err != nil {
 		if errors.Is(err, unableToRecommendError) {
+			potentialSavingsPercentage.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(savings)
 			return &v1alpha1.HPAConfiguration{Min: workloadMaxReplicas, Max: workloadMaxReplicas, TargetMetricValue: c.minTarget}, nil
 		}
 		c.logger.Error(err, "Error while executing findOptimalTargetUtilization")
