@@ -38,6 +38,12 @@ var (
 			Help: "Boolean to show if min percentage of datapoints is present to generate recommendation"},
 		[]string{"namespace", "workload"},
 	)
+
+	potentialSavingsPercentage = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "workload_potential_savings_percentage",
+			Help: "Potential savings percentage achieved by applying the recommendation"},
+		[]string{"namespace", "workload"},
+	)
 )
 
 const (
@@ -45,7 +51,7 @@ const (
 )
 
 func init() {
-	p8smetrics.Registry.MustRegister(getAverageCPUUtilizationQueryLatency, minPercentageOfDataPointsPresent)
+	p8smetrics.Registry.MustRegister(getAverageCPUUtilizationQueryLatency, minPercentageOfDataPointsPresent, potentialSavingsPercentage)
 }
 
 var unableToRecommendError = errors.New("Unable to generate recommendation without any breaches.")
@@ -189,19 +195,21 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		}
 	}
 
-	optimalTargetUtil, minReplicas, maxReplicas, err := c.findOptimalHPAConfigurations(dataPoints,
+	optimalTargetUtil, minReplicas, maxReplicas, savings, err := c.findOptimalHPAConfigurations(dataPoints,
 		acl,
 		c.minTarget,
 		c.maxTarget,
 		perPodResources, workloadMaxReplicas, workloadMinReplicas, enableScaleUpBehaviour, maxScaleUpPods, scaleUpPeriodSeconds)
 	if err != nil {
 		if errors.Is(err, unableToRecommendError) {
+			potentialSavingsPercentage.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(savings)
 			return &v1alpha1.HPAConfiguration{Min: workloadMaxReplicas, Max: workloadMaxReplicas, TargetMetricValue: c.minTarget}, nil
 		}
 		c.logger.Error(err, "Error while executing findOptimalTargetUtilization")
 		return nil, err
 	}
 
+	potentialSavingsPercentage.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(savings)
 	return &v1alpha1.HPAConfiguration{Min: minReplicas, Max: maxReplicas, TargetMetricValue: optimalTargetUtil}, nil
 }
 
@@ -403,7 +411,7 @@ func (c *CpuUtilizationBasedRecommender) findOptimalHPAConfigurations(dataPoints
 	acl time.Duration,
 	minTarget,
 	maxTarget int,
-	perPodResources float64, maxReplicas int, minReplicas int, enableScaleUpBehaviour bool, maxScaleUpPods int, scaleUpPeriodSeconds int) (int, int, int, error) {
+	perPodResources float64, maxReplicas int, minReplicas int, enableScaleUpBehaviour bool, maxScaleUpPods int, scaleUpPeriodSeconds int) (int, int, int, float64, error) {
 
 	optimalTargetThreshold := 0
 	optimalMin := 0
@@ -425,7 +433,7 @@ func (c *CpuUtilizationBasedRecommender) findOptimalHPAConfigurations(dataPoints
 			}
 			if err != nil {
 				c.logger.Error(err, "Error while simulating HPA")
-				return -1, minReplicas, maxReplicas, err
+				return -1, minReplicas, maxReplicas, 0, err
 			}
 
 			if c.hasNoBreachOccurred(dataPoints, simulatedHPAList) {
@@ -447,9 +455,9 @@ func (c *CpuUtilizationBasedRecommender) findOptimalHPAConfigurations(dataPoints
 	}
 
 	if optimalTargetThreshold < minTarget || savings == 0.0 {
-		return 0, 0, 0, unableToRecommendError
+		return 0, 0, 0, 0, unableToRecommendError
 	}
-	return optimalTargetThreshold, optimalMin, maxReplicas, nil
+	return optimalTargetThreshold, optimalMin, maxReplicas, savings, nil
 }
 
 func (c *CpuUtilizationBasedRecommender) calculateSavings(maxReplicas int, simulated []metrics.DataPoint, perPodResources float64) float64 {
