@@ -301,8 +301,8 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 	scaleTriggers := []kedaapi.ScaleTriggers{
 		{
 			Type: "cpu",
+			MetricType: "Utilization",
 			Metadata: map[string]string{
-				"type":  "Utilization",
 				"value": fmt.Sprint(policyreco.Spec.CurrentHPAConfiguration.TargetMetricValue),
 			},
 		},
