@@ -100,6 +100,7 @@ type PrometheusScraper struct {
 	metricIngestionTime  float64
 	metricProbeTime      float64
 	nodeStartUpTimeInSec int
+	includeWorkloadType  bool
 	logger               logr.Logger
 }
 
@@ -165,6 +166,7 @@ func NewPrometheusScraper(apiUrls []string,
 	metricIngestionTime float64,
 	metricProbeTime float64,
 	nodeStartUpTimeInSec int,
+	includeWorkloadType bool,
 	logger logr.Logger) (*PrometheusScraper, error) {
 
 	var prometheusInstances []PrometheusInstance
@@ -191,6 +193,7 @@ func NewPrometheusScraper(apiUrls []string,
 		metricProbeTime:      metricProbeTime,
 		metricIngestionTime:  metricIngestionTime,
 		nodeStartUpTimeInSec: nodeStartUpTimeInSec,
+		includeWorkloadType:  includeWorkloadType,
 		logger:               logger}, nil
 }
 
@@ -206,17 +209,34 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	//Removing the workload_type from the query as it is not needed for the query.
-	//We will re introduce it later.
-
-	query := fmt.Sprintf("sum(%s"+
-		"{namespace=\"%s\"} * on (namespace,pod) group_left(workload)"+
-		"%s{namespace=\"%s\", workload=\"%s\"}) by(namespace, workload)",
-		ps.metricRegistry.utilizationMetric,
-		namespace,
-		ps.metricRegistry.podOwnerMetric,
-		namespace,
-		workload)
+	var query string
+	if ps.includeWorkloadType {
+		//This is for the namespace_workload_pod:kube_pod_owner:relabel query which expects the workload type to be in lowercase for deployments.
+		//For Rollouts, it is "Rollout". So no change is needed for Rollouts.
+		//This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
+		if workloadType == "Deployment" {
+			workloadType = "deployment"
+		}
+		//This query is used when workload type is included in the query.
+		query = fmt.Sprintf("sum(%s"+
+			"{namespace=\"%s\"} * on (namespace,pod) group_left(workload, workload_type)"+
+			"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"%s\"}) by(namespace, workload, workload_type)",
+			ps.metricRegistry.utilizationMetric,
+			namespace,
+			ps.metricRegistry.podOwnerMetric,
+			namespace,
+			workload,
+			workloadType)
+	} else {
+		query = fmt.Sprintf("sum(%s"+
+			"{namespace=\"%s\"} * on (namespace,pod) group_left(workload)"+
+			"%s{namespace=\"%s\", workload=\"%s\"}) by(namespace, workload)",
+			ps.metricRegistry.utilizationMetric,
+			namespace,
+			ps.metricRegistry.podOwnerMetric,
+			namespace,
+			workload)
+	}
 
 	var totalDataPoints []DataPoint
 	if ps.api == nil {
@@ -334,49 +354,97 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	//Owner kind is the kind of the owner of the workload. For deployments, it is "Deployment". For Rollouts, it is "Rollout".
 	//Owner kind and workload type(for namespace_workload_pod:kube_pod_owner:relabel query) are different because of lower case vs uppercase for deployments.
 	//This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
-	//Removing the workload_type from the query as it is not needed for the query.
-	//We will re introduce it later.
+
 	ownerKind := workloadType
 
-	query := fmt.Sprintf("(sum(%s{"+
-		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type) "+
-		"%s{namespace=\"%s\", workload=\"%s\"})"+
-		" by (namespace, workload)/ on (namespace, workload) "+
-		"group_left sum(%s{"+
-		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type)"+
-		"%s{namespace=\"%s\", workload=\"%s\"}) "+
-		"by (namespace, workload) > %.2f) and on(namespace, workload) "+
-		"label_replace(sum(%s{namespace=\"%s\"} * on(replicaset)"+
-		" group_left(namespace, owner_kind, owner_name) %s{namespace=\"%s\", owner_kind=\"%s\", owner_name=\"%s\"}) by"+
-		" (namespace, owner_kind, owner_name) < on(namespace, owner_kind, owner_name) "+
-		"(%s{namespace=\"%s\"} * on(namespace, horizontalpodautoscaler) "+
-		"group_left(owner_kind, owner_name) label_replace(label_replace(%s{"+
-		"namespace=\"%s\", scaletargetref_kind=\"%s\", scaletargetref_name=\"%s\"},\"owner_kind\", \"$1\", "+
-		"\"scaletargetref_kind\", \"(.*)\"), \"owner_name\", \"$1\", \"scaletargetref_name\", \"(.*)\")),"+
-		"\"workload\", \"$1\", \"owner_name\", \"(.*)\")",
-		ps.metricRegistry.utilizationMetric,
-		namespace,
-		ps.metricRegistry.podOwnerMetric,
-		namespace,
-		workload,
-		ps.metricRegistry.resourceLimitMetric,
-		namespace,
-		ps.metricRegistry.podOwnerMetric,
-		namespace,
-		workload,
-		redLineUtilization,
-		ps.metricRegistry.readyReplicasMetric,
-		namespace,
-		ps.metricRegistry.replicaSetOwnerMetric,
-		namespace,
-		ownerKind,
-		workload,
-		ps.metricRegistry.hpaMaxReplicasMetric,
-		namespace,
-		ps.metricRegistry.hpaOwnerInfoMetric,
-		namespace,
-		ownerKind,
-		workload)
+	var query string
+	if ps.includeWorkloadType {
+		if workloadType == "Deployment" {
+			workloadType = "deployment"
+		}
+
+		query = fmt.Sprintf("(sum(%s{"+
+			"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type) "+
+			"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"%s\"})"+
+			" by (namespace, workload, workload_type)/ on (namespace, workload, workload_type) "+
+			"group_left sum(%s{"+
+			"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type)"+
+			"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"%s\"}) "+
+			"by (namespace, workload, workload_type) > %.2f) and on(namespace, workload) "+
+			"label_replace(sum(%s{namespace=\"%s\"} * on(replicaset)"+
+			" group_left(namespace, owner_kind, owner_name) %s{namespace=\"%s\", owner_kind=\"%s\", owner_name=\"%s\"}) by"+
+			" (namespace, owner_kind, owner_name) < on(namespace, owner_kind, owner_name) "+
+			"(%s{namespace=\"%s\"} * on(namespace, horizontalpodautoscaler) "+
+			"group_left(owner_kind, owner_name) label_replace(label_replace(%s{"+
+			"namespace=\"%s\", scaletargetref_kind=\"%s\", scaletargetref_name=\"%s\"},\"owner_kind\", \"$1\", "+
+			"\"scaletargetref_kind\", \"(.*)\"), \"owner_name\", \"$1\", \"scaletargetref_name\", \"(.*)\")),"+
+			"\"workload\", \"$1\", \"owner_name\", \"(.*)\")",
+			ps.metricRegistry.utilizationMetric,
+			namespace,
+			ps.metricRegistry.podOwnerMetric,
+			namespace,
+			workload,
+			workloadType,
+			ps.metricRegistry.resourceLimitMetric,
+			namespace,
+			ps.metricRegistry.podOwnerMetric,
+			namespace,
+			workload,
+			workloadType,
+			redLineUtilization,
+			ps.metricRegistry.readyReplicasMetric,
+			namespace,
+			ps.metricRegistry.replicaSetOwnerMetric,
+			namespace,
+			ownerKind,
+			workload,
+			ps.metricRegistry.hpaMaxReplicasMetric,
+			namespace,
+			ps.metricRegistry.hpaOwnerInfoMetric,
+			namespace,
+			ownerKind,
+			workload)
+	} else {
+		query = fmt.Sprintf("(sum(%s{"+
+			"namespace=\"%s\"} * on(namespace,pod) group_left(workload) "+
+			"%s{namespace=\"%s\", workload=\"%s\"})"+
+			" by (namespace, workload)/ on (namespace, workload) "+
+			"group_left sum(%s{"+
+			"namespace=\"%s\"} * on(namespace,pod) group_left(workload)"+
+			"%s{namespace=\"%s\", workload=\"%s\"}) "+
+			"by (namespace, workload) > %.2f) and on(namespace, workload) "+
+			"label_replace(sum(%s{namespace=\"%s\"} * on(replicaset)"+
+			" group_left(namespace, owner_kind, owner_name) %s{namespace=\"%s\", owner_kind=\"%s\", owner_name=\"%s\"}) by"+
+			" (namespace, owner_kind, owner_name) < on(namespace, owner_kind, owner_name) "+
+			"(%s{namespace=\"%s\"} * on(namespace, horizontalpodautoscaler) "+
+			"group_left(owner_kind, owner_name) label_replace(label_replace(%s{"+
+			"namespace=\"%s\", scaletargetref_kind=\"%s\", scaletargetref_name=\"%s\"},\"owner_kind\", \"$1\", "+
+			"\"scaletargetref_kind\", \"(.*)\"), \"owner_name\", \"$1\", \"scaletargetref_name\", \"(.*)\")),"+
+			"\"workload\", \"$1\", \"owner_name\", \"(.*)\")",
+			ps.metricRegistry.utilizationMetric,
+			namespace,
+			ps.metricRegistry.podOwnerMetric,
+			namespace,
+			workload,
+			ps.metricRegistry.resourceLimitMetric,
+			namespace,
+			ps.metricRegistry.podOwnerMetric,
+			namespace,
+			workload,
+			redLineUtilization,
+			ps.metricRegistry.readyReplicasMetric,
+			namespace,
+			ps.metricRegistry.replicaSetOwnerMetric,
+			namespace,
+			ownerKind,
+			workload,
+			ps.metricRegistry.hpaMaxReplicasMetric,
+			namespace,
+			ps.metricRegistry.hpaOwnerInfoMetric,
+			namespace,
+			ownerKind,
+			workload)
+	}
 
 	resultChanLength := len(ps.api) + 5 //Added some buffer
 	resultChan := make(chan []DataPoint, resultChanLength)
@@ -546,16 +614,37 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	query := fmt.Sprintf("quantile(0.5,(%s"+
-		"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload)"+
-		"(%s{namespace=\"%s\", workload=\"%s\"}))",
-		ps.metricRegistry.podReadyTimeMetric,
-		namespace,
-		ps.metricRegistry.podCreatedTimeMetric,
-		namespace,
-		ps.metricRegistry.podOwnerMetric,
-		namespace,
-		workload)
+	var query string
+	if ps.includeWorkloadType {
+		//This is for the namespace_workload_pod:kube_pod_owner:relabel query which expects the workload type to be in lowercase for deployments.
+		//For Rollouts, it is "Rollout". So no change is needed for Rollouts.
+		//This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
+		if workloadType == "Deployment" {
+			workloadType = "deployment"
+		}
+		query = fmt.Sprintf("quantile(0.5,(%s"+
+			"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload, workload_type)"+
+			"(%s{namespace=\"%s\", workload=\"%s\", workload_type=\"%s\"}))",
+			ps.metricRegistry.podReadyTimeMetric,
+			namespace,
+			ps.metricRegistry.podCreatedTimeMetric,
+			namespace,
+			ps.metricRegistry.podOwnerMetric,
+			namespace,
+			workload,
+			workloadType)
+	} else {
+		query = fmt.Sprintf("quantile(0.5,(%s"+
+			"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload)"+
+			"(%s{namespace=\"%s\", workload=\"%s\"}))",
+			ps.metricRegistry.podReadyTimeMetric,
+			namespace,
+			ps.metricRegistry.podCreatedTimeMetric,
+			namespace,
+			ps.metricRegistry.podOwnerMetric,
+			namespace,
+			workload)
+	}
 
 	podBootstrapTime := 0.0
 	if ps.api == nil {
