@@ -326,6 +326,7 @@ func newFakeScraper(cpuDataPoints, breaches []metrics.DataPoint, acl time.Durati
 
 func (fs *FakeScraper) GetAverageCPUUtilizationByWorkload(namespace,
 	workload string,
+	workloadType string,
 	start time.Time,
 	end time.Time,
 	step time.Duration) ([]metrics.DataPoint, error) {
@@ -342,7 +343,8 @@ func (fs *FakeScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	return fs.BreachDataPoints, nil
 }
 func (fs *FakeScraper) GetACLByWorkload(namespace,
-	workload string) (time.Duration, error) {
+	workload,
+	workloadType string) (time.Duration, error) {
 	return fs.WorkloadACL, nil
 }
 

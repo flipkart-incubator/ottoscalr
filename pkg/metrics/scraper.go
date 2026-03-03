@@ -73,6 +73,7 @@ type DataPoint struct {
 type Scraper interface {
 	GetAverageCPUUtilizationByWorkload(namespace,
 		workload string,
+		workloadType string,
 		start time.Time,
 		end time.Time,
 		step time.Duration) ([]DataPoint, error)
@@ -86,7 +87,8 @@ type Scraper interface {
 		step time.Duration) ([]DataPoint, error)
 
 	GetACLByWorkload(namespace,
-		workload string) (time.Duration, error)
+		workload,
+		workloadType string) (time.Duration, error)
 }
 
 // PrometheusScraper is a Scraper implementation that scrapes metrics data from Prometheus.
@@ -118,8 +120,8 @@ type PrometheusQueryResult struct {
 	err    error
 }
 
-func (ps *PrometheusScraper) GetACLByWorkload(namespace string, workload string) (time.Duration, error) {
-	podBootStrapTime, err := ps.getPodReadyLatencyByWorkload(namespace, workload)
+func (ps *PrometheusScraper) GetACLByWorkload(namespace string, workload string, workloadType string) (time.Duration, error) {
+	podBootStrapTime, err := ps.getPodReadyLatencyByWorkload(namespace, workload, workloadType)
 	if err != nil {
 		return 0.0, fmt.Errorf("error getting pod bootstrap time: %v", err)
 	}
@@ -196,6 +198,7 @@ func NewPrometheusScraper(apiUrls []string,
 // specified namespace, in the given time range.
 func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string,
 	workload string,
+	workloadType string,
 	start time.Time,
 	end time.Time,
 	step time.Duration) ([]DataPoint, error) {
@@ -203,15 +206,23 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
+	// This is for the namespace_workload_pod:kube_pod_owner:relabel query which expects the workload type to be in lowercase for deployments.
+	// For Rollouts, it is "Rollout". So no change is needed for Rollouts.
+	// This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
+	if workloadType == "Deployment" {
+		workloadType = "deployment"
+	}
+
 	query := fmt.Sprintf("sum(%s"+
 		"{namespace=\"%s\"} * on (namespace,pod) group_left(workload, workload_type)"+
 		"%s{namespace=\"%s\", workload=\"%s\","+
-		" workload_type=\"deployment\"}) by(namespace, workload, workload_type)",
+		" workload_type=\"%s\"}) by(namespace, workload, workload_type)",
 		ps.metricRegistry.utilizationMetric,
 		namespace,
 		ps.metricRegistry.podOwnerMetric,
 		namespace,
-		workload)
+		workload,
+		workloadType)
 
 	var totalDataPoints []DataPoint
 	if ps.api == nil {
@@ -326,13 +337,21 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
+	//Owner kind is the kind of the owner of the workload. For deployments, it is "Deployment". For Rollouts, it is "Rollout".
+	//Owner kind and workload type(for namespace_workload_pod:kube_pod_owner:relabel query) are different because of lower case vs uppercase for deployments.
+	// This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
+	ownerKind := workloadType
+	if workloadType == "Deployment" {
+		workloadType = "deployment"
+	}
+
 	query := fmt.Sprintf("(sum(%s{"+
 		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type) "+
-		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"deployment\"})"+
+		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"%s\"})"+
 		" by (namespace, workload, workload_type)/ on (namespace, workload, workload_type) "+
 		"group_left sum(%s{"+
 		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type)"+
-		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"deployment\"}) "+
+		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"%s\"}) "+
 		"by (namespace, workload, workload_type) > %.2f) and on(namespace, workload) "+
 		"label_replace(sum(%s{namespace=\"%s\"} * on(replicaset)"+
 		" group_left(namespace, owner_kind, owner_name) %s{namespace=\"%s\", owner_kind=\"%s\", owner_name=\"%s\"}) by"+
@@ -347,23 +366,25 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		ps.metricRegistry.podOwnerMetric,
 		namespace,
 		workload,
+		workloadType,
 		ps.metricRegistry.resourceLimitMetric,
 		namespace,
 		ps.metricRegistry.podOwnerMetric,
 		namespace,
 		workload,
+		workloadType,
 		redLineUtilization,
 		ps.metricRegistry.readyReplicasMetric,
 		namespace,
 		ps.metricRegistry.replicaSetOwnerMetric,
 		namespace,
-		workloadType,
+		ownerKind,
 		workload,
 		ps.metricRegistry.hpaMaxReplicasMetric,
 		namespace,
 		ps.metricRegistry.hpaOwnerInfoMetric,
 		namespace,
-		workloadType,
+		ownerKind,
 		workload)
 
 	resultChanLength := len(ps.api) + 5 //Added some buffer
@@ -529,7 +550,7 @@ func mergeMatrices(matrixA, matrixB model.Matrix) model.Matrix {
 
 	return resultMatrix
 }
-func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, workload string) (float64, error) {
+func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, workload string, workloadType string) (float64, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
@@ -537,14 +558,15 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 	query := fmt.Sprintf("quantile(0.5,(%s"+
 		"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload, workload_type)"+
 		"(%s{namespace=\"%s\", workload=\"%s\","+
-		" workload_type=\"deployment\"}))",
+		" workload_type=\"%s\"}))",
 		ps.metricRegistry.podReadyTimeMetric,
 		namespace,
 		ps.metricRegistry.podCreatedTimeMetric,
 		namespace,
 		ps.metricRegistry.podOwnerMetric,
 		namespace,
-		workload)
+		workload,
+		workloadType)
 
 	podBootstrapTime := 0.0
 	if ps.api == nil {

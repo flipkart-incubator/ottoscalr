@@ -3,10 +3,11 @@ package metrics
 import (
 	"context"
 	"fmt"
-	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	"github.com/prometheus/common/model"
 	"math"
 	"time"
+
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/common/model"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -72,7 +73,7 @@ var _ = Describe("PrometheusScraper", func() {
 			time.Sleep(5 * time.Second)
 
 			dataPoints, err := scraper.GetAverageCPUUtilizationByWorkload("test-ns-1",
-				"test-workload-1", start, end, time.Second)
+				"test-workload-1", "deployment", start, end, time.Second)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dataPoints).ToNot(BeEmpty())
 
@@ -122,11 +123,11 @@ var _ = Describe("PrometheusScraper", func() {
 			//wait for the metric to be scraped - scraping interval is 1s
 			time.Sleep(2 * time.Second)
 
-			autoscalingLag1, err := scraper.GetACLByWorkload("test-ns-1", "test-workload-1")
+			autoscalingLag1, err := scraper.GetACLByWorkload("test-ns-1", "test-workload-1", "deployment")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(autoscalingLag1).To(Equal(50.0 * time.Second))
 
-			autoscalingLag2, err := scraper.GetACLByWorkload("test-ns-2", "test-workload-3")
+			autoscalingLag2, err := scraper.GetACLByWorkload("test-ns-2", "test-workload-3", "deployment")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(autoscalingLag2).To(Equal(70.0 * time.Second))
 		})
@@ -281,10 +282,10 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-3", "ro-test-node-2", "ro-test-container-1").Set(5)
 			cpuUsageMetric.WithLabelValues("ro-test-ns-2", "ro-test-pod-4", "ro-test-node-4", "ro-test-container-1").Set(3)
 
-			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-1", "ro-1", "deployment").Set(1)
-			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-2", "ro-1", "deployment").Set(1)
-			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-3", "ro-2", "deployment").Set(1)
-			kubePodOwnerMetric.WithLabelValues("ro-test-ns-2", "ro-test-pod-4", "ro-3", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-1", "ro-1", "Rollout").Set(1)
+			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-2", "ro-1", "Rollout").Set(1)
+			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-3", "ro-2", "Rollout").Set(1)
+			kubePodOwnerMetric.WithLabelValues("ro-test-ns-2", "ro-test-pod-4", "ro-3", "Rollout").Set(1)
 
 			resourceLimitMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-1", "ro-test-node-1", "ro-test-container-1").Set(5)
 			resourceLimitMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-2", "ro-test-node-2", "ro-test-container-1").Set(5)
@@ -320,10 +321,10 @@ var _ = Describe("PrometheusScraper", func() {
 			cpuUsageMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-3", "ro-test-node-2", "ro-test-container-1").Set(5)
 			cpuUsageMetric.WithLabelValues("ro-test-ns-2", "ro-test-pod-4", "ro-test-node-4", "ro-test-container-1").Set(3)
 
-			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-1", "ro-1", "deployment").Set(1)
-			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-2", "ro-1", "deployment").Set(1)
-			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-3", "ro-2", "deployment").Set(1)
-			kubePodOwnerMetric.WithLabelValues("ro-test-ns-2", "ro-test-pod-4", "ro-3", "deployment").Set(1)
+			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-1", "ro-1", "Rollout").Set(1)
+			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-2", "ro-1", "Rollout").Set(1)
+			kubePodOwnerMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-3", "ro-2", "Rollout").Set(1)
+			kubePodOwnerMetric.WithLabelValues("ro-test-ns-2", "ro-test-pod-4", "ro-3", "Rollout").Set(1)
 
 			resourceLimitMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-1", "ro-test-node-1", "ro-test-container-1").Set(5)
 			resourceLimitMetric.WithLabelValues("ro-test-ns-1", "ro-test-pod-2", "ro-test-node-2", "ro-test-container-1").Set(5)
@@ -490,7 +491,7 @@ var _ = Describe("PrometheusScraper", func() {
 			time.Sleep(5 * time.Second)
 
 			dataPoints, err := scraper.GetAverageCPUUtilizationByWorkload("test-nsp-1",
-				"test-workload-1", start, end, time.Second)
+				"test-workload-1", "deployment", start, end, time.Second)
 			fmt.Println(dataPoints)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dataPoints).ToNot(BeEmpty())

@@ -300,7 +300,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 	max := int32(policyreco.Spec.CurrentHPAConfiguration.Max)
 	scaleTriggers := []kedaapi.ScaleTriggers{
 		{
-			Type: "cpu",
+			Type:       "cpu",
 			MetricType: "Utilization",
 			Metadata: map[string]string{
 				"value": fmt.Sprint(policyreco.Spec.CurrentHPAConfiguration.TargetMetricValue),
@@ -348,7 +348,7 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		hpaScaleUpBehaviourEnabled.WithLabelValues(workload.GetNamespace(), workload.GetName()).Set(1)
 		maxScaleUpPods, _ := recoUtils.GetMaxScaleUpPods(r.Client, workload.GetNamespace(), workload.GetObjectKind().GroupVersionKind().Kind, workload.GetName(), int(max), r.defaultMaxScaleUpPodsPercentage)
 		scaleUpPeriodSeconds := int32(r.defaultScaleUpscaleUpPeriodSeconds)
-		acl, err := r.Scraper.GetACLByWorkload(workload.GetNamespace(), workload.GetName())
+		acl, err := r.Scraper.GetACLByWorkload(workload.GetNamespace(), workload.GetName(), workload.GetObjectKind().GroupVersionKind().Kind)
 		if err == nil {
 			scaleUpPeriodSeconds = int32(math.Min((math.Ceil(acl.Minutes()) * 60), float64(scaleUpPeriodSeconds)))
 		}

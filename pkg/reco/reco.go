@@ -128,6 +128,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 	utilizationQueryStartTime := time.Now()
 	dataPoints, err := c.scraper.GetAverageCPUUtilizationByWorkload(workloadMeta.Namespace,
 		workloadMeta.Name,
+		workloadMeta.Kind,
 		start,
 		end,
 		c.metricStep)
@@ -168,7 +169,7 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 		}
 	}
 
-	acl, err := c.scraper.GetACLByWorkload(workloadMeta.Namespace, workloadMeta.Name)
+	acl, err := c.scraper.GetACLByWorkload(workloadMeta.Namespace, workloadMeta.Name, workloadMeta.Kind)
 	if err != nil {
 		c.logger.Error(err, "Error while getting GetACL.")
 		return nil, err

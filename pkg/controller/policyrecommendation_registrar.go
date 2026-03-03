@@ -244,7 +244,7 @@ func (controller *PolicyRecommendationRegistrar) SetupWithManager(mgr ctrl.Manag
 			newMaxPods, _ = getReplicasFromMaxPodAnnotation(newObj)
 			oldMaxPods, _ = getReplicasFromMaxPodAnnotation(oldObj)
 
-			if (oldMaxPods <= controller.MinReplicasRequiredToGeneratePolicy && newMaxPods > controller.MinReplicasRequiredToGeneratePolicy) {
+			if oldMaxPods <= controller.MinReplicasRequiredToGeneratePolicy && newMaxPods > controller.MinReplicasRequiredToGeneratePolicy {
 				return true
 			}
 
