@@ -206,23 +206,17 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 	ctx, cancel := context.WithTimeout(context.Background(), ps.queryTimeout)
 	defer cancel()
 
-	// This is for the namespace_workload_pod:kube_pod_owner:relabel query which expects the workload type to be in lowercase for deployments.
-	// For Rollouts, it is "Rollout". So no change is needed for Rollouts.
-	// This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
-	if workloadType == "Deployment" {
-		workloadType = "deployment"
-	}
+	//Removing the workload_type from the query as it is not needed for the query.
+	//We will re introduce it later.
 
 	query := fmt.Sprintf("sum(%s"+
-		"{namespace=\"%s\"} * on (namespace,pod) group_left(workload, workload_type)"+
-		"%s{namespace=\"%s\", workload=\"%s\","+
-		" workload_type=\"%s\"}) by(namespace, workload, workload_type)",
+		"{namespace=\"%s\"} * on (namespace,pod) group_left(workload)"+
+		"%s{namespace=\"%s\", workload=\"%s\"}) by(namespace, workload)",
 		ps.metricRegistry.utilizationMetric,
 		namespace,
 		ps.metricRegistry.podOwnerMetric,
 		namespace,
-		workload,
-		workloadType)
+		workload)
 
 	var totalDataPoints []DataPoint
 	if ps.api == nil {
@@ -339,20 +333,19 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 
 	//Owner kind is the kind of the owner of the workload. For deployments, it is "Deployment". For Rollouts, it is "Rollout".
 	//Owner kind and workload type(for namespace_workload_pod:kube_pod_owner:relabel query) are different because of lower case vs uppercase for deployments.
-	// This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
+	//This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
+	//Removing the workload_type from the query as it is not needed for the query.
+	//We will re introduce it later.
 	ownerKind := workloadType
-	if workloadType == "Deployment" {
-		workloadType = "deployment"
-	}
 
 	query := fmt.Sprintf("(sum(%s{"+
 		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type) "+
-		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"%s\"})"+
-		" by (namespace, workload, workload_type)/ on (namespace, workload, workload_type) "+
+		"%s{namespace=\"%s\", workload=\"%s\"})"+
+		" by (namespace, workload)/ on (namespace, workload) "+
 		"group_left sum(%s{"+
 		"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type)"+
-		"%s{namespace=\"%s\", workload=\"%s\", workload_type=\"%s\"}) "+
-		"by (namespace, workload, workload_type) > %.2f) and on(namespace, workload) "+
+		"%s{namespace=\"%s\", workload=\"%s\"}) "+
+		"by (namespace, workload) > %.2f) and on(namespace, workload) "+
 		"label_replace(sum(%s{namespace=\"%s\"} * on(replicaset)"+
 		" group_left(namespace, owner_kind, owner_name) %s{namespace=\"%s\", owner_kind=\"%s\", owner_name=\"%s\"}) by"+
 		" (namespace, owner_kind, owner_name) < on(namespace, owner_kind, owner_name) "+
@@ -366,13 +359,11 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 		ps.metricRegistry.podOwnerMetric,
 		namespace,
 		workload,
-		workloadType,
 		ps.metricRegistry.resourceLimitMetric,
 		namespace,
 		ps.metricRegistry.podOwnerMetric,
 		namespace,
 		workload,
-		workloadType,
 		redLineUtilization,
 		ps.metricRegistry.readyReplicasMetric,
 		namespace,
@@ -556,17 +547,15 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 	defer cancel()
 
 	query := fmt.Sprintf("quantile(0.5,(%s"+
-		"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload, workload_type)"+
-		"(%s{namespace=\"%s\", workload=\"%s\","+
-		" workload_type=\"%s\"}))",
+		"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload)"+
+		"(%s{namespace=\"%s\", workload=\"%s\"}))",
 		ps.metricRegistry.podReadyTimeMetric,
 		namespace,
 		ps.metricRegistry.podCreatedTimeMetric,
 		namespace,
 		ps.metricRegistry.podOwnerMetric,
 		namespace,
-		workload,
-		workloadType)
+		workload)
 
 	podBootstrapTime := 0.0
 	if ps.api == nil {
