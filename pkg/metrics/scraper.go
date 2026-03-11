@@ -211,12 +211,7 @@ func (ps *PrometheusScraper) GetAverageCPUUtilizationByWorkload(namespace string
 
 	var query string
 	if ps.includeWorkloadType {
-		//This is for the namespace_workload_pod:kube_pod_owner:relabel query which expects the workload type to be in lowercase for deployments.
-		//For Rollouts, it is "Rollout". So no change is needed for Rollouts.
-		//This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
-		if workloadType == "Deployment" {
-			workloadType = "deployment"
-		}
+		workloadType = getWorkloadTypeForQuery(workloadType)
 		//This query is used when workload type is included in the query.
 		query = fmt.Sprintf("sum(%s"+
 			"{namespace=\"%s\"} * on (namespace,pod) group_left(workload, workload_type)"+
@@ -359,9 +354,7 @@ func (ps *PrometheusScraper) GetCPUUtilizationBreachDataPoints(namespace,
 
 	var query string
 	if ps.includeWorkloadType {
-		if workloadType == "Deployment" {
-			workloadType = "deployment"
-		}
+		workloadType = getWorkloadTypeForQuery(workloadType)
 
 		query = fmt.Sprintf("(sum(%s{"+
 			"namespace=\"%s\"} * on(namespace,pod) group_left(workload, workload_type) "+
@@ -616,12 +609,7 @@ func (ps *PrometheusScraper) getPodReadyLatencyByWorkload(namespace string, work
 
 	var query string
 	if ps.includeWorkloadType {
-		//This is for the namespace_workload_pod:kube_pod_owner:relabel query which expects the workload type to be in lowercase for deployments.
-		//For Rollouts, it is "Rollout". So no change is needed for Rollouts.
-		//This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
-		if workloadType == "Deployment" {
-			workloadType = "deployment"
-		}
+		workloadType = getWorkloadTypeForQuery(workloadType)
 		query = fmt.Sprintf("quantile(0.5,(%s"+
 			"{namespace=\"%s\"} - on (namespace,pod) (%s{namespace=\"%s\"}))  * on (namespace,pod) group_left(workload, workload_type)"+
 			"(%s{namespace=\"%s\", workload=\"%s\", workload_type=\"%s\"}))",
@@ -719,4 +707,14 @@ func getQueryType(query string) string {
 		return BreachDataPointsQuery
 	}
 	return CPUUtilizationDataPointsQuery
+}
+
+func getWorkloadTypeForQuery(workloadType string) string {
+	//This is for the namespace_workload_pod:kube_pod_owner:relabel query which expects the workload type to be in lowercase for deployments.
+	//For Rollouts, it is "Rollout". So no change is needed for Rollouts.
+	//This change is introduced in kubeprometheus v0.16.0. During later upgrades, we need to visit this again.
+	if workloadType == "Deployment" {
+		return "deployment"
+	}
+	return workloadType
 }
