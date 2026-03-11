@@ -132,6 +132,7 @@ var _ = BeforeSuite(func() {
 		metricIngestionTime:  metricIngestionTime,
 		metricProbeTime:      metricProbeTime,
 		nodeStartUpTimeInSec: 5,
+		includeWorkloadType:  true,
 	}
 
 	go func() {

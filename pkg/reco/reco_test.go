@@ -1562,7 +1562,7 @@ var _ = Describe("CpuUtilizationBasedRecommender", func() {
 			totalDataPoints := int(recommender3.metricWindow.Seconds()) / int(recommender3.metricStep.Seconds())
 			Expect(totalDataPoints).To(Equal(80640))
 
-			dataPoints, _ := recommender3.scraper.GetAverageCPUUtilizationByWorkload(deploymentName, deploymentName, time.Now(), time.Now(), recommender3.metricStep)
+			dataPoints, _ := recommender3.scraper.GetAverageCPUUtilizationByWorkload(deploymentName, deploymentName, "Deployment", time.Now(), time.Now(), recommender3.metricStep)
 			Expect(len(dataPoints)).To(Equal(5))
 			percentageOfDataPointsFetched := (float64(len(dataPoints)) / float64(totalDataPoints)) * 100
 			Expect(percentageOfDataPointsFetched).To(Equal(0.006200396825396825))

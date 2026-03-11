@@ -77,6 +77,7 @@ type Config struct {
 		PrometheusUrl        string `yaml:"prometheusUrl"`
 		QueryTimeoutSec      int    `yaml:"queryTimeoutSec"`
 		QuerySplitIntervalHr int    `yaml:"querySplitIntervalHr"`
+		IncludeWorkloadType  *bool  `yaml:"includeWorkloadType"`
 	} `yaml:"metricsScraper"`
 
 	BreachMonitor struct {
@@ -216,6 +217,7 @@ func main() {
 		config.MetricIngestionTime,
 		config.MetricProbeTime,
 		config.NodeStartUpTimeInSec,
+		*config.MetricsScraper.IncludeWorkloadType,
 		logger,
 	)
 	if err != nil {

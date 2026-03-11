@@ -2,13 +2,14 @@ package trigger
 
 import (
 	"fmt"
+	"sync/atomic"
+	"time"
+
 	ottoscaleriov1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
 	"github.com/flipkart-incubator/ottoscalr/pkg/metrics"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sync/atomic"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -19,6 +20,7 @@ type FakeScraper struct{}
 
 func (fs *FakeScraper) GetAverageCPUUtilizationByWorkload(namespace,
 	workload string,
+	workloadType string,
 	start time.Time,
 	end time.Time,
 	step time.Duration) ([]metrics.DataPoint, error) {
@@ -36,7 +38,8 @@ func (fs *FakeScraper) GetCPUUtilizationBreachDataPoints(namespace,
 	return []metrics.DataPoint{datapoint}, nil
 }
 func (fs *FakeScraper) GetACLByWorkload(namespace,
-	workload string) (time.Duration, error) {
+	workload,
+	workloadType string) (time.Duration, error) {
 	return 5 * time.Minute, nil
 }
 
