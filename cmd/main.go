@@ -105,6 +105,12 @@ type Config struct {
 		IsDryRun                *bool  `yaml:"isDryRun"`
 		WhitelistMode           *bool  `yaml:"whitelistMode"`
 		MinRequiredReplicas     int    `yaml:"minRequiredReplicas"`
+		MinReplicasReduction    struct {
+			Enable          *bool   `yaml:"enable"`
+			ReductionFactor float64 `yaml:"reductionFactor"`
+			StartTime       string  `yaml:"startTime"`
+			EndTime         string  `yaml:"endTime"`
+		} `yaml:"minReplicasReduction"`
 	} `yaml:"hpaEnforcer"`
 
 	PolicyRecommendationRegistrar struct {
@@ -350,11 +356,18 @@ func main() {
 	hpaEnforcerExcludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.ExcludedNamespaces)
 	hpaEnforcerIncludedNamespaces := parseCommaSeparatedValues(config.HPAEnforcer.IncludedNamespaces)
 
+	minReplicasReduction := controller.MinReplicasReduction{
+		Enable:          config.HPAEnforcer.MinReplicasReduction.Enable,
+		ReductionFactor: config.HPAEnforcer.MinReplicasReduction.ReductionFactor,
+		StartTime:       config.HPAEnforcer.MinReplicasReduction.StartTime,
+		EndTime:         config.HPAEnforcer.MinReplicasReduction.EndTime,
+	}
+
 	hpaEnforcementController, err := controller.NewHPAEnforcementController(mgr.GetClient(),
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName), scraper,
 		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas,
 		config.HPAScalingPolicies.DefaultScaleUpPeriodSeconds, config.HPAScalingPolicies.DefaultMaxScaleUpPodsInPercentage, config.HPAScalingPolicies.EnableScaleUpBehaviourForAll,
-		config.QPSBasedAutoscaling.QpsMetricsServerService, config.QPSBasedAutoscaling.QpsThresholdFactor, config.QPSBasedAutoscaling.UseCachedMetrics)
+		config.QPSBasedAutoscaling.QpsMetricsServerService, config.QPSBasedAutoscaling.QpsThresholdFactor, config.QPSBasedAutoscaling.UseCachedMetrics, minReplicasReduction)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
 		os.Exit(1)

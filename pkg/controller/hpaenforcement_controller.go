@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
+	"time"
 
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	v1alpha1 "github.com/flipkart-incubator/ottoscalr/api/v1alpha1"
@@ -30,6 +32,7 @@ import (
 	kedaapi "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/robfig/cron/v3"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -115,6 +118,14 @@ func init() {
 	metrics.Registry.MustRegister(hpaenforcerScaledObjectUpdatedCounter, hpaenforcerScaledObjectDeletedCounter, hpaenforcerReconcileCounter, hpaScaleUpBehaviourEnabled, hpaQPSBasedAutoscalingEnabled, hpaQPSBasedAutoscalingError)
 }
 
+type MinReplicasReduction struct {
+	Enable          *bool
+	ReductionFactor float64
+	StartTime       string
+	EndTime         string
+	triggerChan     chan event.GenericEvent
+}
+
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
 type HPAEnforcementController struct {
 	client.Client
@@ -133,13 +144,18 @@ type HPAEnforcementController struct {
 	qpsMetricsServerService            string
 	qpsThresholdFactor                 float64
 	defaultUseCachedMetrics            *bool
+	minReplicasReduction               MinReplicasReduction
 }
 
 func NewHPAEnforcementController(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder, scraper m.Scraper,
 	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int,
 	defaultScaleUpscaleUpPeriodSeconds int, defaultMaxScaleUpPodsPercentage int, enableScaleUpBehaviourForAll *bool,
-	qpsMetricsServerService string, qpsThresholdFactor float64, defaultUseCacheMetrics *bool) (*HPAEnforcementController, error) {
+	qpsMetricsServerService string, qpsThresholdFactor float64, defaultUseCacheMetrics *bool, minReplicasReduction MinReplicasReduction) (*HPAEnforcementController, error) {
+
+	if minReplicasReduction.Enable != nil && *minReplicasReduction.Enable {
+		minReplicasReduction.triggerChan = make(chan event.GenericEvent)
+	}
 	return &HPAEnforcementController{
 		Client:                             client,
 		Scheme:                             scheme,
@@ -157,6 +173,7 @@ func NewHPAEnforcementController(client client.Client,
 		qpsMetricsServerService:            qpsMetricsServerService,
 		qpsThresholdFactor:                 qpsThresholdFactor,
 		defaultUseCachedMetrics:            defaultUseCacheMetrics,
+		minReplicasReduction:               minReplicasReduction,
 	}, nil
 }
 
@@ -369,6 +386,19 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	} else {
 		hpaScaleUpBehaviourEnabled.WithLabelValues(workload.GetNamespace(), workload.GetName()).Set(0)
+	}
+
+	if *r.minReplicasReduction.Enable {
+		startTime := formatTime(r.minReplicasReduction.StartTime, time.Now())
+		endTime := formatTime(r.minReplicasReduction.EndTime, time.Now())
+		if time.Now().After(startTime) && time.Now().Before(endTime) {
+			newMinReplicas := int(math.Ceil(float64(min)*r.minReplicasReduction.ReductionFactor))
+			if  newMinReplicas > r.MinRequiredReplicas {
+				min = int32(newMinReplicas)
+			}
+			logger.V(0).Info("MinReplicas reduction window is active. Reducing min replicas to", "min", min)
+		}
+
 	}
 	if !*r.isDryRun {
 		logger.V(0).Info("Creating/Updating ScaledObject for workload.", "workload", workload.GetName())
@@ -628,7 +658,26 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		return requests
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	allPolicyRecoEnqueueFunc := func(obj client.Object) []reconcile.Request {
+		policyRecos := &v1alpha1.PolicyRecommendationList{}
+		if err := r.List(context.Background(), policyRecos, &client.ListOptions{
+			Namespace: obj.GetNamespace(),
+		}); err != nil {
+			return nil
+		}
+		requests := make([]reconcile.Request, 0, len(policyRecos.Items))
+		for _, policyReco := range policyRecos.Items {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: policyReco.Namespace,
+					Name:      policyReco.Name,
+				},
+			})
+		}
+		return requests
+	}
+
+	ctrlBuilder := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Named(HPAEnforcementCtrlName).
 		Watches(
@@ -650,9 +699,19 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 			&source.Kind{Type: &argov1alpha1.Rollout{}},
 			handler.EnqueueRequestsFromMapFunc(policyrecoEnqueueFunc),
 			builder.WithPredicates(predicate.And(predicate.AnnotationChangedPredicate{}, namespaceFilter)),
-		).
-		WithEventFilter(namespaceFilter).
+		)
+
+	if *r.minReplicasReduction.Enable && r.minReplicasReduction.triggerChan != nil {
+		r.scheduleTimeWindowTriggers(context.Background(), mgr.GetLogger())
+		ctrlBuilder = ctrlBuilder.Watches(
+			&source.Channel{Source: r.minReplicasReduction.triggerChan},
+			handler.EnqueueRequestsFromMapFunc(allPolicyRecoEnqueueFunc),
+		)
+	}
+	controller := ctrlBuilder.WithEventFilter(namespaceFilter).
 		Complete(r)
+
+	return controller
 }
 
 func conditionChanged(oldCond metav1.Condition, newCond metav1.Condition) bool {
@@ -863,4 +922,33 @@ func (r *HPAEnforcementController) useCachedMetrics(workload client.Object) bool
 	}
 
 	return true
+}
+
+func formatTime(tm string, now time.Time) time.Time {
+	t, _ := time.Parse("15:04", tm)
+	candidate := time.Date(now.Year(), now.Month(), now.Day(),
+		t.Hour(), t.Minute(), 0, 0, time.Local)
+	return candidate
+}
+
+func (r *HPAEnforcementController) scheduleTimeWindowTriggers(ctx context.Context, logger logr.Logger) {
+	c := cron.New(cron.WithLocation(time.FixedZone("IST", 5*60*60+30*60)))
+	c.AddFunc(hhmToCron(r.minReplicasReduction.StartTime), func() {
+		logger.Info("Triggering all PolicyRecos — MinReplicas reduction window start")
+		r.minReplicasReduction.triggerChan <- event.GenericEvent{}
+	})
+	c.AddFunc(hhmToCron(r.minReplicasReduction.EndTime), func() {
+		logger.Info("Triggering all PolicyRecos — MinReplicas reduction window end")
+		r.minReplicasReduction.triggerChan <- event.GenericEvent{}
+	})
+	c.Start()
+	<-ctx.Done()
+	c.Stop()
+}
+
+func hhmToCron(hhmm string) string {
+	parts := strings.Split(hhmm, ":")
+	// cron format: "minute hour * * *"
+	return fmt.Sprintf("%s %s * * *", parts[1], parts[0])
+	// "02:00" → "00 02 * * *" (at 02:00 every day)
 }
