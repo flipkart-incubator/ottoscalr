@@ -706,7 +706,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 		)
 
 	if *r.minReplicasReduction.Enable && r.minReplicasReduction.triggerChan != nil {
-		r.scheduleTimeWindowTriggers(context.Background(), mgr.GetLogger())
+		go r.scheduleTimeWindowTriggers(context.Background(), mgr.GetLogger())
 		ctrlBuilder = ctrlBuilder.Watches(
 			&source.Channel{Source: r.minReplicasReduction.triggerChan},
 			handler.EnqueueRequestsFromMapFunc(allPolicyRecoEnqueueFunc),
