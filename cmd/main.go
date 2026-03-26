@@ -108,8 +108,8 @@ type Config struct {
 		MinReplicasReduction    struct {
 			Enable          *bool   `yaml:"enable"`
 			ReductionFactor float64 `yaml:"reductionFactor"`
-			StartTime       string  `yaml:"startTime"`
-			EndTime         string  `yaml:"endTime"`
+			StartTime       string  `yaml:"startTime"` // in format "HH:MM"
+			EndTime         string  `yaml:"endTime"`   // in format "HH:MM"
 		} `yaml:"minReplicasReduction"`
 	} `yaml:"hpaEnforcer"`
 

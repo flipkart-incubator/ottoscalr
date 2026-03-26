@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -154,6 +155,9 @@ func NewHPAEnforcementController(client client.Client,
 	qpsMetricsServerService string, qpsThresholdFactor float64, defaultUseCacheMetrics *bool, minReplicasReduction MinReplicasReduction) (*HPAEnforcementController, error) {
 
 	if minReplicasReduction.Enable != nil && *minReplicasReduction.Enable {
+		if minReplicasReduction.ReductionFactor < 0 || minReplicasReduction.ReductionFactor > 1 {
+			return nil, errors.New("reduction factor must be between 0 and 1")
+		}
 		minReplicasReduction.triggerChan = make(chan event.GenericEvent)
 	}
 	return &HPAEnforcementController{
@@ -388,12 +392,12 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		hpaScaleUpBehaviourEnabled.WithLabelValues(workload.GetNamespace(), workload.GetName()).Set(0)
 	}
 
-	if *r.minReplicasReduction.Enable {
+	if r.minReplicasReduction.Enable != nil && *r.minReplicasReduction.Enable {
 		startTime := formatTime(r.minReplicasReduction.StartTime, time.Now())
 		endTime := formatTime(r.minReplicasReduction.EndTime, time.Now())
 		if time.Now().After(startTime) && time.Now().Before(endTime) {
-			newMinReplicas := int(math.Ceil(float64(min)*r.minReplicasReduction.ReductionFactor))
-			if  newMinReplicas > r.MinRequiredReplicas {
+			newMinReplicas := int(math.Ceil(float64(min) * r.minReplicasReduction.ReductionFactor))
+			if newMinReplicas > r.MinRequiredReplicas {
 				min = int32(newMinReplicas)
 			}
 			logger.V(0).Info("MinReplicas reduction window is active. Reducing min replicas to", "min", min)
