@@ -585,7 +585,7 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 			return r.isWhitelistedNamespace(e.Object.GetNamespace())
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
-			return r.isWhitelistedNamespace(e.Object.GetNamespace())
+			return false
 		},
 	}
 	deletePredicate := predicate.Funcs{
