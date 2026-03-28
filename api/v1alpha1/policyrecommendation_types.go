@@ -22,14 +22,16 @@ import (
 
 // PolicyRecommendationSpec defines the desired state of PolicyRecommendation
 type PolicyRecommendationSpec struct {
-	WorkloadMeta            WorkloadMeta     `json:"workload,omitempty"`
-	TargetHPAConfiguration  HPAConfiguration `json:"targetHPAConfig,omitempty"`
-	CurrentHPAConfiguration HPAConfiguration `json:"currentHPAConfig,omitempty"`
-	Policy                  string           `json:"policy,omitempty"`
-	GeneratedAt             *metav1.Time     `json:"generatedAt,omitempty"`
-	TransitionedAt          *metav1.Time     `json:"transitionedAt,omitempty"`
-	QueuedForExecution      *bool            `json:"queuedForExecution,omitempty"`
-	QueuedForExecutionAt    *metav1.Time     `json:"queuedForExecutionAt,omitempty"`
+	WorkloadMeta                     WorkloadMeta                    `json:"workload,omitempty"`
+	TargetHPAConfiguration           HPAConfiguration                `json:"targetHPAConfig,omitempty"`
+	CurrentHPAConfiguration          HPAConfiguration                `json:"currentHPAConfig,omitempty"`
+	TargetWindowedHPAConfigurations  []TimeWindowedHPAConfiguration  `json:"targetWindowedHPAConfigs,omitempty"`
+	CurrentWindowedHPAConfigurations []TimeWindowedHPAConfiguration  `json:"currentWindowedHPAConfigs,omitempty"`
+	Policy                           string                          `json:"policy,omitempty"`
+	GeneratedAt                      *metav1.Time                    `json:"generatedAt,omitempty"`
+	TransitionedAt                   *metav1.Time                    `json:"transitionedAt,omitempty"`
+	QueuedForExecution               *bool                           `json:"queuedForExecution,omitempty"`
+	QueuedForExecutionAt             *metav1.Time                    `json:"queuedForExecutionAt,omitempty"`
 }
 
 type WorkloadMeta struct {
@@ -46,6 +48,28 @@ type HPAConfiguration struct {
 func (h HPAConfiguration) DeepEquals(h2 HPAConfiguration) bool {
 	if h.Min != h2.Min || h.Max != h2.Max || h.TargetMetricValue != h2.TargetMetricValue {
 		return false
+	}
+	return true
+}
+
+type TimeWindowedHPAConfiguration struct {
+	WindowIndex      int              `json:"windowIndex"`
+	StartHour        int              `json:"startHour"`  // 24h, inclusive
+	EndHour          int              `json:"endHour"`    // 24h, exclusive
+	HPAConfiguration HPAConfiguration `json:"hpaConfiguration"`
+}
+
+func WindowedConfigsEqual(a, b []TimeWindowedHPAConfiguration) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].WindowIndex != b[i].WindowIndex ||
+			a[i].StartHour != b[i].StartHour ||
+			a[i].EndHour != b[i].EndHour ||
+			!a[i].HPAConfiguration.DeepEquals(b[i].HPAConfiguration) {
+			return false
+		}
 	}
 	return true
 }

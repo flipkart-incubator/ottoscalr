@@ -168,7 +168,7 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 	logPolicyRecoGaugeMetric(policyreco, v1alpha1.RecoTaskProgress, metav1.ConditionTrue)
 
-	hpaConfigToBeApplied, targetHPAReco, policy, err := r.RecoWorkflow.Execute(ctx, reco.WorkloadMeta{
+	hpaConfigToBeApplied, targetHPAReco, targetWindowedConfigs, currentWindowedConfigs, policy, err := r.RecoWorkflow.Execute(ctx, reco.WorkloadMeta{
 		TypeMeta:  policyreco.Spec.WorkloadMeta.TypeMeta,
 		Name:      policyreco.Spec.WorkloadMeta.Name,
 		Namespace: policyreco.Namespace,
@@ -231,12 +231,14 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 			Namespace: policyreco.Namespace,
 		},
 		Spec: v1alpha1.PolicyRecommendationSpec{
-			QueuedForExecution:      &falseBool,
-			TargetHPAConfiguration:  *targetHPAReco,
-			Policy:                  policyName,
-			CurrentHPAConfiguration: *hpaConfigToBeApplied,
-			TransitionedAt:          &transitionedAt,
-			GeneratedAt:             &generatedAt,
+			QueuedForExecution:               &falseBool,
+			TargetHPAConfiguration:           *targetHPAReco,
+			Policy:                           policyName,
+			CurrentHPAConfiguration:          *hpaConfigToBeApplied,
+			TargetWindowedHPAConfigurations:  targetWindowedConfigs,
+			CurrentWindowedHPAConfigurations: currentWindowedConfigs,
+			TransitionedAt:                   &transitionedAt,
+			GeneratedAt:                      &generatedAt,
 		},
 	}
 	logger.V(0).Info("Policy Patch", "PolicyReco", *policyRecoPatch)
@@ -251,7 +253,10 @@ func (r *PolicyRecommendationReconciler) Reconcile(ctx context.Context, req ctrl
 
 	initializedTime := fetchInitializedTime(&policyreco)
 	targetAchievedAlready := fetchTargetAchieved(&policyreco)
-	if policyRecoPatch.Spec.TargetHPAConfiguration.DeepEquals(policyRecoPatch.Spec.CurrentHPAConfiguration) {
+	globalTargetAchieved := policyRecoPatch.Spec.TargetHPAConfiguration.DeepEquals(policyRecoPatch.Spec.CurrentHPAConfiguration)
+	windowedTargetAchieved := len(policyRecoPatch.Spec.TargetWindowedHPAConfigurations) == 0 ||
+		v1alpha1.WindowedConfigsEqual(policyRecoPatch.Spec.TargetWindowedHPAConfigurations, policyRecoPatch.Spec.CurrentWindowedHPAConfigurations)
+	if globalTargetAchieved && windowedTargetAchieved {
 		if !targetAchievedAlready {
 			targetRecoSLI.WithLabelValues(policyreco.Namespace, policyreco.Name).Observe(time.Since(initializedTime).Hours() / 24)
 		}

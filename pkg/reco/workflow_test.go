@@ -82,7 +82,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 			Expect(recoWorkflowBuilder.recommender).NotTo(BeNil())
 			Expect(recoWorkflowBuilder.policyIterators).To(BeNil())
 
-			nextConfig, targetConfig, policy, err := recoWorkflow.Execute(ctx, WorkloadMeta{
+			nextConfig, targetConfig, _, _, policy, err := recoWorkflow.Execute(ctx, WorkloadMeta{
 				Name:      "test",
 				Namespace: "default",
 			})
@@ -114,7 +114,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 			Expect(recoWorkflowBuilder.recommender).To(BeNil())
 			Expect(recoWorkflowBuilder.policyIterators).NotTo(BeNil())
 
-			_, _, _, err = recoWorkflow.Execute(ctx, WorkloadMeta{
+			_, _, _, _, _, err = recoWorkflow.Execute(ctx, WorkloadMeta{
 				Name:      "test",
 				Namespace: "default",
 			})
@@ -149,7 +149,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 			Expect(recoWorkflowBuilder.policyIterators["mockPI"]).NotTo(BeNil())
 			Expect(recoWorkflowBuilder.policyIterators["mockPI"].GetName()).To(Equal("mockPI"))
 
-			nextConfig, targetConfig, policy, err := recoWorkflow.Execute(ctx, WorkloadMeta{
+			nextConfig, targetConfig, _, _, policy, err := recoWorkflow.Execute(ctx, WorkloadMeta{
 				Name:      "test",
 				Namespace: "default",
 			})
@@ -196,7 +196,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 				Expect(recoWorkflowBuilder.policyIterators["mockPI"]).NotTo(BeNil())
 				Expect(recoWorkflowBuilder.policyIterators["mockPI"].GetName()).To(Equal("mockPI"))
 
-				nextConfig, targetConfig, policy, err := recoWorkflow.Execute(ctx, WorkloadMeta{
+				nextConfig, targetConfig, _, _, policy, err := recoWorkflow.Execute(ctx, WorkloadMeta{
 					Name:      "test",
 					Namespace: "default",
 				})
@@ -236,7 +236,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).WithK8sClient(k8sClient).Build()
 				Expect(recoWorkflow).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
-				_, targetConfig, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
+				_, targetConfig, _, _, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
 					Name:      "test",
 					Namespace: "default",
 				})
@@ -267,7 +267,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).WithK8sClient(k8sClient).Build()
 				Expect(recoWorkflow).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
-				_, targetConfig, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
+				_, targetConfig, _, _, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
 					Name:      "test",
 					Namespace: "default",
 				})
@@ -297,7 +297,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).WithK8sClient(k8sClient).WithDefaultMinReplicasPercentage(50).Build()
 				Expect(recoWorkflow).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
-				_, targetConfig, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
+				_, targetConfig, _, _, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
 					Name:      "test",
 					Namespace: "default",
 				})
@@ -327,7 +327,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 				}).WithPolicyIterator(&MockPI{}).WithMinRequiredReplicas(3).WithPolicyStore(store).WithK8sClient(k8sClient).Build()
 				Expect(recoWorkflow).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
-				_, targetConfig, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
+				_, targetConfig, _, _, _, err := recoWorkflow.Execute(ctx, WorkloadMeta{
 					Name:      "test",
 					Namespace: "default",
 				})
@@ -390,7 +390,7 @@ var _ = Describe("RecommendationWorkflow", func() {
 
 				Expect(k8sClient.Status().Patch(ctx, statusPatch, client.Apply, client.FieldOwner("test"))).To(Succeed())
 
-				nextConfig, targetConfig, policy, err := recoWorkflow.Execute(ctx, WorkloadMeta{
+				nextConfig, targetConfig, _, _, policy, err := recoWorkflow.Execute(ctx, WorkloadMeta{
 					Name:      "test",
 					Namespace: "default",
 				})

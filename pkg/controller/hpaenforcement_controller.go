@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"strings"
 	"time"
 
 	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
@@ -127,6 +126,19 @@ type MinReplicasReduction struct {
 	triggerChan     chan event.GenericEvent
 }
 
+// findActiveWindow returns the windowed HPA config whose hour range contains
+// the current hour (in IST). Returns nil if no window matches.
+func findActiveWindow(windows []v1alpha1.TimeWindowedHPAConfiguration, now time.Time) *v1alpha1.TimeWindowedHPAConfiguration {
+	istLocation := time.FixedZone("IST", 5*60*60+30*60)
+	hour := now.In(istLocation).Hour()
+	for i := range windows {
+		if hour >= windows[i].StartHour && hour < windows[i].EndHour {
+			return &windows[i]
+		}
+	}
+	return nil
+}
+
 // PolicyRecommendationReconciler reconciles a PolicyRecommendation object
 type HPAEnforcementController struct {
 	client.Client
@@ -146,19 +158,26 @@ type HPAEnforcementController struct {
 	qpsThresholdFactor                 float64
 	defaultUseCachedMetrics            *bool
 	minReplicasReduction               MinReplicasReduction
+	numberOfTimeWindows                int
+	timeWindowTriggerChan              chan event.GenericEvent
 }
 
 func NewHPAEnforcementController(client client.Client,
 	scheme *runtime.Scheme, recorder record.EventRecorder, scraper m.Scraper,
 	maxConcurrentReconciles int, isDryRun *bool, excludedNamespaces *[]string, includedNamespaces *[]string, whitelistMode *bool, minRequiredReplicas int,
 	defaultScaleUpscaleUpPeriodSeconds int, defaultMaxScaleUpPodsPercentage int, enableScaleUpBehaviourForAll *bool,
-	qpsMetricsServerService string, qpsThresholdFactor float64, defaultUseCacheMetrics *bool, minReplicasReduction MinReplicasReduction) (*HPAEnforcementController, error) {
+	qpsMetricsServerService string, qpsThresholdFactor float64, defaultUseCacheMetrics *bool, minReplicasReduction MinReplicasReduction,
+	numberOfTimeWindows int) (*HPAEnforcementController, error) {
 
 	if minReplicasReduction.Enable != nil && *minReplicasReduction.Enable {
 		if minReplicasReduction.ReductionFactor < 0 || minReplicasReduction.ReductionFactor > 1 {
 			return nil, errors.New("reduction factor must be between 0 and 1")
 		}
 		minReplicasReduction.triggerChan = make(chan event.GenericEvent)
+	}
+	var timeWindowTriggerChan chan event.GenericEvent
+	if numberOfTimeWindows > 0 {
+		timeWindowTriggerChan = make(chan event.GenericEvent)
 	}
 	return &HPAEnforcementController{
 		Client:                             client,
@@ -178,6 +197,8 @@ func NewHPAEnforcementController(client client.Client,
 		qpsThresholdFactor:                 qpsThresholdFactor,
 		defaultUseCachedMetrics:            defaultUseCacheMetrics,
 		minReplicasReduction:               minReplicasReduction,
+		numberOfTimeWindows:                numberOfTimeWindows,
+		timeWindowTriggerChan:              timeWindowTriggerChan,
 	}, nil
 }
 
@@ -319,12 +340,25 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 	logger.V(0).Info("Reconciling PolicyRecommendation to create/update ScaleObject.")
 	min := int32(policyreco.Spec.CurrentHPAConfiguration.Min)
 	max := int32(policyreco.Spec.CurrentHPAConfiguration.Max)
+	cpuTargetMetricValue := policyreco.Spec.CurrentHPAConfiguration.TargetMetricValue
+
+	// If windowed configs are present, select the active window's config.
+	if len(policyreco.Spec.CurrentWindowedHPAConfigurations) > 0 {
+		active := findActiveWindow(policyreco.Spec.CurrentWindowedHPAConfigurations, time.Now())
+		if active != nil {
+			min = int32(active.HPAConfiguration.Min)
+			max = int32(active.HPAConfiguration.Max)
+			cpuTargetMetricValue = active.HPAConfiguration.TargetMetricValue
+			logger.V(0).Info("Using windowed HPA config", "window", active.WindowIndex, "startHour", active.StartHour, "endHour", active.EndHour, "min", min, "max", max, "targetUtil", cpuTargetMetricValue)
+		}
+	}
+
 	scaleTriggers := []kedaapi.ScaleTriggers{
 		{
 			Type:       "cpu",
 			MetricType: "Utilization",
 			Metadata: map[string]string{
-				"value": fmt.Sprint(policyreco.Spec.CurrentHPAConfiguration.TargetMetricValue),
+				"value": fmt.Sprint(cpuTargetMetricValue),
 			},
 		},
 	}
@@ -392,18 +426,6 @@ func (r *HPAEnforcementController) Reconcile(ctx context.Context, req ctrl.Reque
 		hpaScaleUpBehaviourEnabled.WithLabelValues(workload.GetNamespace(), workload.GetName()).Set(0)
 	}
 
-	if r.minReplicasReduction.Enable != nil && *r.minReplicasReduction.Enable {
-		startTime := formatTime(r.minReplicasReduction.StartTime, time.Now())
-		endTime := formatTime(r.minReplicasReduction.EndTime, time.Now())
-		if time.Now().After(startTime) && time.Now().Before(endTime) {
-			newMinReplicas := int(math.Ceil(float64(min) * r.minReplicasReduction.ReductionFactor))
-			if newMinReplicas > r.MinRequiredReplicas {
-				min = int32(newMinReplicas)
-			}
-			logger.V(0).Info("MinReplicas reduction window is active. Reducing min replicas to", "min", min)
-		}
-
-	}
 	if !*r.isDryRun {
 		logger.V(0).Info("Creating/Updating ScaledObject for workload.", "workload", workload.GetName())
 
@@ -705,10 +727,10 @@ func (r *HPAEnforcementController) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(predicate.And(predicate.AnnotationChangedPredicate{}, namespaceFilter)),
 		)
 
-	if *r.minReplicasReduction.Enable && r.minReplicasReduction.triggerChan != nil {
-		go r.scheduleTimeWindowTriggers(context.Background(), mgr.GetLogger())
+	if r.numberOfTimeWindows > 0 && r.timeWindowTriggerChan != nil {
+		go r.scheduleWindowBoundaryTriggers(context.Background(), mgr.GetLogger())
 		ctrlBuilder = ctrlBuilder.Watches(
-			&source.Channel{Source: r.minReplicasReduction.triggerChan},
+			&source.Channel{Source: r.timeWindowTriggerChan},
 			handler.EnqueueRequestsFromMapFunc(allPolicyRecoEnqueueFunc),
 		)
 	}
@@ -928,31 +950,23 @@ func (r *HPAEnforcementController) useCachedMetrics(workload client.Object) bool
 	return true
 }
 
-func formatTime(tm string, now time.Time) time.Time {
-	t, _ := time.Parse("15:04", tm)
-	candidate := time.Date(now.Year(), now.Month(), now.Day(),
-		t.Hour(), t.Minute(), 0, 0, time.Local)
-	return candidate
-}
-
-func (r *HPAEnforcementController) scheduleTimeWindowTriggers(ctx context.Context, logger logr.Logger) {
-	c := cron.New(cron.WithLocation(time.FixedZone("IST", 5*60*60+30*60)))
-	c.AddFunc(hhmToCron(r.minReplicasReduction.StartTime), func() {
-		logger.Info("Triggering all PolicyRecos — MinReplicas reduction window start")
-		r.minReplicasReduction.triggerChan <- event.GenericEvent{}
-	})
-	c.AddFunc(hhmToCron(r.minReplicasReduction.EndTime), func() {
-		logger.Info("Triggering all PolicyRecos — MinReplicas reduction window end")
-		r.minReplicasReduction.triggerChan <- event.GenericEvent{}
-	})
+// scheduleWindowBoundaryTriggers registers cron jobs at each time-window boundary hour
+// (e.g., 0h, 6h, 12h, 18h for 4 windows) and fires a GenericEvent into timeWindowTriggerChan
+// so that all PolicyRecommendations are re-queued and the newly-active window config is applied.
+func (r *HPAEnforcementController) scheduleWindowBoundaryTriggers(ctx context.Context, logger logr.Logger) {
+	istLocation := time.FixedZone("IST", 5*60*60+30*60)
+	c := cron.New(cron.WithLocation(istLocation))
+	hoursPerWindow := 24 / r.numberOfTimeWindows
+	for i := 0; i < r.numberOfTimeWindows; i++ {
+		boundaryHour := i * hoursPerWindow
+		cronExpr := fmt.Sprintf("0 %d * * *", boundaryHour)
+		idx := i // capture loop var
+		c.AddFunc(cronExpr, func() {
+			logger.Info("Triggering all PolicyRecos — time window boundary", "windowIndex", idx, "hour", boundaryHour)
+			r.timeWindowTriggerChan <- event.GenericEvent{}
+		})
+	}
 	c.Start()
 	<-ctx.Done()
 	c.Stop()
-}
-
-func hhmToCron(hhmm string) string {
-	parts := strings.Split(hhmm, ":")
-	// cron format: "minute hour * * *"
-	return fmt.Sprintf("%s %s * * *", parts[1], parts[0])
-	// "02:00" → "00 02 * * *" (at 02:00 every day)
 }

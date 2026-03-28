@@ -64,6 +64,35 @@ spec:
                 - min
                 - targetMetricValue
                 type: object
+              currentWindowedHPAConfigs:
+                items:
+                  properties:
+                    endHour:
+                      type: integer
+                    hpaConfiguration:
+                      properties:
+                        max:
+                          type: integer
+                        min:
+                          type: integer
+                        targetMetricValue:
+                          type: integer
+                      required:
+                      - max
+                      - min
+                      - targetMetricValue
+                      type: object
+                    startHour:
+                      type: integer
+                    windowIndex:
+                      type: integer
+                  required:
+                  - endHour
+                  - hpaConfiguration
+                  - startHour
+                  - windowIndex
+                  type: object
+                type: array
               generatedAt:
                 format: date-time
                 type: string
@@ -87,6 +116,35 @@ spec:
                 - min
                 - targetMetricValue
                 type: object
+              targetWindowedHPAConfigs:
+                items:
+                  properties:
+                    endHour:
+                      type: integer
+                    hpaConfiguration:
+                      properties:
+                        max:
+                          type: integer
+                        min:
+                          type: integer
+                        targetMetricValue:
+                          type: integer
+                      required:
+                      - max
+                      - min
+                      - targetMetricValue
+                      type: object
+                    startHour:
+                      type: integer
+                    windowIndex:
+                      type: integer
+                  required:
+                  - endHour
+                  - hpaConfiguration
+                  - startHour
+                  - windowIndex
+                  type: object
+                type: array
               transitionedAt:
                 format: date-time
                 type: string

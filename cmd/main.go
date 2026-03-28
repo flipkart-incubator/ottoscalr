@@ -120,11 +120,13 @@ type Config struct {
 	} `yaml:"policyRecommendationRegistrar"`
 
 	CpuUtilizationBasedRecommender struct {
-		MetricWindowInDays         int `yaml:"metricWindowInDays"`
-		StepSec                    int `yaml:"stepSec"`
-		MinTarget                  int `yaml:"minTarget"`
-		MaxTarget                  int `yaml:"minTarget"`
-		MetricsPercentageThreshold int `yaml:"metricsPercentageThreshold"`
+		MetricWindowInDays         int  `yaml:"metricWindowInDays"`
+		StepSec                    int  `yaml:"stepSec"`
+		MinTarget                  int  `yaml:"minTarget"`
+		MaxTarget                  int  `yaml:"minTarget"`
+		MetricsPercentageThreshold int  `yaml:"metricsPercentageThreshold"`
+		EnableTimeWindows          bool `yaml:"enableTimeWindows"`
+		NumberOfWindows            int  `yaml:"numberOfWindows"`
 	} `yaml:"cpuUtilizationBasedRecommender"`
 	MetricIngestionTime      float64 `yaml:"metricIngestionTime"`
 	MetricProbeTime          float64 `yaml:"metricProbeTime"`
@@ -291,6 +293,8 @@ func main() {
 		config.HPAScalingPolicies.DefaultScaleUpPeriodSeconds,
 		config.HPAScalingPolicies.DefaultMaxScaleUpPodsInPercentage,
 		config.HPAScalingPolicies.EnableScaleUpBehaviourForAll,
+		config.CpuUtilizationBasedRecommender.EnableTimeWindows,
+		config.CpuUtilizationBasedRecommender.NumberOfWindows,
 		logger)
 
 	breachAnalyzer, err := reco.NewBreachAnalyzer(mgr.GetClient(), scraper, config.BreachMonitor.CpuRedLine, time.Duration(config.BreachMonitor.StepSec)*time.Second)
@@ -367,7 +371,8 @@ func main() {
 		mgr.GetScheme(), mgr.GetEventRecorderFor(controller.HPAEnforcementCtrlName), scraper,
 		config.HPAEnforcer.MaxConcurrentReconciles, config.HPAEnforcer.IsDryRun, &hpaEnforcerExcludedNamespaces, &hpaEnforcerIncludedNamespaces, config.HPAEnforcer.WhitelistMode, config.HPAEnforcer.MinRequiredReplicas,
 		config.HPAScalingPolicies.DefaultScaleUpPeriodSeconds, config.HPAScalingPolicies.DefaultMaxScaleUpPodsInPercentage, config.HPAScalingPolicies.EnableScaleUpBehaviourForAll,
-		config.QPSBasedAutoscaling.QpsMetricsServerService, config.QPSBasedAutoscaling.QpsThresholdFactor, config.QPSBasedAutoscaling.UseCachedMetrics, minReplicasReduction)
+		config.QPSBasedAutoscaling.QpsMetricsServerService, config.QPSBasedAutoscaling.QpsThresholdFactor, config.QPSBasedAutoscaling.UseCachedMetrics, minReplicasReduction,
+		config.CpuUtilizationBasedRecommender.NumberOfWindows)
 	if err != nil {
 		setupLog.Error(err, "Unable to initialize HPA enforcement controller")
 		os.Exit(1)

@@ -168,7 +168,7 @@ var _ = BeforeSuite(func() {
 	fakeScraper = newFakeScraper([]metrics.DataPoint{}, []metrics.DataPoint{}, 150*time.Second)
 	hpaenforcer, err := NewHPAEnforcementController(k8sManager.GetClient(),
 		k8sManager.GetScheme(), k8sManager.GetEventRecorderFor(HPAEnforcementCtrlName), fakeScraper,
-		1, hpaEnforcerIsDryRun, hpaEnforcerExcludedNamespaces, hpaEnforcerIncludedNamespaces, whitelistMode, 3, 600, 15, &falseBool, "", 0.8, &falseBool, MinReplicasReduction{Enable: &falseBool, ReductionFactor: 0.5, StartTime: "2026-03-24 14:00", EndTime: "2026-03-24 15:00"})
+		1, hpaEnforcerIsDryRun, hpaEnforcerExcludedNamespaces, hpaEnforcerIncludedNamespaces, whitelistMode, 3, 600, 15, &falseBool, "", 0.8, &falseBool, MinReplicasReduction{Enable: &falseBool, ReductionFactor: 0.5, StartTime: "2026-03-24 14:00", EndTime: "2026-03-24 15:00"}, 0)
 	Expect(err).NotTo(HaveOccurred())
 	err = hpaenforcer.
 		SetupWithManager(k8sManager)

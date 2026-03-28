@@ -86,6 +86,8 @@ type CpuUtilizationBasedRecommender struct {
 	defaultScaleUpPeriodSeconds     int
 	defaultMaxScaleUpPodsPercentage int
 	enableScaleUpBehaviourForAll    *bool
+	enableTimeWindows               bool
+	numberOfWindows                 int
 	logger                          logr.Logger
 }
 
@@ -100,6 +102,8 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 	metricsPercentageThreshold int, downScaleStabilizationWindow time.Duration,
 	defaultScaleUpPeriodSeconds int, defaultMaxScaleUpPodsPercentage int,
 	enableScaleUpBehaviourForAll *bool,
+	enableTimeWindows bool,
+	numberOfWindows int,
 	logger logr.Logger) *CpuUtilizationBasedRecommender {
 	return &CpuUtilizationBasedRecommender{
 		k8sClient:                       k8sClient,
@@ -115,13 +119,28 @@ func NewCpuUtilizationBasedRecommender(k8sClient client.Client,
 		defaultScaleUpPeriodSeconds:     defaultScaleUpPeriodSeconds,
 		defaultMaxScaleUpPodsPercentage: defaultMaxScaleUpPodsPercentage,
 		enableScaleUpBehaviourForAll:    enableScaleUpBehaviourForAll,
+		enableTimeWindows:               enableTimeWindows,
+		numberOfWindows:                 numberOfWindows,
 		logger:                          logger,
 	}
 }
 
-func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workloadMeta WorkloadMeta) (*v1alpha1.HPAConfiguration,
-	error) {
+// WindowedRecommender extends Recommender with time-window awareness.
+type WindowedRecommender interface {
+	Recommender
+	RecommendWindowed(ctx context.Context, wm WorkloadMeta) (*v1alpha1.HPAConfiguration, []v1alpha1.TimeWindowedHPAConfiguration, error)
+}
 
+// Recommend implements the Recommender interface. It delegates to RecommendWindowed,
+// which handles both feature-on and feature-off cases.
+func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workloadMeta WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
+	cfg, _, err := c.RecommendWindowed(ctx, workloadMeta)
+	return cfg, err
+}
+
+// recommendGlobal runs the original (non-windowed) recommendation algorithm across
+// all 21-28 days of data points uniformly and returns a single HPAConfiguration.
+func (c *CpuUtilizationBasedRecommender) recommendGlobal(ctx context.Context, workloadMeta WorkloadMeta) (*v1alpha1.HPAConfiguration, error) {
 	end := time.Now()
 	start := end.Add(-c.metricWindow)
 
@@ -190,10 +209,6 @@ func (c *CpuUtilizationBasedRecommender) Recommend(ctx context.Context, workload
 			return nil, err
 		}
 		scaleUpPeriodSeconds = int(math.Min((math.Ceil(acl.Minutes()) * 60), float64(c.defaultScaleUpPeriodSeconds)))
-		if err != nil {
-			c.logger.Error(err, "Error while getting periodSeconds")
-			return nil, err
-		}
 	}
 
 	optimalTargetUtil, minReplicas, maxReplicas, savings, err := c.findOptimalHPAConfigurations(dataPoints,
@@ -617,4 +632,302 @@ func (c *CpuUtilizationBasedRecommender) getMaxRecommendationInStabilizationWind
 	}
 
 	return max
+}
+
+// daySlice holds the data points for a single calendar-day slice of a time window,
+// with a warmup prefix to prime HPA simulation state before the actual window starts.
+type daySlice struct {
+	points       []metrics.DataPoint
+	warmupCutoff int // index of first point >= startHour (actual window portion starts here)
+}
+
+// filterDataPointsByHourRange groups all datapoints by calendar day (in IST) and
+// returns a map from day → daySlice. Each slice covers [startHour-warmup, endHour).
+// The warmupCutoff field marks where the actual window portion begins within the slice.
+func filterDataPointsByHourRange(
+	dps []metrics.DataPoint,
+	startHour, endHour int,
+	warmupDuration time.Duration,
+	loc *time.Location,
+) map[time.Time]daySlice {
+	result := make(map[time.Time]daySlice)
+
+	warmupStart := func(t time.Time) time.Time {
+		windowStart := time.Date(t.Year(), t.Month(), t.Day(), startHour, 0, 0, 0, loc)
+		return windowStart.Add(-warmupDuration)
+	}
+	windowEnd := func(t time.Time) time.Time {
+		return time.Date(t.Year(), t.Month(), t.Day(), endHour, 0, 0, 0, loc)
+	}
+
+	dayMap := make(map[time.Time][]metrics.DataPoint)
+	for _, dp := range dps {
+		dpLocal := dp.Timestamp.In(loc)
+		dayKey := time.Date(dpLocal.Year(), dpLocal.Month(), dpLocal.Day(), 0, 0, 0, 0, loc)
+		ws := warmupStart(dpLocal)
+		we := windowEnd(dpLocal)
+		if (dp.Timestamp.Equal(ws) || dp.Timestamp.After(ws)) && dp.Timestamp.Before(we) {
+			dayMap[dayKey] = append(dayMap[dayKey], dp)
+		}
+	}
+
+	for dayKey, pts := range dayMap {
+		if len(pts) == 0 {
+			continue
+		}
+		actualWindowStart := time.Date(dayKey.Year(), dayKey.Month(), dayKey.Day(), startHour, 0, 0, 0, loc)
+		cutoff := 0
+		for cutoff < len(pts) && pts[cutoff].Timestamp.Before(actualWindowStart) {
+			cutoff++
+		}
+		result[dayKey] = daySlice{
+			points:       pts,
+			warmupCutoff: cutoff,
+		}
+	}
+	return result
+}
+
+// recommendForWindow runs the HPA recommendation algorithm for a single time window
+// across all historical days, and returns the most conservative config that avoids
+// breaches in the actual window portion (excluding the warmup prefix).
+// Returns nil if no valid recommendation can be derived (no-op fallback expected by caller).
+func (c *CpuUtilizationBasedRecommender) recommendForWindow(
+	allDataPoints []metrics.DataPoint,
+	startHour, endHour int,
+	acl time.Duration,
+	perPodResources float64,
+	workloadMaxReplicas, workloadMinReplicas int,
+	enableScaleUpBehaviour bool,
+	maxScaleUpPods, scaleUpPeriodSeconds int,
+	loc *time.Location,
+) *v1alpha1.HPAConfiguration {
+
+	daySlices := filterDataPointsByHourRange(allDataPoints, startHour, endHour, acl, loc)
+	if len(daySlices) == 0 {
+		return nil
+	}
+
+	// Track the most conservative result across all days.
+	// Most conservative = lowest targetUtil AND highest minReplicas.
+	bestTargetUtil := c.maxTarget
+	bestMinReplicas := workloadMinReplicas
+	foundValid := false
+
+	for _, ds := range daySlices {
+		if len(ds.points) == 0 {
+			continue
+		}
+
+		// Binary search for best target utilization for this day's window.
+		low := c.minTarget
+		high := c.maxTarget
+		var lastGoodSimulated []metrics.DataPoint
+		var lastGoodCalculatedMin int
+
+		for low <= high {
+			mid := low + (high-low)/2
+			var simulated []metrics.DataPoint
+			var calculatedMin int
+			var err error
+			if !enableScaleUpBehaviour {
+				simulated, calculatedMin, err = c.simulateHPA(ds.points, acl, mid, perPodResources, workloadMaxReplicas, workloadMinReplicas)
+			} else {
+				simulated, calculatedMin, err = c.simulateHPAWithScaleBehaviours(ds.points, acl, mid, perPodResources, workloadMaxReplicas, workloadMinReplicas, maxScaleUpPods, scaleUpPeriodSeconds)
+			}
+			if err != nil {
+				break
+			}
+
+			// Check breach only on the actual window portion (skip warmup).
+			windowOriginal := ds.points[ds.warmupCutoff:]
+			windowSimulated := simulated[ds.warmupCutoff:]
+			if c.hasNoBreachOccurred(windowOriginal, windowSimulated) {
+				lastGoodSimulated = simulated
+				lastGoodCalculatedMin = calculatedMin
+				low = mid + 1
+			} else {
+				high = mid - 1
+			}
+		}
+
+		if high < c.minTarget || lastGoodSimulated == nil {
+			continue
+		}
+		if lastGoodCalculatedMin > workloadMinReplicas {
+			continue
+		}
+
+		// This day yields a valid config. Apply most-conservative selection.
+		if !foundValid {
+			bestTargetUtil = high
+			bestMinReplicas = workloadMinReplicas
+			foundValid = true
+		} else {
+			if high < bestTargetUtil {
+				bestTargetUtil = high
+			}
+		}
+	}
+
+	if !foundValid {
+		return nil
+	}
+
+	return &v1alpha1.HPAConfiguration{
+		Min:               bestMinReplicas,
+		Max:               workloadMaxReplicas,
+		TargetMetricValue: bestTargetUtil,
+	}
+}
+
+// RecommendWindowed runs the recommendation algorithm independently per time window
+// and returns both per-window configs and a global (most conservative) fallback config.
+// When enableTimeWindows is false or numberOfWindows <= 0, it falls back to the global
+// (non-windowed) algorithm and returns nil windowed configs for backward compatibility.
+func (c *CpuUtilizationBasedRecommender) RecommendWindowed(ctx context.Context, workloadMeta WorkloadMeta) (*v1alpha1.HPAConfiguration, []v1alpha1.TimeWindowedHPAConfiguration, error) {
+	if !c.enableTimeWindows || c.numberOfWindows <= 0 {
+		cfg, err := c.recommendGlobal(ctx, workloadMeta)
+		return cfg, nil, err
+	}
+
+	end := time.Now()
+	start := end.Add(-c.metricWindow)
+
+	utilizationQueryStartTime := time.Now()
+	dataPoints, err := c.scraper.GetAverageCPUUtilizationByWorkload(workloadMeta.Namespace,
+		workloadMeta.Name,
+		workloadMeta.Kind,
+		start,
+		end,
+		c.metricStep)
+	if err != nil {
+		c.logger.Error(err, "Error while scraping GetAverageCPUUtilizationByWorkload.")
+		return nil, nil, err
+	}
+	getAverageCPUUtilizationQueryLatency.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name, workloadMeta.Kind, workloadMeta.Name).Observe(time.Since(utilizationQueryStartTime).Seconds())
+
+	workloadMaxReplicas, err := c.getMaxPods(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	if err != nil {
+		c.logger.Error(err, "Error while getting getMaxPods")
+		return nil, nil, err
+	}
+
+	workloadMinReplicas, err := getMinPods(c.k8sClient, workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	if err != nil {
+		c.logger.Error(err, "Error while getting getMinPods")
+		return nil, nil, err
+	}
+
+	if !c.isMetricsAboveThreshold(dataPoints) {
+		minPercentageOfDataPointsPresent.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(float64(0))
+		c.logger.Error(fmt.Errorf("insufficient metrics"), "Setting the recommendation to no operation policy")
+		noOp := &v1alpha1.HPAConfiguration{Min: workloadMaxReplicas, Max: workloadMaxReplicas, TargetMetricValue: c.minTarget}
+		return noOp, nil, nil
+	}
+	minPercentageOfDataPointsPresent.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(float64(1))
+
+	if c.metricsTransformer != nil {
+		for _, t := range c.metricsTransformer {
+			dataPoints, err = t.Transform(start, end, dataPoints)
+			if err != nil {
+				c.logger.Error(err, "Error while transforming metrics")
+				return nil, nil, err
+			}
+		}
+	}
+
+	acl, err := c.scraper.GetACLByWorkload(workloadMeta.Namespace, workloadMeta.Name, workloadMeta.Kind)
+	if err != nil {
+		c.logger.Error(err, "Error while getting GetACL.")
+		return nil, nil, err
+	}
+
+	perPodResources, err := c.getContainerCPULimitsSum(workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name)
+	if err != nil {
+		c.logger.Error(err, "Error while getting getContainerCPULimitsSum")
+		return nil, nil, err
+	}
+
+	enableScaleUpBehaviour := EnableScaleUpBehaviourForHPA(c.k8sClient, workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name, c.enableScaleUpBehaviourForAll)
+	var maxScaleUpPods int
+	var scaleUpPeriodSeconds int
+	if enableScaleUpBehaviour {
+		maxScaleUpPods, err = GetMaxScaleUpPods(c.k8sClient, workloadMeta.Namespace, workloadMeta.Kind, workloadMeta.Name, workloadMaxReplicas, c.defaultMaxScaleUpPodsPercentage)
+		if err != nil {
+			c.logger.Error(err, "Error while getting maxScaleUpPods")
+			return nil, nil, err
+		}
+		scaleUpPeriodSeconds = int(math.Min((math.Ceil(acl.Minutes()) * 60), float64(c.defaultScaleUpPeriodSeconds)))
+	}
+
+	istLocation := time.FixedZone("IST", 5*60*60+30*60)
+	hoursPerWindow := 24 / c.numberOfWindows
+
+	var windowedConfigs []v1alpha1.TimeWindowedHPAConfiguration
+
+	// noOp config used as fallback when a window has no valid recommendation
+	noOpConfig := v1alpha1.HPAConfiguration{Min: workloadMaxReplicas, Max: workloadMaxReplicas, TargetMetricValue: c.minTarget}
+
+	// Global (most conservative) config across all windows
+	globalTargetUtil := c.maxTarget
+	globalMinReplicas := workloadMinReplicas
+	globalMaxReplicas := workloadMaxReplicas
+	foundAnyValid := false
+
+	for i := 0; i < c.numberOfWindows; i++ {
+		wStartHour := i * hoursPerWindow
+		wEndHour := wStartHour + hoursPerWindow
+
+		winCfg := c.recommendForWindow(
+			dataPoints,
+			wStartHour, wEndHour,
+			acl,
+			perPodResources,
+			workloadMaxReplicas, workloadMinReplicas,
+			enableScaleUpBehaviour,
+			maxScaleUpPods, scaleUpPeriodSeconds,
+			istLocation,
+		)
+
+		var hpaCfg v1alpha1.HPAConfiguration
+		if winCfg != nil {
+			hpaCfg = *winCfg
+			if !foundAnyValid {
+				globalTargetUtil = winCfg.TargetMetricValue
+				globalMinReplicas = winCfg.Min
+				foundAnyValid = true
+			} else {
+				if winCfg.TargetMetricValue < globalTargetUtil {
+					globalTargetUtil = winCfg.TargetMetricValue
+				}
+				if winCfg.Min > globalMinReplicas {
+					globalMinReplicas = winCfg.Min
+				}
+			}
+		} else {
+			hpaCfg = noOpConfig
+		}
+
+		windowedConfigs = append(windowedConfigs, v1alpha1.TimeWindowedHPAConfiguration{
+			WindowIndex:      i,
+			StartHour:        wStartHour,
+			EndHour:          wEndHour,
+			HPAConfiguration: hpaCfg,
+		})
+	}
+
+	var globalConfig *v1alpha1.HPAConfiguration
+	if foundAnyValid {
+		globalConfig = &v1alpha1.HPAConfiguration{
+			Min:               globalMinReplicas,
+			Max:               globalMaxReplicas,
+			TargetMetricValue: globalTargetUtil,
+		}
+	} else {
+		globalConfig = &noOpConfig
+	}
+
+	potentialSavingsPercentage.WithLabelValues(workloadMeta.Namespace, workloadMeta.Name).Set(0)
+	return globalConfig, windowedConfigs, nil
 }
